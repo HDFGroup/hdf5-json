@@ -5,7 +5,6 @@ HDF5/JSON
 .. toctree::
    :maxdepth: 2
 
-   conventions
    bnf/index
 
 
@@ -17,12 +16,4 @@ This example is equivalent to the one in section 4 of
 
 .. literalinclude:: sample.json
    :language: javascript
-	      
-	      
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
 

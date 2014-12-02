@@ -2,15 +2,13 @@
 Production Rules
 ----------------
 
-.. toctree::
-
-   file
-   group
-   dataset
-   dataspace
-   datatype
-   attribute_collection
-   filters
-   misc
-   id
-   json_value
+.. include:: file.rst
+.. include:: group.rst
+.. include:: dataset.rst
+.. include:: dataspace.rst
+.. include:: datatype.rst
+.. include:: attribute_collection.rst
+.. include:: filters.rst
+.. include:: misc.rst
+.. include:: id.rst
+.. include:: json_value.rst

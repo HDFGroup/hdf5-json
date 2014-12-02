@@ -5,7 +5,7 @@
        : "id" ":" `identifier` ","
        : "created" ":" `utc_datetime` ","
        : "lastModified" ":" `utc_datetime` ","
-       : "root" ":" `identifier_reference` ","
+       : "root" ":" `id_reference` ","
        : "groups" ":" "[" `group_list` "]" ","
        : "datasets" ":" "[" `dataset_list` "]" ","
        : "datatypes" ":" "[" `datatype_list` "]" ","

@@ -132,9 +132,9 @@
                          : "dataset" ":" `dataset_ref` ";"
 			 : "selection" ":" `dataspace_selection`
                          : "}"
-   dataset_ref: `url_path` /\/datasets/`identifier`/
-   datatype_object_ref: `url_path` /\/datatypes/`identifier`/
-   group_ref: `url_path` /\/groups/`identifier`/
+   dataset_ref: `url_path` /\/datasets/`id_reference`/
+   datatype_object_ref: `url_path` /\/datatypes/`id_reference`/
+   group_ref: `url_path` /\/groups/`id_reference`/
 					 
 .. productionlist::
    string_datatype: "{"
