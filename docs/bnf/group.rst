@@ -29,7 +29,8 @@
       : "localHeapSizeHint" ":" `non_negative_integer` ","
       : "trackTimes" ":" `track_times`
       : "}"
-   link_crt_order: "H5P_CRT_ORDER_TRACKED" | "H5P_CRT_ORDER_INDEXED"
+   link_crt_order: "H5P_CRT_ORDER_TRACKED"
+                 :| "H5P_CRT_ORDER_INDEXED"
    link_phase_change: "{"
                     : "maxCompact" ":" `non_negative_integer` ","
 		    : "minDense" ":" `non_negative_integer`

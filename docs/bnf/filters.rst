@@ -42,7 +42,8 @@
 	      : "pixelsPerBlock" ":" `positive_integer` ","
 	      : "pixelsPerScanline" ":" `positive_integer`
 	      : "}"
-   coding: "H5_SZIP_EC_OPTION_MASK" | "H5_SZIP_NN_OPTION_MASK"
+   coding: "H5_SZIP_EC_OPTION_MASK"
+         :| "H5_SZIP_NN_OPTION_MASK"
    other_filter: "{"
                : "class" ":" "H5Z_FILTER_USER" ","
 	       : "id" ":" `positive_integer` ","

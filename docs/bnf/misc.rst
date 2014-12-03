@@ -3,7 +3,8 @@
    ocp: "attributeCreationOrder" ":" `attr_crt_order` ","
       : "attributePhaseChange" ":" `attr_phase_change` ","
       : "trackTimes" ":" `track_times`
-   attr_crt_order: "H5P_CRT_ORDER_TRACKED" | "H5P_CRT_ORDER_INDEXED"
+   attr_crt_order: "H5P_CRT_ORDER_TRACKED"
+                 :| "H5P_CRT_ORDER_INDEXED"
    attr_phase_change: "{"
                     : "maxCompact" ":" `non_negative_integer` ","
 		    : "minDense" ":" `non_negative_integer`

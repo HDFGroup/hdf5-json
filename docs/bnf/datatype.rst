@@ -126,7 +126,8 @@
 
 
 .. productionlist::
-   reference_datatype: "H5T_STD_REF_OBJ" | "H5T_STD_REF_DSETREG"
+   reference_datatype: "H5T_STD_REF_OBJ"
+                     :| "H5T_STD_REF_DSETREG"
    object_reference_value: `dataset_ref`
                          :| `datatype_object_ref`
 			 :| `group_ref`
