@@ -13,13 +13,24 @@
 
 
 .. productionlist::
-   byte_array: **TBD**
-   dims_array: positive_integer_array
-   maxdims_array: **TBD**
-   non_negative_integer: **TBD**
-   non_negative_integer_array: **TBD**
-   positive_integer: **TBD**
-   positive_integer_array: **TBD**
+   byte_array: "[" `byte_list` "]"
+   byte_list: `byte_value` ("," `byte_value`)*
+   byte_value: /0x[0-F][0-F]/
+   dims_array: positive_integer_array   
+   maxdims_array: "[" `maxdims_list` "]"
+   maxdims_list: `maxdim` ("," `maxdim`)*
+   maxdim: `positive_integer` | "H5S_UNLIMTED"
+   non_negative_integer_array: "[" `non_negative_integer_list` "]"
+   non_negative_integer_list: `non_negative_integer`
+                            : ("," `non_negative_integer`)*
+   non_negative_integer: /integer >= 0/
+   positive_integer_array: "[" `positive_integer_list` "]"
+   positive_integer_list: `positive_integer`
+                        : ("," `positive_integer`)*
+   positive_integer: /integer > 0/
+
+
+.. productionlist::
    utc_datetime: **TBD**
 
 
