@@ -3,7 +3,7 @@
 .. productionlist::
    group: "{"
         : "id" ":" `identifier` ","
-        : "aka" ":" ( `hdf5_path_name` | `hdf5_path_name_list` ) ","
+        : "alias" ":" ( `hdf5_path_name` | `hdf5_path_name_list` ) ","
 	: "attributes" ":" `attribute_collection` ","
 	: "links" ":" `link_collection` ","
 	: "created" ":" `utc_datetime` ","

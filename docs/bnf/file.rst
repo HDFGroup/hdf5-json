@@ -10,7 +10,7 @@
        : "datasets" ":" "[" `dataset_list` "]" ","
        : "datatypes" ":" "[" `datatype_list` "]" ","
        : "userblock" ":" `byte_array` ","
-       : "userblock_size" ":" `non_negative_integer` /power of 2, >= 512/ ","
+       : "userblockSize" ":" `non_negative_integer` /power of 2, >= 512/ ","
        : "creationProperties" ":" `fcpl` ","
        : "driverInfo" ":" `file_driver_info` ","
        : "apiVersion" ":" "0.0.0"
@@ -76,5 +76,17 @@
 
 .. productionlist::
    file_driver_info: `family_driver_info` | `multi_driver_info`
-   family_driver_info: **TBD**
-   multi_driver_info: **TBD**
+   family_driver_info: "{"
+                     : "memberSize" ":" `positive_integer`
+                     : "}"
+   multi_driver_info: "[" `data_distribution_list` "]"
+   data_distribution_list: `data_item` ("," `data_item`)*
+   data_item: "{"
+            : "dataMap" ":" `data_kind`
+            : "}"
+   data_kind: "H5FD_MEM_SUPER"
+            :| "H5FD_MEM_BTREE"
+	    :| "H5FD_MEM_DRAW"
+	    :| "H5FD_MEM_GHEAP"
+	    :| "H5FD_MEM_LHEAP"
+	    :| "H5FD_MEM_OHDR"

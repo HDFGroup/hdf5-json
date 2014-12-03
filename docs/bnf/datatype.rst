@@ -13,6 +13,7 @@
 	    :| `vlen_datatype`
    datatype_object: "{"
                   : "id" ":" `identifier` ","
+		  : "alias" ":" ( `hdf5_path_name` | `hdf5_path_name_list` ) ","
                   : "type" ":" `datatype`
                   : "}"
 
@@ -20,7 +21,7 @@
 .. productionlist::
    array_datatype: "{"
                  : "class" ":" "H5T_ARRAY" ","
-                 : "base" ":" `integer_datatype` ","
+                 : "base" ":" `datatype` ","
 		 : "dims" ":" `dims_array`
 		 : "}"
 
@@ -53,7 +54,7 @@
 		    : "}"
    field_list: `field_def` ("," `field_def`)*
    field_def: "{"
-            : "name" ":" `ascii_string` ","
+            : "name" ":" `char_string` ","
 	    : "type" ":" `datatype`
 	    : "}"
 
@@ -65,7 +66,7 @@
 		       : "members" ":" "[" `enum_member_list` "]"
 		       : "}"
    enum_member_list: `enum_member` ("," `enum_member`)*
-   enum_member: "{" `ascii_string` ":" `integer` "}"
+   enum_member: "{" `char_string` ":" `integer` "}"
 
 
 .. productionlist::
