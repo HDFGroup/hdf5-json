@@ -15,7 +15,7 @@
                 "shape": "H5S_SCALAR",
                 "value": "string attribute"
             }],
-            "aka": "/",
+            "alias": "/",
             "links": [
                 {
                     "title": "dset1",
@@ -49,7 +49,7 @@
         },
         {
             "id": "be8dcb22-b411-4439-85e9-ea384a685ae0",
-            "aka": [
+            "alias": [
                 "/group1",
                 "/group2"
             ],
@@ -62,7 +62,7 @@
     "datasets": [
         {
             "id": "30292613-8d2a-4dc4-a277-b9d59d5b0d20",
-            "aka": "/dset1",
+            "alias": "/dset1",
             "type": "H5T_STD_I32BE",
             "shape": {
                 "class": "H5S_SIMPLE",
@@ -109,7 +109,7 @@
         },
         {
             "id": "0a68caca-629a-44aa-9f37-311e7ffb8417",
-            "aka": "/dset2",
+            "alias": "/dset2",
             "type": {
                 "class": "H5T_COMPOUND",
                 "fields": [
@@ -153,7 +153,7 @@
         },
         {
             "id": "4b43748e-817f-44c6-a9f1-16e242fd374b",
-            "aka": "/dset3",
+            "alias": "/dset3",
             "type": {
                 "class": "H5T_VLEN",
                 "base": "H5T_STD_I32LE"
@@ -179,7 +179,7 @@
         },
         {
             "id": "42f5e3a2-5e70-4faf-9893-fd216257a0d9",
-            "aka": [
+            "alias": [
                 "/group2/dset3",
                 "/group1/dset3"
             ],
@@ -306,7 +306,7 @@
     ],
     "datatypes": [{
         "id": "a93ff089-d466-44e7-b3f0-09db34ec2ef5",
-        "aka": "/type1",
+        "alias": "/type1",
         "type": {
             "class": "H5T_COMPOUND",
             "fields": [
