@@ -11,7 +11,12 @@
 
 
 .. productionlist::
-   dataspace_selection: `hyperslab_selection` | `point_selection`
+   dataspace_selection: "{"
+                      : "class" ":" `selection_class` ","
+		      : "selection" ":" ( `hyperslab_selection`
+		      :                  | `point_selection`)
+   selection_class: "H5S_SEL_HYPERSLABS"
+                  :| "H5S_SEL_POINTS"
    hyperslab_selection: "[" `block_list` "]"
    block_list: `block` ("," `block`)*
    block: "{"
@@ -20,4 +25,4 @@
 	: "}"
    point_selection: "[" `coordinate_list` "]"
    coordinate_list: `coordinate` ("," `coordinate`)*
-   coordinate: **TBD**
+   coordinate: `non_negative_integer_array`

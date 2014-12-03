@@ -82,7 +82,10 @@
    multi_driver_info: "[" `data_distribution_list` "]"
    data_distribution_list: `data_item` ("," `data_item`)*
    data_item: "{"
-            : "dataMap" ":" `data_kind`
+            : "dataMap" ":" `data_kind` ","
+	    : "fileName" ":" `utf8_string` ","
+	    : "address"  ":" `positive_integer` ","
+	    : "relaxFlag" ":" false | true 
             : "}"
    data_kind: "H5FD_MEM_SUPER"
             :| "H5FD_MEM_BTREE"

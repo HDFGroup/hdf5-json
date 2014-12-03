@@ -13,7 +13,8 @@
 	    :| `vlen_datatype`
    datatype_object: "{"
                   : "id" ":" `identifier` ","
-		  : "alias" ":" ( `hdf5_path_name` | `hdf5_path_name_list` ) ","
+		  : "alias" ":" `hdf5_path_name`
+		  :| `hdf5_path_name_list` ","
                   : "type" ":" `datatype`
                   : "}"
 
