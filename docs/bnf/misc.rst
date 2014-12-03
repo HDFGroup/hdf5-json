@@ -19,7 +19,7 @@
    dims_array: positive_integer_array   
    maxdims_array: "[" `maxdims_list` "]"
    maxdims_list: `maxdim` ("," `maxdim`)*
-   maxdim: `positive_integer` | "H5S_UNLIMTED"
+   maxdim: `positive_integer` | "H5S_UNLIMITED"
    non_negative_integer_array: "[" `non_negative_integer_list` "]"
    non_negative_integer_list: `non_negative_integer`
                             : ("," `non_negative_integer`)*
