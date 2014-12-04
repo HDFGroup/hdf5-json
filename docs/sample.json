@@ -164,7 +164,7 @@
                 "/group2/dset3",
                 "/group1/dset3"
             ],
-            "type": "a93ff089-d466-44e7-b3f0-09db34ec2ef5",
+            "type": "/dataya93ff089-d466-44e7-b3f0-09db34ec2ef5",
             "shape": {
                 "class": "H5S_SIMPLE",
                 "dims": [5],

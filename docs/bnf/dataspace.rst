@@ -2,7 +2,13 @@
 
 
 .. productionlist::
-   dataspace: "H5S_NULL" | "H5S_SCALAR" | `simple_dataspace`
+   dataspace: `null_dataspace` | `scalar_dataspace` | `simple_dataspace`
+   null_dataspace: "{"
+	  : "class" ":" "H5S_NULL"
+	  : "}"
+   scalar_dataspace: "{"
+	  : "class" ":" "H5S_SCALAR"
+	  : "}"
    simple_dataspace: "{"
 	  : "class" ":" "H5S_SIMPLE" ","
           : "dims" ":" `dims_array` ","

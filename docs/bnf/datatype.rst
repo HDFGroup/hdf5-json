@@ -1,6 +1,12 @@
 .. rubric:: Datatype
 
 .. productionlist::
+   datatype_object: "{"
+                  : "id" ":" `identifier` ","
+		  : "alias" ":" `hdf5_path_name`
+		  :| `hdf5_path_name_list` ","
+                  : "type" ":" `datatype`
+                  : "}"
    datatype: `array_datatype`
             :| `bitfield_datatype`
             :| `compound_datatype`
@@ -11,14 +17,8 @@
             :| `reference_datatype`
             :| `string_datatype`
 	    :| `vlen_datatype`
-   datatype_object: "{"
-                  : "id" ":" `identifier` ","
-		  : "alias" ":" `hdf5_path_name`
-		  :| `hdf5_path_name_list` ","
-                  : "type" ":" `datatype`
-                  : "}"
 
- 
+
 .. productionlist::
    array_datatype: "{"
                  : "class" ":" "H5T_ARRAY" ","
@@ -28,20 +28,21 @@
 
 
 .. productionlist::
-   bitfield_datatype: `bitfield_predef` | `bitfield_user`
-   bitfield_predef: "H5T_STD_B8BE" | "H5T_STD_B8LE"
-                  :| "H5T_STD_B16BE" | "H5T_STD_B16LE"
-		  :| "H5T_STD_B32BE" | "H5T_STD_B32LE"
-		  :| "H5T_STD_B64BE" | "H5T_STD_B64LE"
-   bitfield_user : "{"
-                 : "bitOffset" ":" `non_negative_integer` ","
+   bitfield_datatype: "{"
+                    : "class" ":" "H5T_BITFIELD" ","
+                    : ( `bitfield_predef` | `bitfield_user` )
+                    : "}"
+   bitfield_predef: "base" ":"
+                  : ( "H5T_STD_B8BE"  | "H5T_STD_B8LE"
+                  :|  "H5T_STD_B16BE" | "H5T_STD_B16LE"
+		  :|  "H5T_STD_B32BE" | "H5T_STD_B32LE"
+		  :|  "H5T_STD_B64BE" | "H5T_STD_B64LE" )
+   bitfield_user : "bitOffset" ":" `non_negative_integer` ","
 		 : "byteOrder" ":" `byte_order` ","
-		 : "class" ":" "H5T_BITFIELD" ","
 		 : "lsbPad" ":" `bit_padding` ","
 		 : "msbPad" ":" `bit_padding` ","
 		 : "precision" ":" `positive_integer` ","
 		 : "size" ":" `positive_integer`
-		 : "}"
    bit_padding : "H5T_PAD_ZERO"
                :| "H5T_PAD_ONE"
 	       :| "H5T_PAD_BACKGROUND"
@@ -71,13 +72,16 @@
 
 
 .. productionlist::
-   floating_point_datatype: `float_predef` | `float_user`
-   float_predef: "H5T_IEEE_F32BE" | "H5T_IEEE_F32LE"
-               :| "H5T_IEEE_F64BE" | "H5T_IEEE_F64LE"
+   floating_point_datatype: "{"
+                          : "class" ":" "H5T_FLOAT" ","
+                          : ( `float_predef` | `float_user` )
+                          : "}"
+   float_predef: "base" ":"
+               : ( "H5T_IEEE_F32BE" | "H5T_IEEE_F32LE"
+               :|  "H5T_IEEE_F64BE" | "H5T_IEEE_F64LE" )
    float_user: "{"
              : "bitOffset" ":" `non_negative_integer` ","
 	     : "byteOrder" ":" `byte_order` ","
-	     : "class" ":" "H5T_FLOAT" ","
 	     : "expBias" ":" `positive_integer` ","
 	     : "expBits" ":" `positive_integer` ","
 	     : "expBitPos" ":" `positive_integer` ","
@@ -96,19 +100,22 @@
 	    :| "H5T_NORM_NONE"
 
 .. productionlist::
-   integer_datatype: `integer_predef` | `integer_user`
-   integer_predef: "H5T_STD_I8BE" | "H5T_STD_I8LE"
-                 :| "H5T_STD_I16BE" | "H5T_STD_I16LE"
-		 :| "H5T_STD_I32BE" | "H5T_STD_I32LE"
-		 :| "H5T_STD_I64BE" | "H5T_STD_I64LE"
-		 :| "H5T_STD_U8BE"  | "H5T_STD_U8LE"
-		 :| "H5T_STD_U16BE" | "H5T_STD_U16LE"
-		 :| "H5T_STD_U32BE" | "H5T_STD_U32LE"
-		 :| "H5T_STD_U64BE" | "H5T_STD_U64LE"
+   integer_datatype: "{"
+                   : "class" ":" "H5T_INTEGER" ","
+                   : ( `integer_predef` | `integer_user` )
+                   : "}"
+   integer_predef: "base" ":"
+                 : ( "H5T_STD_I8BE"  | "H5T_STD_I8LE"
+                 :|  "H5T_STD_I16BE" | "H5T_STD_I16LE"
+		 :|  "H5T_STD_I32BE" | "H5T_STD_I32LE"
+		 :|  "H5T_STD_I64BE" | "H5T_STD_I64LE"
+		 :|  "H5T_STD_U8BE"  | "H5T_STD_U8LE"
+		 :|  "H5T_STD_U16BE" | "H5T_STD_U16LE"
+		 :|  "H5T_STD_U32BE" | "H5T_STD_U32LE"
+		 :|  "H5T_STD_U64BE" | "H5T_STD_U64LE" )
    integer_user: "{"
 	       : "bitOffset" ":" `non_negative_integer` ","
 	       : "byteOrder" ":" `byte_order` ","
-               : "class" ":" "H5T_INTEGER" ","
 	       : "lsbPad" ":" `bit_padding` ","
 	       : "msbPad" ":" `bit_padding` ","
 	       : "precision" ":" `positive_integer` ","
@@ -126,8 +133,11 @@
 
 
 .. productionlist::
-   reference_datatype: "H5T_STD_REF_OBJ"
-                     :| "H5T_STD_REF_DSETREG"
+   reference_datatype: "{"
+                     : "class" ":" "H5T_REFERENCE" ","
+                     : "base" ":"
+                     : ( "H5T_STD_REF_OBJ"
+                     :|  "H5T_STD_REF_DSETREG" )
    object_reference_value: `dataset_ref`
                          :| `datatype_object_ref`
 			 :| `group_ref`
