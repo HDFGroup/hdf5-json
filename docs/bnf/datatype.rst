@@ -155,6 +155,6 @@
 
 .. productionlist::
    vlen_datatype: "{"
-                : "class" ":" "H5T_ARRAY" ","
+                : "class" ":" "H5T_VLEN" ","
 		: "base" ":" `datatype`
 		: "}"
