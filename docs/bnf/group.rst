@@ -15,7 +15,7 @@
    link_collection: "[" `link_list` "]"
    link_list: `link` ("," `link`)*
    link: "{"
-       : "title" ":" ( `ascii_string` | `unicode_string` ) ","
+       : "title" ":" `link_name` ","
        : "href" ":" `url_path` | `url_fragment` | `url` ","
        : "creationProperties" ":" `lcpl`
        : "}"

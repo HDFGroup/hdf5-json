@@ -22,31 +22,31 @@
             "links": [
                 {
                     "title": "dset1",
-                    "href": "/datasets/30292613-8d2a-4dc4-a277-b9d59d5b0d20"
+                    "href": "datasets/30292613-8d2a-4dc4-a277-b9d59d5b0d20"
                 },
                 {
                     "title": "group1",
-                    "href": "/groups/be8dcb22-b411-4439-85e9-ea384a685ae0"
+                    "href": "groups/be8dcb22-b411-4439-85e9-ea384a685ae0"
                 },
                 {
                     "title": "group2",
-                    "href": "/groups/be8dcb22-b411-4439-85e9-ea384a685ae0"
+                    "href": "groups/be8dcb22-b411-4439-85e9-ea384a685ae0"
                 },
                 {
                     "title": "dset2",
-                    "href": "/datasets/0a68caca-629a-44aa-9f37-311e7ffb8417"
+                    "href": "datasets/0a68caca-629a-44aa-9f37-311e7ffb8417"
                 },
                 {
                     "title": "dset3",
-                    "href": "/datasets/4b43748e-817f-44c6-a9f1-16e242fd374b"
+                    "href": "datasets/4b43748e-817f-44c6-a9f1-16e242fd374b"
                 },
                 {
                     "title": "slink1",
-                    "href": "/#h5(somevalue)"
+                    "href": "#h5(somevalue)"
                 },
                 {
                     "title": "type1",
-                    "href": "/datatypes/a93ff089-d466-44e7-b3f0-09db34ec2ef5"
+                    "href": "datatypes/a93ff089-d466-44e7-b3f0-09db34ec2ef5"
                 }
             ]
         },
@@ -58,7 +58,7 @@
             ],
             "links": [{
                 "title": "dset3",
-                "href": "/groups/42f5e3a2-5e70-4faf-9893-fd216257a0d9"
+                "href": "groups/42f5e3a2-5e70-4faf-9893-fd216257a0d9"
             }]
         }
     ],
@@ -165,7 +165,7 @@
                 "/group2/dset3",
                 "/group1/dset3"
             ],
-            "type": "/datatypes/a93ff089-d466-44e7-b3f0-09db34ec2ef5",
+            "type": "datatypes/a93ff089-d466-44e7-b3f0-09db34ec2ef5",
             "shape": {
                 "class": "H5S_SIMPLE",
                 "dims": [5],

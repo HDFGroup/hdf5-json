@@ -13,6 +13,21 @@
 
 
 .. productionlist::
+   url: `scheme` "://" `domain` [ ":" `port` ] "/" `path` "#" `fragment`
+   scheme: "file" | "http"
+   domain: `rfc1738_url_path`
+   port: `non_negative_integer`
+   path: ( "datasets" | "datatypes" | "groups" ) "/" `identifier`
+   fragment: "h5(" `hdf5_path_name` ")"
+
+
+.. productionlist::
+   hdf5_path_name_list: `hdf5_path_name` ("," `hdf5_path_name`)*
+   hdf5_path_name: [ "/" ] `link_name` ("/" `link_name` )*
+   link_name: ascii_string_wo_slash | unicode_string_wo_slash
+
+
+.. productionlist::
    byte_array: "[" `byte_list` "]"
    byte_list: `byte_value` ("," `byte_value`)*
    byte_value: /0x[0-F][0-F]/
@@ -35,10 +50,11 @@
 
 
 .. productionlist::
+   ascii_string_wo_slash: **TBD**
    ascii_string: **TBD**
+   unicode_string_wo_slash: **TBD**
    unicode_string: **TBD**
-   hdf5_path_name: **TBD**
-   hdf5_path_name_list: **TBD**
-   url: **TBD**
-   url_fragment: **TBD**
-   url_path: **TBD**
+
+
+
+
