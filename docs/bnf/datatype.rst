@@ -56,7 +56,7 @@
 		    : "}"
    field_list: `field_def` ("," `field_def`)*
    field_def: "{"
-            : "name" ":" `char_string` ","
+            : "name" ":" `ascii_string` ","
 	    : "type" ":" `datatype`
 	    : "}"
 
@@ -68,7 +68,7 @@
 		       : "members" ":" "[" `enum_member_list` "]"
 		       : "}"
    enum_member_list: `enum_member` ("," `enum_member`)*
-   enum_member: "{" `char_string` ":" `integer` "}"
+   enum_member: "{" `ascii_string` ":" `integer` "}"
 
 
 .. productionlist::

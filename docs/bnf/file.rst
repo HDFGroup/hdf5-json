@@ -83,7 +83,7 @@
    data_distribution_list: `data_item` ("," `data_item`)*
    data_item: "{"
             : "dataMap" ":" `data_kind` ","
-	    : "fileName" ":" `utf8_string` ","
+	    : "fileName" ":" `unicode_string` ","
 	    : "address"  ":" `positive_integer` ","
 	    : "relaxFlag" ":" false | true 
             : "}"

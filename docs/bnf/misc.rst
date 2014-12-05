@@ -36,8 +36,7 @@
 
 .. productionlist::
    ascii_string: **TBD**
-   char_string: **TBD**
-   utf8_string: **TBD**
+   unicode_string: **TBD**
    hdf5_path_name: **TBD**
    hdf5_path_name_list: **TBD**
    url: **TBD**
