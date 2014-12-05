@@ -16,19 +16,23 @@
    link_list: `link` ("," `link`)*
    link: "{"
        : "title" ":" ( `ascii_string` | `unicode_string` ) ","
-       : "href" ":" `url_path` | `url_fragment` | `url`
+       : "href" ":" `url_path` | `url_fragment` | `url` ","
+       : "creationProperties" ":" `lcpl`
        : "}"
-				 
+   lcpl: "{"
+       : "nameCharEncoding" ":" `char_encoding`
+       : "}"
+  				 
 .. productionlist::
    gcpl: "{"
-      : `ocp` ","
-      : "filters" ":" "[" `link_name_filter_list` "]" ","
-      : "linkCreationOrder" ":" `link_crt_order` ","
-      : "linkPhaseChange" ":" `link_phase_change` ","
-      : "linksEstimate" ":" `links_estimate` ","
-      : "localHeapSizeHint" ":" `non_negative_integer` ","
-      : "trackTimes" ":" `track_times`
-      : "}"
+       : `ocp` ","
+       : "filters" ":" "[" `link_name_filter_list` "]" ","
+       : "linkCreationOrder" ":" `link_crt_order` ","
+       : "linkPhaseChange" ":" `link_phase_change` ","
+       : "linksEstimate" ":" `links_estimate` ","
+       : "localHeapSizeHint" ":" `non_negative_integer` ","
+       : "trackTimes" ":" `track_times`
+       : "}"
    link_crt_order: "H5P_CRT_ORDER_TRACKED"
                  :| "H5P_CRT_ORDER_INDEXED"
    link_phase_change: "{"

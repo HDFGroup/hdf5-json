@@ -8,5 +8,9 @@
             : "name" ":" `ascii_string` | `unicode_string` ","
 	    : "type" ":" `datatype` | `datatype_object_ref` ","
 	    : "shape" ":" `dataspace` ","
-	    : "value" ":" `json_value`
+	    : "value" ":" `json_value` ","
+            : "creationProperties" ":" `acpl`
 	    : "}"
+   acpl: "{"
+       : "nameCharEncoding" ":" `char_encoding`
+       : "}"
