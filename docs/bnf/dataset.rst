@@ -3,7 +3,6 @@ Dataset
 
 .. productionlist::
    dataset: `identifier` ":" "{"
-	  : "alias" ":" ( `hdf5_path_name` | `hdf5_path_name_list` ) ","
 	  : "attributes" ":" `attribute_collection` ","
 	  : "type" ":" `datatype` | `datatype_object_ref` ","
 	  : "shape" ":" `dataspace` ","
@@ -17,15 +16,15 @@ Dataset
 
 .. productionlist::
    dcpl: "{"
-      : "allocTime" ":" `alloc_time` ","
-      : "attributeCreationOrder" ":" `attr_crt_order` ","
-      : "attributePhaseChange" ":" `attr_phase_change` ","
-      : "fillTime" ":" `fill_time` ","
-      : "fillValue" ":" `fill_value` ","
-      : "filters" ":" "[" `filter_list` "]" ","
-      : "layout" ":" `layout` ","
-      : "trackTimes" ":" `track_times`
-      : "}"
+       : "allocTime" ":" `alloc_time` ","
+       : "attributeCreationOrder" ":" `attr_crt_order` ","
+       : "attributePhaseChange" ":" `attr_phase_change` ","
+       : "fillTime" ":" `fill_time` ","
+       : "fillValue" ":" `fill_value` ","
+       : "filters" ":" "[" `filter_list` "]" ","
+       : "layout" ":" `layout` ","
+       : "trackTimes" ":" `track_times`
+       : "}"
    alloc_time:  "H5D_ALLOC_TIME_DEFAULT"
              :| "H5D_ALLOC_TIME_EARLY"
 	     :| "H5D_ALLOC_TIME_INCR"

@@ -3,8 +3,6 @@ Datatype
 
 .. productionlist::
    datatype_object: `identifier` ":" "{"
-		  : "alias" ":" `hdf5_path_name`
-		  :| `hdf5_path_name_list` ","
                   : "type" ":" `datatype`
                   : "}"
    datatype:   `array_datatype`

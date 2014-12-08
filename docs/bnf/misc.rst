@@ -24,7 +24,6 @@ Miscellaneous
    fragment: "h5(" `hdf5_path_name` ")"
 
 .. productionlist::
-   hdf5_path_name_list: `hdf5_path_name` ("," `hdf5_path_name`)*
    hdf5_path_name: [ "/" ] `link_name` ("/" `link_name` )*
    link_name: ascii_string_wo_slash | unicode_string_wo_slash
 
