@@ -1,8 +1,7 @@
 .. rubric:: Group
 
 .. productionlist::
-   group: "{"
-        : "id" ":" `identifier` ","
+   group: `identifier` ":" "{"
         : "alias" ":" ( `hdf5_path_name` | `hdf5_path_name_list` ) ","
 	: "attributes" ":" `attribute_collection` ","
 	: "links" ":" `link_collection` ","

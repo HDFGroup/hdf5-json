@@ -6,9 +6,9 @@
        : "created" ":" `utc_datetime` ","
        : "lastModified" ":" `utc_datetime` ","
        : "root" ":" `id_reference` ","
-       : "groups" ":" "[" `group_list` "]" ","
-       : "datasets" ":" "[" `dataset_list` "]" ","
-       : "datatypes" ":" "[" `datatype_list` "]" ","
+       : "groups" ":" "{" `group_hashtable` "}" ","
+       : "datasets" ":" "{" `dataset_hashtable` "}" ","
+       : "datatypes" ":" "{" `datatype_hashtable` "}" ","
        : "userblock" ":" `byte_array` ","
        : "userblockSize" ":" `non_negative_integer` /power of 2, >= 512/ ","
        : "creationProperties" ":" `fcpl` ","
@@ -17,9 +17,9 @@
        : "}"
 
 .. productionlist::
-   group_list: `group` ("," `group`)*
-   dataset_list: `dataset` ("," `dataset`)*
-   datatype_list: `datatype_object` ("," `datatype_object`)*
+   group_hashtable: `group` ("," `group`)*
+   dataset_hashtable: `dataset` ("," `dataset`)*
+   datatype_hashtable: `datatype_object` ("," `datatype_object`)*
 
 .. productionlist::
    fcpl: "{"

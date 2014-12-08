@@ -1,8 +1,7 @@
 .. rubric:: Datatype
 
 .. productionlist::
-   datatype_object: "{"
-                  : "id" ":" `identifier` ","
+   datatype_object: `identifier` ":" "{"
 		  : "alias" ":" `hdf5_path_name`
 		  :| `hdf5_path_name_list` ","
                   : "type" ":" `datatype`

@@ -2,8 +2,7 @@
 
 
 .. productionlist::
-   dataset: "{"
-          : "id" ":" `identifier` ","
+   dataset: `identifier` ":" "{"
 	  : "alias" ":" ( `hdf5_path_name` | `hdf5_path_name_list` ) ","
 	  : "attributes" ":" `attribute_collection` ","
 	  : "type" ":" `datatype` | `datatype_object_ref` ","
