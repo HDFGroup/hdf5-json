@@ -1,5 +1,5 @@
-.. rubric:: Dataset
-
+Dataset
+=======
 
 .. productionlist::
    dataset: `identifier` ":" "{"
@@ -10,7 +10,10 @@
 	  : "value" ":" `json_value` ","
 	  : "creationProperties" ":" `dcpl`
 	  : "}"
-
+   json_value:  `json_string`
+             :| `json_number`
+             :| `json_array`
+             :| `json_null`
 
 .. productionlist::
    dcpl: "{"
@@ -23,15 +26,15 @@
       : "layout" ":" `layout` ","
       : "trackTimes" ":" `track_times`
       : "}"
-   alloc_time: "H5D_ALLOC_TIME_DEFAULT"
+   alloc_time:  "H5D_ALLOC_TIME_DEFAULT"
              :| "H5D_ALLOC_TIME_EARLY"
 	     :| "H5D_ALLOC_TIME_INCR"
 	     :| "H5D_ALLOC_TIME_LATE"
-   fill_time: "H5D_FILL_TIME_IFSET"
+   fill_time:  "H5D_FILL_TIME_IFSET"
             :| "H5D_FILL_TIME_ALLOC"
 	    :| "H5D_FILL_TIME_NEVER"
    fill_value: `json_value`
-   layout: `chunked`
+   layout:  `chunked`
          :| `external`
          :| "H5D_COMPACT"
 	 :| "H5D_CONTIGUOUS"

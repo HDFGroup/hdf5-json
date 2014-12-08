@@ -41,7 +41,7 @@
                 },
                 {
                     "title": "slink1",
-                    "href": "#h5(somevalue)"
+                    "href": "h5(somevalue)"
                 },
                 {
                     "title": "type1",
@@ -69,12 +69,8 @@
             },
             "shape": {
                 "class": "H5S_SIMPLE",
-                "dims": [
-                    10, 10
-                ],
-                "maxdims": [
-                    10, 10
-                ]
+                "dims": [ 10, 10 ],
+                "maxdims": [ 10, 10 ]
             },
             "value": [
                 [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 ],

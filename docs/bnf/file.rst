@@ -1,4 +1,5 @@
-.. rubric:: File
+File
+====
 
 .. productionlist::
    file: "{"
@@ -61,7 +62,7 @@
 	     : "minMessageSize" ":" `non_negative_integer`
              : "}"
    sohm_message_type_list: `sohm_message_type` ("," `sohm_message_type`)*
-   sohm_message_type: "H5O_SHMESG_ATTR_FLAG"
+   sohm_message_type:  "H5O_SHMESG_ATTR_FLAG"
                     :| "H5O_SHMESG_DTYPE_FLAG"
 		    :| "H5O_SHMESG_FILL_FLAG"
 		    :| "H5O_SHMESG_PLINE_FLAG"
@@ -87,7 +88,7 @@
 	    : "address"  ":" `positive_integer` ","
 	    : "relaxFlag" ":" false | true 
             : "}"
-   data_kind: "H5FD_MEM_SUPER"
+   data_kind:  "H5FD_MEM_SUPER"
             :| "H5FD_MEM_BTREE"
 	    :| "H5FD_MEM_DRAW"
 	    :| "H5FD_MEM_GHEAP"

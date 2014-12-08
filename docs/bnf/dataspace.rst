@@ -1,5 +1,5 @@
-.. rubric:: Dataspace
-
+Dataspace
+=========
 
 .. productionlist::
    dataspace: `null_dataspace` | `scalar_dataspace` | `simple_dataspace`
@@ -21,7 +21,7 @@
                       : "class" ":" `selection_class` ","
 		      : "selection" ":" ( `hyperslab_selection`
 		      :                  | `point_selection`)
-   selection_class: "H5S_SEL_HYPERSLABS"
+   selection_class:  "H5S_SEL_HYPERSLABS"
                   :| "H5S_SEL_POINTS"
    hyperslab_selection: "[" `block_list` "]"
    block_list: `block` ("," `block`)*

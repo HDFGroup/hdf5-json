@@ -1,4 +1,5 @@
-.. rubric:: Group
+Group
+=====
 
 .. productionlist::
    group: `identifier` ":" "{"
@@ -32,7 +33,7 @@
        : "localHeapSizeHint" ":" `non_negative_integer` ","
        : "trackTimes" ":" `track_times`
        : "}"
-   link_crt_order: "H5P_CRT_ORDER_TRACKED"
+   link_crt_order:  "H5P_CRT_ORDER_TRACKED"
                  :| "H5P_CRT_ORDER_INDEXED"
    link_phase_change: "{"
                     : "maxCompact" ":" `non_negative_integer` ","
@@ -42,4 +43,4 @@
                  : "numEntries" ":" `non_negative_integer` ","
 		 : "nameLength" ":" `non_negative_integer`
 		 : "}"
-   link_name_filter_list: **TBD**
+   link_name_filter_list: `deflate_filter`

@@ -1,5 +1,5 @@
-.. rubric:: Attribute
-
+Attribute
+=========
 
 .. productionlist::
    attribute_collection: "attributes" ":" "[" `attribute_list` "]"

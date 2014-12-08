@@ -1,4 +1,5 @@
-.. rubric:: Datatype
+Datatype
+========
 
 .. productionlist::
    datatype_object: `identifier` ":" "{"
@@ -6,7 +7,7 @@
 		  :| `hdf5_path_name_list` ","
                   : "type" ":" `datatype`
                   : "}"
-   datatype: `array_datatype`
+   datatype:   `array_datatype`
             :| `bitfield_datatype`
             :| `compound_datatype`
             :| `enumeration_datatype`
@@ -157,7 +158,7 @@
                   : "}"
    char_encoding: "H5T_CSET_ASCII" | "H5T_CSET_UTF8"
    string_length: `positive_integer` | "H5T_VARIABLE"
-   string_padding: "H5T_STR_NULLTERM"
+   string_padding:  "H5T_STR_NULLTERM"
                  :| "H5T_STR_NULLPAD"
 		 :| "H5T_STR_SPACEPAD"
 
