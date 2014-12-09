@@ -1,0 +1,89 @@
+{
+    "apiVersion": "0.0.0",
+    "datasets": {
+        "25d6f985-7b51-11e4-a037-3c15c2da029e": {
+            "shape": {
+                "class": "H5S_SIMPLE", 
+                "dims": [4], 
+                "maxdims": [4]
+            }, 
+            "type": "datatypes/25d7088f-7b51-11e4-ac9b-3c15c2da029e", 
+            "value": [
+                [12345678, "SEA", 56.3, 29.35], 
+                [12333343, "LAX", 73.3, 32.33], 
+                [14543645, "PDX", 65.3, 31.23], 
+                [14344545, "IDA", 72.3, 30.43]
+            ]
+        }
+    }, 
+    "datatypes": {
+        "25d7088f-7b51-11e4-ac9b-3c15c2da029e": {
+            "type": {
+                "class": "H5T_COMPOUND", 
+                "fields": [
+                    {
+                        "name": "Serial number", 
+                        "type": {
+                            "base": "H5T_STD_I64BE", 
+                            "class": "H5T_INTEGER"
+                        }
+                    }, 
+                    {
+                        "name": "Location", 
+                        "type": {
+                            "class": "H5T_STRING", 
+                            "charSet": "H5T_CSET_ASCII", 
+                            "strPad": "H5T_STR_NULLTERM", 
+                            "length": "H5T_VARIABLE"
+                        }
+                    }, 
+                    {
+                        "name": "Temperature (F)", 
+                        "type": {
+                            "base": "H5T_IEEE_F64BE", 
+                            "class": "H5T_FLOAT"
+                        }
+                    }, 
+                    {
+                        "name": "Pressure (inHg)", 
+                        "type": {
+                            "base": "H5T_IEEE_F64BE", 
+                            "class": "H5T_FLOAT"
+                        }
+                    }
+                ]
+            }
+        }
+    }, 
+    "groups": {
+        "25d607cc-7b51-11e4-9bc3-3c15c2da029e": { 
+            "attributes": [
+                {
+                    "name": "attr1", 
+                    "shape": {
+                        "class": "H5S_SCALAR"
+                    }, 
+                    "type": "datatypes/25d7088f-7b51-11e4-ac9b-3c15c2da029e", 
+                    "value": [
+                        12345678, 
+                        "SEA", 
+                        56.3, 
+                        29.35
+                    ]
+                }
+            ],
+            "links": [
+                {
+
+                    "href": "datasets/25d6f985-7b51-11e4-a037-3c15c2da029e", 
+                    "title": "DS1"
+                }, 
+                {
+                    "href": "datatypes/25d7088f-7b51-11e4-ac9b-3c15c2da029e", 
+                    "title": "Sensor_Type"
+                }
+            ]
+        }
+    }, 
+    "root": "25d607cc-7b51-11e4-9bc3-3c15c2da029e"
+}

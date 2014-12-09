@@ -1,0 +1,93 @@
+{
+    "datasets": {
+        "2fd9e630-7b51-11e4-b2b8-3c15c2da029e": {
+            "shape": {
+                "class": "H5S_SIMPLE", 
+                "dims": [10], 
+                "maxdims": [10]
+            }, 
+            "type": {
+                "class": "H5T_COMPOUND", 
+                "fields": [
+                    {
+                        "name": "date", 
+                        "type": {
+                            "base": "H5T_STD_I64LE", 
+                            "class": "H5T_INTEGER"
+                        }
+                    }, 
+                    {
+                        "name": "time", 
+                        "type": {
+                            "class": "H5T_STRING", 
+                            "charSet": "H5T_CSET_ASCII", 
+                            "strPad": "H5T_STR_NULLPAD", 
+                            "length": 6
+                        }
+                    }, 
+                    {
+                        "name": "temp", 
+                        "type": {
+                            "base": "H5T_STD_I64LE", 
+                            "class": "H5T_INTEGER"
+                        }
+                    }, 
+                    {
+                        "name": "pressure", 
+                        "type": {
+                            "base": "H5T_IEEE_F64LE", 
+                            "class": "H5T_FLOAT"
+                        }
+                    }, 
+                    {
+                        "name": "wind", 
+                        "type": {
+                            "class": "H5T_STRING", 
+                            "charSet": "H5T_CSET_ASCII", 
+                            "strPad": "H5T_STR_NULLPAD", 
+                            "length": 6
+                        }
+                    }
+                ]
+            }, 
+            "value": [
+                [24, "13:53", 63, 29.88, "SE 10"], 
+                [24, "12:53", 61, 29.87, "SE 10"], 
+                [24, "11:53", 61, 29.86, "S 8"], 
+                [24, "10:53", 58, 29.85, "SE 10"], 
+                [24, "9:53", 60, 29.83, "SW 8"],
+                [24, "8:53", 60, 29.81, "SW 7"], 
+                [24, "7:53", 61, 29.78, "W 10 G"], 
+                [24, "6:53", 62, 29.75, "Calm"], 
+                [24, "5:53", 62, 29.73, "S 7"], 
+                [24, "4:53", 63, 29.75, "SE 8"]
+            ]
+        }
+    }, 
+    "groups": {
+        "2fd89866-7b51-11e4-9d8e-3c15c2da029e": { 
+            "attributes": [
+                {
+                    "name": "note", 
+                    "shape": {
+                        "class": "H5S_SCALAR"
+                    }, 
+                    "type": {
+                        "class": "H5T_STRING", 
+                        "charSet": "H5T_CSET_ASCII", 
+                        "strPad": "H5T_STR_NULLTERM", 
+                        "length": "H5T_VARIABLE"
+                    }, 
+                    "value": "Seattle, WA Weather observations Sept 21-24, 2014. KSEA station.\nSource: NOAA"
+                }
+            ], 
+            "links": [
+                {
+                    "href": "datasets/2fd9e630-7b51-11e4-b2b8-3c15c2da029e", 
+                    "title": "dset"
+                }
+            ]
+        }
+    }, 
+    "root": "2fd89866-7b51-11e4-9d8e-3c15c2da029e"
+}

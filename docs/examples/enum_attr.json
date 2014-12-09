@@ -1,0 +1,54 @@
+{
+    "apiVersion": "0.0.0",
+    "datasets": {
+        "a615cf0a-7b51-11e4-bc7e-3c15c2da029e": {
+            "attributes": [
+                {
+                    "name": "A1", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [4, 7]
+                    }, 
+                    "type": {
+                        "base": {
+                            "base": "H5T_STD_I16BE", 
+                            "class": "H5T_INTEGER"
+                        }, 
+                        "class": "H5T_ENUM", 
+                        "members": {
+                            "GAS": 2, 
+                            "LIQUID": 1, 
+                            "PLASMA": 3, 
+                            "SOLID": 0
+                        }
+                    }, 
+                    "value": [
+                        [0, 0, 0, 0, 0, 0, 0], 
+                        [0, 1, 2, 3, 0, 1, 2], 
+                        [0, 2, 0, 2, 0, 2, 0], 
+                        [0, 3, 2, 1, 0, 3, 2]
+                    ]
+                }
+            ], 
+            "shape": {
+                "class": "H5S_NULL"
+            }, 
+            "type": {
+                "base": "H5T_STD_I32LE", 
+                "class": "H5T_INTEGER"
+            }, 
+            "value": null
+        }
+    }, 
+    "groups": {
+        "a614dc9c-7b51-11e4-a3f7-3c15c2da029e": {
+            "links": [
+                {
+                    "href": "datasets/a615cf0a-7b51-11e4-bc7e-3c15c2da029e", 
+                    "title": "DS1"
+                }
+            ]
+        }
+    }, 
+    "root": "a614dc9c-7b51-11e4-a3f7-3c15c2da029e"
+}

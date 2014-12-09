@@ -1,0 +1,26 @@
+{
+    "apiVersion": "0.0.0",
+    "datasets": {
+        "23d3e919-7b53-11e4-961d-3c15c2da029e": {
+            "shape": {
+                "class": "H5S_NULL"
+            }, 
+            "type": {
+                "base": "H5T_STD_I32LE", 
+                "class": "H5T_INTEGER"
+            }, 
+            "value": null
+        }
+    }, 
+    "groups": {
+        "23d2e06b-7b53-11e4-9910-3c15c2da029e": {
+            "links": [
+                {
+                    "href": "datasets/23d3e919-7b53-11e4-961d-3c15c2da029e",
+                    "title": "DS1"
+                }
+            ]
+        }
+    }, 
+    "root": "23d2e06b-7b53-11e4-9910-3c15c2da029e"
+}

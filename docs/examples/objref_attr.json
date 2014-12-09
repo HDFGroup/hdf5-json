@@ -1,0 +1,62 @@
+{
+    "apiVersion": "0.0.0",
+    "datasets": {
+        "a09a7f14-7bf7-11e4-8eef-3c15c2da029e": {
+            "attributes": [
+                {
+                    "name": "A1", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [2]
+                    }, 
+                    "type": {
+                        "base": "H5T_STD_REF_OBJ", 
+                        "class": "H5T_REFERENCE"
+                    }, 
+                    "value": [
+                        "groups/a09a9b99-7bf7-11e4-aa4b-3c15c2da029e", 
+                        "datasets/a09a8efa-7bf7-11e4-9fb6-3c15c2da029e"
+                    ]
+                }
+            ], 
+            "shape": {
+                "class": "H5S_NULL"
+            }, 
+            "type": {
+                "base": "H5T_STD_I32LE", 
+                "class": "H5T_INTEGER"
+            }, 
+            "value": null
+        }, 
+        "a09a8efa-7bf7-11e4-9fb6-3c15c2da029e": {
+            "shape": {
+                "class": "H5S_NULL"
+            }, 
+            "type": {
+                "base": "H5T_STD_I32LE", 
+                "class": "H5T_INTEGER"
+            }, 
+            "value": null
+        }
+    }, 
+    "groups": {
+        "a099880c-7bf7-11e4-82d6-3c15c2da029e": {
+            "links": [
+                {
+                    "href": "datasets/a09a7f14-7bf7-11e4-8eef-3c15c2da029e", 
+                    "title": "DS1"
+                }, 
+                {
+                    "href": "datasets/a09a8efa-7bf7-11e4-9fb6-3c15c2da029e", 
+                    "title": "DS2"
+                }, 
+                {
+                    "href": "groups/a09a9b99-7bf7-11e4-aa4b-3c15c2da029e", 
+                    "title": "G1"
+                }
+            ]
+        }, 
+        "a09a9b99-7bf7-11e4-aa4b-3c15c2da029e": {}
+    }, 
+    "root": "a099880c-7bf7-11e4-82d6-3c15c2da029e"
+}
