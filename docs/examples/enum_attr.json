@@ -15,12 +15,24 @@
                             "class": "H5T_INTEGER"
                         }, 
                         "class": "H5T_ENUM", 
-                        "members": {
-                            "GAS": 2, 
-                            "LIQUID": 1, 
-                            "PLASMA": 3, 
-                            "SOLID": 0
-                        }
+                        "members": [
+                            {
+                                "name": "GAS",
+                                "value": 2
+                            },
+                            {
+                                "name": "LIQUID",
+                                "value": 1
+                            },
+                            {
+                                "name": "PLASMA",
+                                "value": 3
+                            },
+                            {
+                                "name": "SOLID",
+                                "value": 0
+                            }
+                        ]
                     }, 
                     "value": [
                         [0, 0, 0, 0, 0, 0, 0], 

@@ -66,7 +66,10 @@ Datatype
 		       : "members" ":" "[" `enum_member_list` "]"
 		       : "}"
    enum_member_list: `enum_member` ("," `enum_member`)*
-   enum_member: "{" `ascii_string` ":" `integer` "}"
+   enum_member: "{"
+              : "name" ":" `ascii_string` ","
+              : "value" ":" `integer`
+              : "}"
 
 
 .. productionlist::
