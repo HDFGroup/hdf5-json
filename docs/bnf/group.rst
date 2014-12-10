@@ -15,7 +15,7 @@ Group
    link_list: `link` ("," `link`)*
    link: "{"
        : "title" ":" `link_name` ","
-       : "href" ":" `url_path` | `url_fragment` | `url` ","
+       : "href" ":" `path` | `fragment` | `url` ","
        : "creationProperties" ":" `lcpl`
        : "}"
    lcpl: "{"

@@ -57,6 +57,8 @@ Filter
 	      : "}"
    coding:  "H5_SZIP_EC_OPTION_MASK"
          :| "H5_SZIP_NN_OPTION_MASK"
+
+.. productionlist::
    other_filter: "{"
                : "class" ":" "H5Z_FILTER_USER" ","
 	       : "id" ":" `positive_integer` ","

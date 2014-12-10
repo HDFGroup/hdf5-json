@@ -16,7 +16,7 @@ Miscellaneous
 .. rubric:: URL
 
 .. productionlist::
-   url: `scheme` "://" `domain` [ ":" `port` ] "/" `path` "#" `fragment`
+   url: `scheme` "://" `domain` [ ":" `port` ] "/" `path` [ "#" `fragment` ]
    scheme: "file" | "http"
    domain: `rfc1738_url_path`
    port: `non_negative_integer`

@@ -5,16 +5,16 @@ Datatype
    datatype_object: `identifier` ":" "{"
                   : "type" ":" `datatype`
                   : "}"
-   datatype:   `array_datatype`
-            :| `bitfield_datatype`
-            :| `compound_datatype`
-            :| `enumeration_datatype`
-            :| `floating_point_datatype`
-            :| `integer_datatype`
-            :| `opaque_datatype`
-            :| `reference_datatype`
-            :| `string_datatype`
-	    :| `vlen_datatype`
+   datatype:  `array_datatype`
+           :| `bitfield_datatype`
+           :| `compound_datatype`
+           :| `enumeration_datatype`
+           :| `floating_point_datatype`
+           :| `integer_datatype`
+           :| `opaque_datatype`
+           :| `reference_datatype`
+           :| `string_datatype`
+	   :| `vlen_datatype`
 
 
 .. productionlist::
@@ -139,16 +139,14 @@ Datatype
                      : "base" ":"
                      : ( "H5T_STD_REF_OBJ"
                      :|  "H5T_STD_REF_DSETREG" )
-   object_reference_value: `dataset_ref`
-                         :| `datatype_object_ref`
-			 :| `group_ref`
+   object_reference_value: `path`
    region_reference_value: "{"
                          : "dataset" ":" `dataset_ref` ";"
 			 : "selection" ":" `dataspace_selection`
                          : "}"
-   dataset_ref: `url_path` /\/datasets/`id_reference`/
-   datatype_object_ref: `url_path` /\/datatypes/`id_reference`/
-   group_ref: `url_path` /\/groups/`id_reference`/
+   dataset_ref: "datasets/" `id_reference`
+   datatype_object_ref: "datatypes/" `id_reference`
+   group_ref: "groups/" `id_reference`
 					 
 .. productionlist::
    string_datatype: "{"
