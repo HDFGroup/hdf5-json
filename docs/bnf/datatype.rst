@@ -20,7 +20,7 @@ Datatype
 .. productionlist::
    array_datatype: "{"
                  : "class" ":" "H5T_ARRAY" ","
-                 : "base" ":" `datatype` ","
+                 : "base" ":" `datatype` | `datatype_object_ref` ","
 		 : "dims" ":" `dims_array`
 		 : "}"
 
@@ -55,13 +55,14 @@ Datatype
    field_list: `field_def` ("," `field_def`)*
    field_def: "{"
             : "name" ":" `ascii_string` ","
-	    : "type" ":" `datatype`
+	    : "type" ":" `datatype` | `datatype_object_ref` ","
 	    : "}"
 
 
 .. productionlist::
    enumeration_datatype: "{"
-		       : "base" ":" `integer_datatype` ","
+		       : "base" ":" ( `integer_datatype` |
+                       :              `datatype_reference` ) ","
                        : "class" ":" "H5T_ENUM" ","
 		       : "members" ":" "[" `enum_member_list` "]"
 		       : "}"
@@ -165,5 +166,5 @@ Datatype
 .. productionlist::
    vlen_datatype: "{"
                 : "class" ":" "H5T_VLEN" ","
-		: "base" ":" `datatype`
+		: "base" ":" `datatype` | `datatype_object_ref` ","
 		: "}"
