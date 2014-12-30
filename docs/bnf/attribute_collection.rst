@@ -2,7 +2,7 @@ Attribute
 =========
 
 .. productionlist::
-   attribute_collection: "attributes" ":" "[" `attribute_list` "]"
+   attribute_collection: "[" `attribute_list` "]"
    attribute_list: `attribute` ("," `attribute`)*
    attribute: "{"
             : "name" ":" `ascii_string` | `unicode_string` ","
