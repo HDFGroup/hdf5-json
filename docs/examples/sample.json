@@ -21,26 +21,31 @@
                 {
                     "class": "H5L_TYPE_HARD",
                     "title": "dset1",
+		    "collection": "datasets",
                     "uuid": "30292613-8d2a-4dc4-a277-b9d59d5b0d20"
                 },
                 {
                     "class": "H5L_TYPE_HARD",
                     "title": "group1",
+		    "collection": "groups",
                     "uuid": "be8dcb22-b411-4439-85e9-ea384a685ae0"
                 },
                 {
                     "class": "H5L_TYPE_HARD",
                     "title": "group2",
+		    "collection": "groups",
                     "uuid": "be8dcb22-b411-4439-85e9-ea384a685ae0"
                 },
                 {
                     "class": "H5L_TYPE_HARD",
                     "title": "dset2",
+		    "collection": "datasets",
                     "uuid": "0a68caca-629a-44aa-9f37-311e7ffb8417"
                 },
                 {
                     "class": "H5L_TYPE_HARD",
                     "title": "dset3",
+		    "collection": "datasets",
                     "uuid": "4b43748e-817f-44c6-a9f1-16e242fd374b"
                 },
                 {
@@ -51,6 +56,7 @@
                 {
                     "class": "H5L_TYPE_HARD",
                     "title": "type1",
+		    "collection": "datatypes",
                     "uuid": "a93ff089-d466-44e7-b3f0-09db34ec2ef5"
                 }
             ]
@@ -59,6 +65,7 @@
             "links": [{
                 "class": "H5L_TYPE_HARD",
                 "title": "dset3",
+		"collection": "datasets",
                 "uuid": "42f5e3a2-5e70-4faf-9893-fd216257a0d9"
             }]
         }
