@@ -17,6 +17,7 @@ Group
    hard_link: "{"
        : "class" ":" "H5L_TYPE_HARD",
        : "title" ":" `link_name` ","
+       : "collection" ":" ("datasets" | "datatypes" | "groups" )
        : "uuid" ":" `uuid`
        : "creationProperties" ":" `lcpl`
        : "}"
@@ -30,7 +31,7 @@ Group
        : "class" ":" "H5L_TYPE_EXTERNAL",
        : "title" ":" `link_name` ","
        : "file" ":" `unicode_string`
-       : "h5path" ":" `unicode_string`          
+       : "h5path" ":" `unicode_string`
        : "creationProperties" ":" `lcpl`
        : "}"
    ud_link: "{"
@@ -43,7 +44,7 @@ Group
        : "charSet" ":" `char_encoding`
        : "creationOrder" ":" `non_negative_integer`
        : "}"
-  				 
+
 .. productionlist::
    gcpl: "{"
        : `ocp` ","
