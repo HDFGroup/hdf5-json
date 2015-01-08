@@ -33,10 +33,18 @@ Dataset
             :| "H5D_FILL_TIME_ALLOC"
 	    :| "H5D_FILL_TIME_NEVER"
    fill_value: `json_value`
-   layout:  `chunked`
-         :| `external`
-         :| "H5D_COMPACT"
-	 :| "H5D_CONTIGUOUS"
+   layout: `chunked_layout` | `compact_layout` | `contiguous_layout`
+   chunked_layout: "{"
+          : "class" ":" "H5D_CHUNKED"
+          : "dims" ":" `dims_array`
+          : "}"
+   compact_layout: "{"
+          : "class" ":" "H5D_COMPACT"
+          : "}"
+   contiguous_layout: "{"
+          : "class" ":" "H5D_CONTIGUOUS" ","
+	  : "externalStorage" ":" `external`
+          : "}"
    external: "[" `file_extent_list` "]"
    file_extent_list: `file_extent` ("," `file_extent`)*
    file_extent: "{"
@@ -44,7 +52,3 @@ Dataset
 	      : "offset" ":" `non_negative_integer`
 	      : "size" ":" `positive_integer`
 	      : "}"
-   chunked: "{"
-          : "class" ":" "H5D_CHUNKED"
-          : "dims" ":" `dims_array`
-          : "}"
