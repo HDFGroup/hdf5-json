@@ -34,13 +34,13 @@
 		    "class": "H5L_TYPE_HARD",
                     "title": "DS1",
 		    "collection": "datasets",
-                    "uuid": "23674021-7bed-11e4-aba3-3c15c2da029e"
+                    "id": "23674021-7bed-11e4-aba3-3c15c2da029e"
                 }, 
                 {
 		    "class": "H5L_TYPE_HARD",
                     "title": "DS2",
 		    "collection": "datasets",
-                    "uuid": "23675094-7bed-11e4-b08a-3c15c2da029e"
+                    "id": "23675094-7bed-11e4-b08a-3c15c2da029e"
                 }, 
                 {
 		    "class": "H5L_TYPE_HARD",

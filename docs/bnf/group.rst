@@ -18,7 +18,7 @@ Group
        : "class" ":" "H5L_TYPE_HARD",
        : "title" ":" `link_name` ","
        : "collection" ":" ("datasets" | "datatypes" | "groups" )
-       : "uuid" ":" `uuid`
+       : "id" ":" `uuid`
        : "creationProperties" ":" `lcpl`
        : "}"
    soft_link: "{"
