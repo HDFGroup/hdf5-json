@@ -1,0 +1,55 @@
+{
+    "datasets": {
+        "b48d7187-cd15-11e4-9615-3c15c2da029e": {
+            "alias": [
+                "/DS1"
+            ], 
+            "attributes": [
+                {
+                    "name": "A1", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            4
+                        ]
+                    }, 
+                    "type": {
+                        "base": {
+                            "base": "H5T_STD_I64LE", 
+                            "class": "H5T_INTEGER"
+                        }, 
+                        "class": "H5T_ARRAY", 
+                        "dims": [
+                            3, 
+                            5
+                        ]
+                    }
+                }
+            ], 
+            "shape": {
+                "class": "H5S_NULL"
+            }, 
+            "type": {
+                "base": "H5T_STD_I32LE", 
+                "class": "H5T_INTEGER"
+            }, 
+            "value": null
+        }
+    }, 
+    "groups": {
+        "b48c6f21-cd15-11e4-b72f-3c15c2da029e": {
+            "alias": [
+                "/"
+            ], 
+            "links": [
+                {
+                    "class": "H5L_TYPE_HARD", 
+                    "collection": "datasets", 
+                    "id": "b48d7187-cd15-11e4-9615-3c15c2da029e", 
+                    "title": "DS1"
+                }
+            ]
+        }
+    }, 
+    "root": "b48c6f21-cd15-11e4-b72f-3c15c2da029e"
+}
