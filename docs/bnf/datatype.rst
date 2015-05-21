@@ -3,6 +3,7 @@ Datatype
 
 .. productionlist::
    datatype_object: `identifier` ":" "{"
+                  : "alias" ":" `hdf5_path_name_array`
                   : "type" ":" `datatype`
                   : "}"
    datatype:  `array_datatype`
@@ -146,9 +147,9 @@ Datatype
 			 : "selection" ":" `dataspace_selection`
                          : "}"
    dataset_ref: "datasets/" `id_reference`
-   datatype_object_ref: "datatypes/" `id_reference`
+   datatype_ref: "datatypes/" `id_reference`
    group_ref: "groups/" `id_reference`
-					 
+
 .. productionlist::
    string_datatype: "{"
                   : "charSet" ":" `char_encoding`

@@ -24,6 +24,8 @@ Miscellaneous
    fragment: "h5(" `hdf5_path_name` ")"
 
 .. productionlist::
+   hdf5_path_name_array: "[" `hdf5_path_name_list` "]"
+   hdf5_path_name_list: `hdf5_path_name`, ("," `hdf5_path_name`)*
    hdf5_path_name: [ "/" ] `link_name` ("/" `link_name` )*
    link_name: ascii_string_wo_slash | unicode_string_wo_slash
 
@@ -34,7 +36,7 @@ Miscellaneous
    byte_array: "[" `byte_list` "]"
    byte_list: `byte_value` ("," `byte_value`)*
    byte_value: /0x[0-F][0-F]/
-   dims_array: positive_integer_array   
+   dims_array: positive_integer_array
    maxdims_array: "[" `maxdims_list` "]"
    maxdims_list: `maxdim` ("," `maxdim`)*
    maxdim: `positive_integer` | "H5S_UNLIMITED"
