@@ -14,7 +14,7 @@ File
        : "userblockSize" ":" `non_negative_integer` /power of 2, >= 512/ ","
        : "creationProperties" ":" `fcpl` ","
        : "driverInfo" ":" `file_driver_info` ","
-       : "apiVersion" ":" "0.0.0"
+       : "apiVersion" ":" "1.0.0"
        : "}"
 
 .. productionlist::
