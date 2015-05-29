@@ -6,7 +6,7 @@
                 "fillValue": 0,
                 "layout": {
                     "class": "H5D_CHUNKED",
-                    "dims": 8
+                    "dims": [8]
                 }
             },
             "shape": {
