@@ -5,6 +5,7 @@ Filter
    filter_list: `filter` ("," `filter`)*
    filter:  `deflate_filter`
          :| `fletcher32_filter`
+	 :| `lzf_filter`
 	 :| `nbit_filter`
 	 :| `scaleoffset_filter`
 	 :| `shuffle_filter`
@@ -23,6 +24,12 @@ Filter
                     : "class" ":" "H5Z_FILTER_FLETCHER32" ","
 		    : "id" ":" 3
 		    : "}"
+
+.. productionlist::
+   lzf_filter: "{"
+              : "class" ":" "H5Z_FILTER_LZF" ","
+	      : "id" ":" 32000
+	      : "}"
 
 .. productionlist::
    nbit_filter: "{"
