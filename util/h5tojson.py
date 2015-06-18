@@ -173,6 +173,10 @@ class DumpJson:
     def dumpFile(self):
         
         self.root_uuid = self.db.getUUIDByPath('/')
+        
+        db_version_info = self.db.getVersionInfo()
+          
+        self.json['apiVersion'] = db_version_info['hdf5-json-version']
         self.json['root'] = self.root_uuid
         
         self.dumpGroups()
