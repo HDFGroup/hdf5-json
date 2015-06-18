@@ -125,18 +125,7 @@ class DumpJson:
         response['type'] = hdf5dtype.getTypeResponse(typeItem)
         shapeItem = item['shape']
         response['shape'] = shapeItem
-        if 'dims' in shapeItem and 'maxdims' in shapeItem:
-            extensible = False
-            dims = shapeItem['dims']
-            maxdims = shapeItem['maxdims']
-            for i in range(len(dims)):
-                if dims[i] < maxdims[i]:
-                    extensible = True
-                    break
-            # dump the fill value
-            if extensible and 'fillvalue' in item:
-                response['fillvalue'] = item['fillvalue']
-        
+       
         if 'creationProperties' in item:
             response['creationProperties'] = item['creationProperties']
             
