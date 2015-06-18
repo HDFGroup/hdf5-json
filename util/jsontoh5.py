@@ -64,6 +64,9 @@ class Writeh5:
         dims = ()  # if no space in body, default to scalar
         max_shape=None
         fill_value=None
+        creation_props=None
+        if 'creationProperties' in body:
+            creation_props = body['creationProperties']
         if "shape" in body:
             shape = body["shape"]
             if shape["class"] == 'H5S_SIMPLE':
@@ -82,12 +85,10 @@ class Writeh5:
                     for i in range(len(max_shape)):
                         if max_shape[i] == 0:
                             max_shape[i] = None
-                if "filvalue" in body:
-                    fill_value = body["fillvalue"]
             elif shape["class"] == 'H5S_NULL':
                 dims = None
 
-        self.db.createDataset(datatype, dims, max_shape=max_shape, fill_value=fill_value,
+        self.db.createDataset(datatype, dims, max_shape=max_shape, creation_props=creation_props,
             obj_uuid=uuid)
 
         if "value" in body:

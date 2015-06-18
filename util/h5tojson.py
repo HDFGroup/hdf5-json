@@ -137,6 +137,9 @@ class DumpJson:
             if extensible and 'fillvalue' in item:
                 response['fillvalue'] = item['fillvalue']
         
+        if 'creationProperties' in item:
+            response['creationProperties'] = item['creationProperties']
+            
         attributes = self.dumpAttributes('datasets', uuid)
         if attributes:
             response['attributes'] = attributes

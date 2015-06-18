@@ -33,8 +33,12 @@ This class is used to manage UUID lookup tables for primary HDF objects (Groups,
     description: contains map of UUID->dataset objects
     members: hard link to each anonymous dataset (i.e. datasets which are not
         linked to by anywhere else).  Link name is the UUID
-    attrs: dataset reference (or path for read-only files) to the group (for non-
+    attrs: dataset reference (or path for read-only files) to the dataset (for non-
         anonymous datasets).
+        
+"{dataset_props}:
+    description contains dataset creation properties"
+    members: sub-group with link name as UUID.  Sub-group attributes are the creation props
 
 "{datatypes}"
     description: contains map of UUID->datatyped objects
@@ -59,6 +63,7 @@ import numpy as np
 import uuid
 import os.path as op
 import os
+import json
 import logging
 
 import hdf5dtype
@@ -71,6 +76,33 @@ _db = { }
 
 UUID_LEN = 36  # length for uuid strings
 
+# standard compress filters
+_HDF_FILTERS = { 1: {'class': 'H5Z_FILTER_DEFLATE', 'alias': 'gzip', 'options': ['level',]},
+                 2: {'class': 'H5Z_FILTER_SHUFFLE', 'alias': 'shuffle'},
+                 3: {'class': 'H5Z_FILTER_FLETCHER32', 'alias': 'fletcher32'},
+                 4: {'class': 'H5Z_FILTER_SZIP', 'alias': 'szip', 'options': ['bitsPerPixel','coding', 'pixelsPerBlock', 'pixelsPerScanLine']},
+                 5: {'class': 'H5Z_FILTER_NBIT'},
+                 6: {'class': 'H5Z_FILTER_SCALEOFFSET', 'alias': 'scaleoffset', 'options': ['scaleType',]},
+                 32000: {'class': 'H5Z_FILTER_LZF', 'alias': 'lzf'} }
+                
+_HDF_FILTER_OPTION_ENUMS = {'coding': {h5py.h5z.SZIP_EC_OPTION_MASK: 'H5_SZIP_EC_OPTION_MASK', 
+                                       h5py.h5z.SZIP_NN_OPTION_MASK: 'H5_SZIP_NN_OPTION_MASK'},
+                            'scaleType': {h5py.h5z.SO_FLOAT_DSCALE: 'H5Z_SO_FLOAT_DSCALE', 
+                                           h5py.h5z.SO_FLOAT_ESCALE: 'H5Z_SO_FLOAT_ESCALE', 
+                                           h5py.h5z.SO_INT: 'H5Z_SO_INT'}}
+                            
+                
+               
+# h5py supported filters
+_H5PY_FILTERS = {'gzip': 1, 
+                'shuffle': 2,
+                'fletcher32': 3,
+                'szip': 4,
+                'scaleoffset': 6,
+                'lzf': 32000 }
+                
+_H5PY_COMPRESSION_FILTERS = ("gzip", "lzf", "szip")
+                 
 def visitObj(path, obj):
     hdf5db = _db[obj.file.filename]
     hdf5db.visit(path, obj)
@@ -334,6 +366,62 @@ class Hdf5db:
         addr = h5py.h5o.get_info(obj.id).addr
         # store reverse map as an attribute
         addrGrp.attrs[str(addr)] = id
+    
+    #
+    # Get Datset creation properties
+    #    
+    def getDatasetCreationProps(self, dset_uuid):
+        prop_list = {}
+        if "{dataset_props}" not in self.dbGrp:
+            # no, group, so no properties
+            return prop_list # return empty dict
+        dbPropsGrp = self.dbGrp["{dataset_props}"]
+        
+        if dset_uuid not in dbPropsGrp.attrs:
+            return prop_list  # return empty dict 
+        prop_str = dbPropsGrp.attrs[dset_uuid]
+        # expand json string
+        try:
+            prop_list = json.loads(prop_str)
+        except ValueError as ve:
+            msg = "Unable able to load creation properties for dataset:[" + dset_uuid + "]: " + ve.message
+            self.log.error(msg)
+            raise IOError(errno.EIO, msg)
+            
+        # fill in Filter class values
+        if 'filters' in prop_list:
+            prop_filters = prop_list['filters']
+            for prop_filter in prop_filters:
+                if 'class' not in prop_filter:
+                    filter_id = prop_filter['id']
+                    if filter_id in _HDF_FILTERS:
+                        hdf_filter = _HDF_FILTERS[filter_id]
+                        prop_filter['class'] = hdf_filter['class']
+                    else:
+                        prop_filter['class'] = 'H5Z_FILTER_USER'
+                        
+        return prop_list
+    
+    #
+    # Set dataset creation property
+    #    
+    def setDatasetCreationProps(self, dset_uuid, prop_dict):
+        self.log.info('setDataProp([' + dset_uuid + ']')
+        if not prop_dict:
+            # just ignore if empty dictionary
+            return
+        if "{dataset_props}" not in self.dbGrp:
+            self.dbGrp.create_group("{dataset_props}")
+        dbPropsGrp = self.dbGrp["{dataset_props}"]
+        if dset_uuid in dbPropsGrp.attrs:
+            # this should be write once
+            msg = "Unexpected error setting dataset creation properties for dataset:[" + dset_uuid + "]"
+            self.log.error(msg)
+            raise IOError(errno.EIO, msg)
+        prop_str = json.dumps(prop_dict)
+        dbPropsGrp.attrs[dset_uuid] = prop_str
+        
+        
 
     def getUUIDByAddress(self, addr):
         if "{addr}" not in self.dbGrp:
@@ -567,7 +655,106 @@ class Hdf5db:
             else:
                 item['class'] = 'H5S_SCALAR'
         return item
+        
+    #
+    # Get dataset creation properties maintained by HDF5 library
+    #
+    def getHDF5DatasetCreationProperties(self, obj_uuid, type_class):
+        dset = self.getDatasetObjByUuid(obj_uuid)
+        #     
+        # Fill in creation properties
+        #
+        creationProps = {}
+        plist = h5py.h5d.DatasetID.get_create_plist(dset.id)
+           
+        # alloc time
+        nAllocTime = plist.get_alloc_time()
+        if nAllocTime == h5py.h5d.ALLOC_TIME_DEFAULT:
+            creationProps['allocTime'] = 'H5D_ALLOC_TIME_DEFAULT'
+        elif nAllocTime == h5py.h5d.ALLOC_TIME_LATE:
+            creationProps['allocTime'] = 'H5D_ALLOC_TIME_LATE'
+        elif nAllocTime == h5py.h5d.ALLOC_TIME_EARLY:
+            creationProps['allocTime'] = 'H5D_ALLOC_TIME_EARLY'
+        elif nAllocTime == h5py.h5d.ALLOC_TIME_INCR:
+            creationProps['allocTime'] = 'H5D_ALLOC_TIME_INCR'
+        else:
+            log.warn("Unknown alloc time value: " + str(nAllocTime))
+            
+        # fill time
+        nFillTime = plist.get_fill_time()
+        if nFillTime == h5py.h5d.FILL_TIME_ALLOC:
+            creationProps['fillTime'] = 'H5D_FILL_TIME_ALLOC'
+        elif nFillTime == h5py.h5d.FILL_TIME_NEVER:
+            creationProps['fillTime'] = 'H5D_FILL_TIME_NEVER'
+        elif nFillTime == h5py.h5d.FILL_TIME_IFSET:
+            creationProps['fillTime'] = 'H5D_FILL_TIME_IFSET'
+        else:
+            log.warn("unknown fill time value: " + str(nFillTime))
+            
+        if type_class not in ('H5T_VLEN', 'H5T_OPAQUE'):
+            try:
+                if dset.fillvalue is not None:
+                    creationProps['fillValue']  = dset.fillvalue.tolist()
+            except RuntimeError:
+                # exception is thrown if fill value is not set
+                pass   # nop
+                       
+        # layout
+        nLayout = plist.get_layout()
+        if nLayout == h5py.h5d.COMPACT:
+            creationProps['layout'] = {'class': 'H5D_COMPACT'}
+        elif nLayout == h5py.h5d.CONTIGUOUS:
+            creationProps['layout'] = {'class': 'H5D_CONTIGUOUS'}
+        elif nLayout == h5py.h5d.CHUNKED:
+            creationProps['layout'] = {'class': 'H5D_CHUNKED', 'dims': dset.chunks }
+        else:
+            log.warn("Unknown layout value:" + str(nLayout))
+            
+        num_filters = plist.get_nfilters()
+        filter_props = []
+        if num_filters:
+            filter_list = []
+            for n in range(num_filters):
+                filter_info = plist.get_filter(n)
+                opt_values = filter_info[2]
+                filter_prop = {}
+                filter_id = filter_info[0]
+                filter_prop['id'] = filter_id
+                if filter_info[3]:
+                    filter_prop['name'] = filter_info[3]
+                if filter_id in _HDF_FILTERS:
+                    hdf_filter = _HDF_FILTERS[filter_id]
+                    filter_prop['class'] = hdf_filter['class']
+                    if 'options' in hdf_filter:
+                        filter_opts = hdf_filter['options']
+                        for i in range(len(filter_opts)):
+                            if len(opt_values) <= i:
+                                break  # end of option values
+                            opt_value = opt_values[i]
+                            opt_value_enum = None
+                            option_name = filter_opts[i]
+                            if option_name in _HDF_FILTER_OPTION_ENUMS:
+                                option_enums = _HDF_FILTER_OPTION_ENUMS[option_name]
+                                if opt_value in option_enums:
+                                    opt_value_enum = option_enums[opt_value]
+                            if opt_value_enum:
+                                filter_prop[option_name] = opt_value_enum
+                            else:
+                                filter_prop[option_name] = opt_value                    
+                else:
+                    # custom filter
+                    filter_prop['class'] = 'H5Z_FILTER_USER'
+                    if opt_values:
+                        filter_prop['parameters'] = opt_values
+                filter_props.append(filter_prop)
+            creationProps['filters'] = filter_props
+            
+        return creationProps
+                  
 
+    #
+    # Get dataset information - type, shape, num attributes, creation properties
+    #
     def getDatasetItemByUuid(self, obj_uuid):
         dset = self.getDatasetObjByUuid(obj_uuid)
         if dset is None:
@@ -580,7 +767,7 @@ class Hdf5db:
                 self.log.info(msg)
                 raise IOError(errno.ENXIO, msg)
 
-        #file in the item info for the dataset
+        # fill in the item info for the dataset
         item = { 'id': obj_uuid }
 
         alias = []
@@ -607,19 +794,63 @@ class Hdf5db:
 
         # get shape
         item['shape'] = self.getShapeItemByDsetObj(dset)
-
-        #todo - get fillvalue for committed type objects
-        if typeItem and typeItem['class'] != 'H5T_VLEN' and typeItem['class'] != 'H5T_OPAQUE':
-            try:
-                fillvalue = dset.fillvalue
-                if fillvalue is not None:
-                    item['fillvalue'] = fillvalue.tolist()
-            except RuntimeError:
-                # exception is thrown if fill value is not set
-                pass   # nop
+        
         if self.update_timestamps:
             item['ctime'] = self.getCreateTime(obj_uuid)
             item['mtime'] = self.getModifiedTime(obj_uuid)
+            
+        creationProps = self.getDatasetCreationProps(obj_uuid)
+        if creationProps:
+            # if chunks is not in the db props, add it from the dataset prop
+            # (so auto-chunk values can be returned)
+            if dset.chunks and 'layout' not in creationProps:
+                creationProps['layout'] = {'class': 'H5D_CHUNKED', 'dims': dset.chunks}
+        else:
+            # no db-tracked creation properties, pull properties from library
+            creationProps = self.getHDF5DatasetCreationProperties(obj_uuid, typeItem['class'])
+        
+        if creationProps:
+            item['creationProperties'] = creationProps
+        
+        
+        
+                
+                    
+                
+            
+        """                    
+        filter_list = []                 
+        if "filter" in creationProps:
+            filter_list = creationProps["filter"]
+        for filter_prop in filter_list:
+            # mixin class attribute for known filters
+            if filter_prop['id'] in _HDF_FILTERS:
+                filter_prop['class'] = _HDF_FILTERS['name']
+            else:
+                # custom filter
+                filter_prop['class'] = 'H5Z_FILTER_USER'
+                
+        if dset.compression and dset.compression in h5py_filters:
+            # add in any filter settings that weren't captured in the creation props
+            # (e.g. the file was imported)
+            filter_id = _H5PY_FILTERS[dset.compression]
+            # check that we don't have it already in the creation props
+            found = False
+            for filter_prop in filter_list:
+                if 'id' in filter_prop and filter_id == filter_prop['id']:
+                    found = True
+                    break
+            if not found:
+                # add to the prop list
+                hdf_filter = _HDF_FILTERS[filter_id]
+                filter_list.append(hdf_filter)
+                
+        if filter_list:
+            creationProps['filter'] = filter_list
+            
+        """
+            
+         
 
         return item
 
@@ -1620,7 +1851,7 @@ class Hdf5db:
     Returns item
     """
     def createDataset(self, datatype, datashape, max_shape=None,
-        fill_value=None, obj_uuid=None):
+        creation_props=None, obj_uuid=None):
         self.initFile()
         if self.readonly:
             msg = "Unable to create dataset (Updates are not allowed)"
@@ -1631,6 +1862,96 @@ class Hdf5db:
             obj_uuid = str(uuid.uuid1())
         dt = None
         item = {}
+        
+        # h5py.createdataset fields
+        fillvalue = None
+        compression = None
+        chunks = None
+        shuffle = None
+        fletcher32=None
+        compression_opts=None
+        scaleoffset=None
+        track_times=None
+        
+        
+        if creation_props is None:
+            creation_props = {} # create empty list for convience 
+            
+        if creation_props:
+            if "fill_value" in creation_props:
+                fillvalue = creation_props["fill_value"]
+            if "track_times" in creation_props:
+                track_times = creation_props["track_times"]
+            if "layout" in creation_props:
+                layout = creation_props["layout"]
+                if "dims" in layout:
+                    chunks = tuple(layout["dims"])
+            if "filters" in creation_props:
+                filter_props = creation_props["filters"]
+                for filter_prop in filter_props:
+                    if "id" not in filter_prop:
+                        msg = "filter id not provided"
+                        self.log.info(msg)
+                        raise IOError(errno.EINVAL, msg)
+                    filter_id = filter_prop["id"]
+                    if filter_id not in _HDF_FILTERS:
+                        self.log.info("unknown filter id: " + str(filter_id) + " ignoring")
+                        continue
+                    hdf_filter = _HDF_FILTERS[filter_id]
+            
+                    self.log.info("got filter: " + str(filter_id))
+                    if "alias" not in hdf_filter:
+                        self.log.info("unsupported filter id: " + str(filter_id) + " ignoring")
+                        continue
+                    filter_alias = hdf_filter["alias"]
+                    if filter_alias in _H5PY_COMPRESSION_FILTERS:
+                        if compression:
+                            self.log.info("compression filter already set, filter: " + filter_alias + " will be ignored")
+                            continue
+                        compression = filter_alias
+                        self.log.info("setting compression filter to: " + compression)
+                        if filter_alias == "gzip":
+                            # check for an optional compression value
+                            if "level" in filter_prop:
+                                compression_opts = filter_prop["level"]
+                        elif filter_alias == "szip":
+                            bitsPerPixel = None
+                            coding = 'nn'
+                            
+                            if "bitsPerPixel" in filter_prop:
+                                bitsPerPixel = filter_prop["bitsPerPixel"]
+                            if "coding" in filter_prop:
+                                if filter_prop["coding"] == "H5_SZIP_EC_OPTION_MASK":
+                                    coding = 'ec'
+                                elif filter_prop["coding"] == "H5_SZIP_NN_OPTION_MASK":
+                                    coding = 'nn'
+                                else:
+                                    msg = "invalid szip option: 'coding'"
+                                    self.log.info(msg)
+                                    raise IOError(errno.EINVAL, msg)
+                            # note: pixelsPerBlock, and pixelsPerScanline not supported by h5py,
+                            # so these options will be ignored
+                            if "pixelsPerBlock" in filter_props:
+                                self.log.info("ignoring szip option: 'pixelsPerBlock'")
+                            if "pixelsPerScanline" in filter_props:
+                                self.log.info("ignoring szip option: 'pixelsPerScanline'")
+                            if bitsPerPixel:
+                                compression_opts = (coding, bitsPerPixel)                                 
+                    else:
+                        if filter_alias == "shuffle":
+                            shuffle = True
+                        elif filter_alias == "fletcher32":
+                            fletcher32 = True
+                        elif filter_alias == "scaleoffset":
+                            if "scale_offset" not in filter_prop:
+                                msg = "No scale_offset provided for scale offset filter"
+                                self.log(msg)
+                                raise IOError(errno.EINVAL, msg)
+                            scaleoffset = filter_prop["scale_offset"]
+                        else:
+                            log.info("Unexpected filter name: " + filter_alias + " , ignoring")                  
+            
+            
         if type(datatype) in (str, unicode) and len(datatype) == UUID_LEN:
             # assume datatype is a uuid of a named datatype
             tgt = self.getCommittedTypeObjByUuid(datatype)
@@ -1667,8 +1988,21 @@ class Hdf5db:
             # delete the temp dataset
             del tmpGrp[obj_uuid]
         else:
-            newDataset = datasets.create_dataset(obj_uuid, shape=datashape, dtype=dt,
-                maxshape=max_shape, fillvalue=fill_value)
+           
+            # create the dataset
+            
+            try:
+                newDataset = datasets.create_dataset(obj_uuid, shape=datashape, dtype=dt,
+                chunks=chunks, compression=compression,
+                shuffle=shuffle, fletcher32=fletcher32, maxshape=max_shape, 
+                compression_opts=compression_opts, fillvalue=fillvalue, 
+                scaleoffset=scaleoffset, track_times=track_times)
+            except ValueError as ve:
+                msg = "Unable to creation dataset: " + ve.message
+                self.log.info(msg)
+                raise IOError(errno.EINVAL, msg) # assume this is due to invalid params
+                
+            
             if newDataset:
                 dataset_id = newDataset.id
 
@@ -1680,6 +2014,10 @@ class Hdf5db:
         addr = h5py.h5o.get_info(dataset_id).addr
         addrGrp = self.dbGrp["{addr}"]
         addrGrp.attrs[str(addr)] = obj_uuid
+        
+        # save creation props if any
+        if creation_props:
+            self.setDatasetCreationProps(obj_uuid, creation_props)
 
         # set timestamp
         now = time.time()
