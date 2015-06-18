@@ -1949,11 +1949,11 @@ class Hdf5db:
                         elif filter_alias == "fletcher32":
                             fletcher32 = True
                         elif filter_alias == "scaleoffset":
-                            if "scale_offset" not in filter_prop:
+                            if "scaleOffset" not in filter_prop:
                                 msg = "No scale_offset provided for scale offset filter"
                                 self.log(msg)
                                 raise IOError(errno.EINVAL, msg)
-                            scaleoffset = filter_prop["scale_offset"]
+                            scaleoffset = filter_prop["scaleOffset"]
                         else:
                             log.info("Unexpected filter name: " + filter_alias + " , ignoring")                  
             
