@@ -1878,10 +1878,10 @@ class Hdf5db:
             creation_props = {} # create empty list for convience 
             
         if creation_props:
-            if "fill_value" in creation_props:
-                fillvalue = creation_props["fill_value"]
-            if "track_times" in creation_props:
-                track_times = creation_props["track_times"]
+            if "fillValue" in creation_props:
+                fillvalue = creation_props["fillValue"]
+            if "trackTimes" in creation_props:
+                track_times = creation_props["trackTimes"]
             if "layout" in creation_props:
                 layout = creation_props["layout"]
                 if "dims" in layout:
