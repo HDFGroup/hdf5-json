@@ -41,7 +41,8 @@ Filter
    scaleoffset_filter: "{"
                      : "class" ":" "H5Z_FILTER_SCALEOFFSET" ","
 		     : "id" ":" 6 ","
-		     : "scaleType" ":" `scale_type`
+		     : "scaleType" ":" `scale_type` ","
+		     : "scaleOffset" ":" `positive_integer`
 		     : "}"
    scale_type:  "H5Z_SO_FLOAT_DSCALE"
              :| "H5Z_SO_FLOAT_ESCALE"
