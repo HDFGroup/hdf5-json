@@ -1897,17 +1897,23 @@ class Hdf5db:
                     if filter_id not in _HDF_FILTERS:
                         self.log.info("unknown filter id: " + str(filter_id) + " ignoring")
                         continue
+                    
                     hdf_filter = _HDF_FILTERS[filter_id]
             
                     self.log.info("got filter: " + str(filter_id))
                     if "alias" not in hdf_filter:
                         self.log.info("unsupported filter id: " + str(filter_id) + " ignoring")
                         continue
+    
                     filter_alias = hdf_filter["alias"]
+                    if not h5py.h5z.filter_avail(filter_id):
+                        self.log.info("compression filter not available, filter: " + filter_alias + " will be ignored")
+                        continue
                     if filter_alias in _H5PY_COMPRESSION_FILTERS:
                         if compression:
                             self.log.info("compression filter already set, filter: " + filter_alias + " will be ignored")
                             continue
+                        
                         compression = filter_alias
                         self.log.info("setting compression filter to: " + compression)
                         if filter_alias == "gzip":
