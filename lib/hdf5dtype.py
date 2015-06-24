@@ -271,7 +271,7 @@ def getNumpyTypename(hdf5TypeName, typeClass=None):
     }
     
     if len(hdf5TypeName) < 3:
-        raise Exception("Type Error: invalid typename")
+        raise Exception("Type Error: invalid typename: ")
     endian = '<'  # default endian
     key = hdf5TypeName
     if hdf5TypeName.endswith('LE'):
@@ -369,9 +369,10 @@ def createBaseDataType(typeItem):
             raise KeyError("'dims' must be provided for array types")
         if 'base' not in typeItem:
             raise KeyError("'base' not provided") 
+        arrayBaseType = typeItem['base']
         
         # baseType = createDataType(typeItem['base'])
-        baseType = getNumpyTypename(typeItem['base'])
+        baseType = getNumpyTypename(arrayBaseType['base'])
           
         #baseType = getNumpyTypename(typeItem['base'])
         if type(baseType) not in (str, unicode):

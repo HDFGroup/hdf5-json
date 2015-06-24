@@ -577,6 +577,7 @@ class Hdf5db:
     Note: this is an attempted work-around for h5py issue:
        https://github.com/h5py/h5py/issues/553
     """
+    """
     def getDimensionListAttribute(self):
         tmpGrp = None
         if "{tmp}" not in self.dbGrp:
@@ -594,7 +595,7 @@ class Hdf5db:
             dset = tmpGrp["dimscale_dset"]
             attr = dset.attrs["DIMENSION_LIST"]
         return attr
-
+    """
 
 
     """
@@ -813,45 +814,6 @@ class Hdf5db:
         
         if creationProps:
             item['creationProperties'] = creationProps
-        
-        
-        
-                
-                    
-                
-            
-        """                    
-        filter_list = []                 
-        if "filter" in creationProps:
-            filter_list = creationProps["filter"]
-        for filter_prop in filter_list:
-            # mixin class attribute for known filters
-            if filter_prop['id'] in _HDF_FILTERS:
-                filter_prop['class'] = _HDF_FILTERS['name']
-            else:
-                # custom filter
-                filter_prop['class'] = 'H5Z_FILTER_USER'
-                
-        if dset.compression and dset.compression in h5py_filters:
-            # add in any filter settings that weren't captured in the creation props
-            # (e.g. the file was imported)
-            filter_id = _H5PY_FILTERS[dset.compression]
-            # check that we don't have it already in the creation props
-            found = False
-            for filter_prop in filter_list:
-                if 'id' in filter_prop and filter_id == filter_prop['id']:
-                    found = True
-                    break
-            if not found:
-                # add to the prop list
-                hdf_filter = _HDF_FILTERS[filter_id]
-                filter_list.append(hdf_filter)
-                
-        if filter_list:
-            creationProps['filter'] = filter_list
-            
-        """
-            
          
 
         return item
@@ -1170,37 +1132,20 @@ class Hdf5db:
 
                 rank = len(shape)
                 # convert python list to numpy object
+                 
                 typeItem = hdf5dtype.getTypeItem(dt)
                 value = self.toRef(rank, typeItem, value)
-
-
-                if shape is not None and type(attr_type) == dict and attr_type['class'] == 'H5T_VLEN' and attr_name == 'DIMENSION_LIST':
-                    # work-around for VLEN of REFERENCE issue:
-                    #   https://github.com/HDFGroup/h5serv/issues/39
-                    #print "value: ", value
-                    #print "obj name: ", obj.name
-
-                    for i in range(len(value)):
-                        hRef = value[i]
-                        if type(hRef) in (tuple, list):
-                            hRef = hRef[0]
-                        refObj = self.f[hRef]
-                        #print "hRef:", hRef
-                        #print "name:", refObj.name
-
-                        if "CLASS" in refObj.attrs:
-                            self.log.info("ref object has attribute has CLASS")
-                            #print "ref class name:", refObj.attrs["CLASS"]
-                            #del refObj.attrs["CLASS"]
-                        if "NAME" in refObj.attrs:
-                            self.log.info("ref object has attribute NAME")
-                            #print "ref name:", refObj.attrs["NAME"]
-                            #del refObj.attrs["NAME"]
-                        # use dimscale api to create dimension scales
-                        obj.dims.create_scale(refObj, "scale_" + str(i))
-                        obj.dims[i].attach_scale(refObj)
+                            
+                # create numpy array
+                npdata = np.zeros(shape,dtype=dt)
+                
+                 
+                if rank == 0:
+                    npdata[()] = self.toNumPyValue(attr_type, value, npdata[()])
                 else:
-                    obj.attrs.create(attr_name, value, dtype=dt)
+                    self.toNumPyArray(rank, attr_type, value, npdata)
+                 
+                obj.attrs.create(attr_name, npdata, dtype=dt)
 
         now = time.time()
         self.setCreateTime(obj_uuid, objType="attribute", name=attr_name, timestamp=now)
@@ -1364,8 +1309,92 @@ class Hdf5db:
         if type(out) == list:
             out = tuple(out) # convert to tuple
         return out
+        
+        
+    """
+      Return a numpy value based on json representation
+    """
+    def toNumPyValue(self, typeItem, src, des):
+       
+        typeClass = typeItem['class']
+        if typeClass == 'H5T_COMPOUND':
+            fields = typeItem['fields']
+            if len(fields) != len(src):
+                msg = "Number of elements in compound type does not match type"
+                self.log.error(msg)
+                raise IOError(errno.EIO, msg)
+            nFields = len(fields)
+      
+            for i in range(nFields):
+                field = fields[i]
+                field_name = field['name']
+                des[field_name] = src[i]
+            
+        elif typeClass == 'H5T_VLEN':
+            if type(src) not in (list, tuple):
+                msg = "Unexpected type for vlen value"
+                self.log.error(msg)
+                raise IOError(errno.EIO, msg)
+
+            baseType = typeItem['base']
+            
+           
+            nElements = len(src)
+           
+            dt = self.createTypeFromItem(baseType)
+            des = np.array(src, dtype=dt)
+            
+            
+            
+        elif typeClass == 'H5T_REFERENCE':
+            des = src  #self.listToRef(src)
+            
+        elif typeClass == 'H5T_OPAQUE':
+            des = "???"  # todo
+        elif typeClass == 'H5T_ARRAY':
+            des = src
+        elif typeClass in ('H5T_INTEGER', 'H5T_FLOAT', 'H5T_ENUM'):
+            des = src  # just copy value
+        elif typeClass == 'H5T_STRING':
+            if typeItem['charSet'] == 'H5T_CSET_UTF8':
+                des = src.encode('utf-8')
+            else:
+                des = src.encode()
+        else:
+            msg = "Unexpected type class: " + typeClass
+            self.log.info(msg)
+            raise IOError(errno.ENINVAL, msg)
+        return des
 
 
+    """
+       copy src data to numpy array
+    """
+    def toNumPyArray(self, rank, typeItem, src, des):
+       
+        typeClass = typeItem['class']
+         
+        if rank == 0:
+            msg = "unexpected rank value"
+            log.error(msg)
+            raise IOError(errno.EIO, msg)  # shouldn't be called with rank 0
+         
+        for i in range(len(des)):
+            des_sec = des[i]  # numpy slab
+             
+            
+            src_sec = src[i]
+             
+            if rank > 1:
+                self.toNumPyArray(rank - 1, typeItem, src_sec, des_sec)
+            else:        
+                rv = self.toNumPyValue(typeItem, src_sec, des_sec)
+                # if the numpy object is writeable, des_sec will be
+                # already updated.  Otherwise, update the des by assignment
+                if not hasattr(des_sec, 'flags') or not des_sec.flags['WRITEABLE']:
+                    des[i] = rv
+                            
+        
     """
        Convert json list to h5py compatible values
     """
@@ -1503,7 +1532,7 @@ class Hdf5db:
              # assume region ref
              out = self.createRegionReference(data)
         else:
-            msg = "Invalid object refence value: [" + data + "]"
+            msg = "Invalid object refence value type: [" + str(type(data)) + "]"
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
         return out
