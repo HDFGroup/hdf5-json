@@ -386,7 +386,7 @@ class Hdf5db:
         try:
             prop_list = json.loads(prop_str)
         except ValueError as ve:
-            msg = "Unable able to load creation properties for dataset:[" + dset_uuid + "]: " + ve.message
+            msg = "Unable to load creation properties for dataset:[" + dset_uuid + "]: " + ve.message
             self.log.error(msg)
             raise IOError(errno.EIO, msg)
             
@@ -570,32 +570,6 @@ class Hdf5db:
              tmpGrp.create_dataset('nullref', (1,), dtype=dt)
          nullref_dset = tmpGrp['nullref']
          return nullref_dset[0]
-
-    """
-    getDimensionList_template - use dimscale api to setup type for dimenscale objects
-
-    Note: this is an attempted work-around for h5py issue:
-       https://github.com/h5py/h5py/issues/553
-    """
-    """
-    def getDimensionListAttribute(self):
-        tmpGrp = None
-        if "{tmp}" not in self.dbGrp:
-            tmpGrp = self.dbGrp.create_group("{tmp}")
-        else:
-            tmpGrp = self.dbGrp["{tmp}"]
-        attr = None
-        if "dimscale_dset" not in tmpGrp:
-            dset = tmpGrp.create_dataset("dimscale_dset", (10,))
-            scale = tmpGrp.create_dataset("dimscale_scale", (10,))
-            dset.dims.create_scale(scale, "scale")
-            dset.dims[0].attach_scale(scale)
-            attr = dset.attrs["DIMENSION_LIST"]
-        else:
-            dset = tmpGrp["dimscale_dset"]
-            attr = dset.attrs["DIMENSION_LIST"]
-        return attr
-    """
 
 
     """
@@ -822,15 +796,16 @@ class Hdf5db:
     createTypeFromItem - create type given dictionary definition
     """
     def createTypeFromItem(self, typeItem):
+        #print "typeItem:", typeItem
         dt = None
         try:
             dt = hdf5dtype.createDataType(typeItem)
         except KeyError as ke:
-            msg = "Unable able to create type: " + ke.message
+            msg = "Unable to create type: " + ke.message
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
         except TypeError as te:
-            msg = "Unable able to create type: " + te.message
+            msg = "Unable to create type: " + te.message
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
         if dt is None:
@@ -1053,25 +1028,45 @@ class Hdf5db:
             item['mtime'] = self.getModifiedTime(obj_uuid, objType="attribute", name=name)
 
         return item
-
-    def createAttribute(self, col_name, obj_uuid, attr_name, shape, attr_type, value):
-        self.log.info("createAttribute: [" + attr_name + "]")
-        #print "createAttribute, type:", attr_type
-        #print "createAttribute, shape:", shape
-        #print "obj_uuid:", obj_uuid
-        #print "createAttribute, value:", value
-        #attr_type_orig = None
-
-        self.initFile()
-        if self.readonly:
-            msg = "Unable to create attribute (updates are not allowed)"
-            self.log.info(msg)
-            raise IOError(errno.EPERM, msg)
-        obj = self.getObjectByUuid(col_name, obj_uuid)
-        if not obj:
-            msg = "Object with uuid: " + obj_uuid + " not found"
-            self.log.info(msg)
-            raise IOError(errno.ENXIO, msg)
+        
+    """
+    isDimensionList - return True if this attribute json looks like a dimension list
+    """
+    def isDimensionList(self, attr_name, attr_type):
+        if attr_name != "DIMENSION_LIST":
+            return False
+        if type(attr_type) is not dict:
+            return False
+        if attr_type['class'] != "H5T_VLEN":
+            return False
+        base_type = attr_type['base']
+        if base_type['class'] != 'H5T_REFERENCE':
+            return False
+        return True
+    
+    """
+     makeDimensionList - work-around for h5py problems saving dimension list -
+        types which are vlen's of references are not working directly, so use dim_scale api
+        Note: this is a work-around for h5py issue:
+         https://github.com/h5py/h5py/issues/553
+    """    
+    def makeDimensionList(self, obj, shape, value):
+        dset_refs = self.listToRef(value)
+        for i in range(len(dset_refs)):
+            refs = dset_refs[i]
+            if type(refs) not in (list, tuple):
+                msg = "Invalid dimension list value"
+                self.log.info(msg)
+                raise IOError(errno.EINVAL, msg)
+            for j in range(len(refs)):
+                scale_obj = self.f[refs[j]]
+                obj.dims[i].attach_scale(scale_obj)
+        
+    """
+    makeAttribute - create an attribute (except for dimension list attribute)
+    """    
+        
+    def makeAttribute(self, obj, attr_name, shape, attr_type, value):
         is_committed_type = False
 
         dt = None
@@ -1147,6 +1142,33 @@ class Hdf5db:
                  
                 obj.attrs.create(attr_name, npdata, dtype=dt)
 
+    """
+    createAttribute - create an attribute
+    """
+    def createAttribute(self, col_name, obj_uuid, attr_name, shape, attr_type, value):
+        self.log.info("createAttribute: [" + attr_name + "]")
+        #print "createAttribute, type:", attr_type
+        #print "createAttribute, shape:", shape
+        #print "obj_uuid:", obj_uuid
+        #print "createAttribute, value:", value
+        #attr_type_orig = None
+
+        self.initFile()
+        if self.readonly:
+            msg = "Unable to create attribute (updates are not allowed)"
+            self.log.info(msg)
+            raise IOError(errno.EPERM, msg)
+        obj = self.getObjectByUuid(col_name, obj_uuid)
+        if not obj:
+            msg = "Object with uuid: " + obj_uuid + " not found"
+            self.log.info(msg)
+            raise IOError(errno.ENXIO, msg)
+        
+        if self.isDimensionList(attr_name, attr_type):
+            self.makeDimensionList(obj, shape, value)
+        else:  
+            self.makeAttribute(obj, attr_name, shape, attr_type, value)
+              
         now = time.time()
         self.setCreateTime(obj_uuid, objType="attribute", name=attr_name, timestamp=now)
         self.setModifiedTime(obj_uuid, objType="attribute", name=attr_name, timestamp=now)
@@ -1316,7 +1338,9 @@ class Hdf5db:
     """
     def toNumPyValue(self, typeItem, src, des):
        
-        typeClass = typeItem['class']
+        typeClass = 'H5T_INTEGER'  # default to int type
+        if type(typeItem) is dict:
+            typeClass = typeItem['class']
         if typeClass == 'H5T_COMPOUND':
             fields = typeItem['fields']
             if len(fields) != len(src):
@@ -1371,8 +1395,6 @@ class Hdf5db:
        copy src data to numpy array
     """
     def toNumPyArray(self, rank, typeItem, src, des):
-       
-        typeClass = typeItem['class']
          
         if rank == 0:
             msg = "unexpected rank value"
@@ -1552,7 +1574,7 @@ class Hdf5db:
         if objid:
             item['id'] = self.getUUIDByAddress(h5py.h5o.get_info(objid).addr)
         else:
-                log.info("region reference unable able to find item with objid: " + objid)
+                log.info("region reference unable to find item with objid: " + objid)
                 return item
 
         sel = h5py.h5r.get_region(regionRef, objid)

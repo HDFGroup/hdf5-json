@@ -371,8 +371,10 @@ def createBaseDataType(typeItem):
             raise KeyError("'base' not provided") 
         arrayBaseType = typeItem['base']
         
+        if type(arrayBaseType) is dict:
+            arrayBaseType = arrayBaseType['base']
         # baseType = createDataType(typeItem['base'])
-        baseType = getNumpyTypename(arrayBaseType['base'])
+        baseType = getNumpyTypename(arrayBaseType)
           
         #baseType = getNumpyTypename(typeItem['base'])
         if type(baseType) not in (str, unicode):
