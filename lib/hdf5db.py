@@ -1068,14 +1068,15 @@ class Hdf5db:
                 if "CLASS" not in scale_obj.attrs:
                     self.log.warn("dimension list, no scale obj")
                     continue
-  		if scale_obj.attrs["CLASS"] != "DIMENSION_LIST":
-		    self.log.warn("dimension list, invalid class for scale obj")
+                if scale_obj.attrs["CLASS"] != "DIMENSION_SCALE":
+                    self.log.warn("dimension list, invalid class for scale obj")
                     continue
                  
                 try:
                     h5py.h5ds.attach_scale(obj.id, scale_obj.id, i)
                 except RuntimeError as rte:
                     self.log.error("got runtime error attaching scale")
+                    
         
 
                 
