@@ -14,6 +14,8 @@ import json
 import argparse
 import numpy as np
 import h5py
+import logging
+import logging.handlers
 
 sys.path.append('../lib')
 from hdf5db import Hdf5db
@@ -167,6 +169,7 @@ class Writeh5:
     # may use a committed datatype
     #
     def createAttributes(self):
+        dimension_list_attrs = []  # track dimension list attributes 
         # create datatype attributes
         if "datatypes" in self.json:
             datatypes = self.json["datatypes"]
@@ -193,7 +196,18 @@ class Writeh5:
                 if "attributes" in body:
                     attributes = body["attributes"]
                     for attribute in attributes:
-                        self.createAttribute(attribute, "datasets", uuid)
+                        if attribute["name"] == "DIMENSION_LIST":
+                            # defer dimension list creation until after we've created all other
+                            # attributes (otherwsie attach_scale may fail)
+                            dimension_list_attrs.append({"attribute": attribute, "uuid": uuid})
+                        else:
+                            self.createAttribute(attribute, "datasets", uuid)
+
+        # finally, do dimension_list attributes
+        for item in dimension_list_attrs:
+            attribute = item["attribute"]
+            uuid = item["uuid"]
+            self.createAttribute(attribute, "datasets", uuid)
 
     #
     # Link all the objects
@@ -224,6 +238,17 @@ def main():
     parser.add_argument('in_filename', nargs='+', help='JSon file to be converted to h5')
     parser.add_argument('out_filename', nargs='+', help='name of HDF5 output file')
     args = parser.parse_args()
+    
+    # create logger
+    log = logging.getLogger("h5serv")
+    # log.setLevel(logging.WARN)
+    log.setLevel(logging.INFO)
+    # add log handler
+    handler = logging.FileHandler('./jsontoh5.log')
+    
+    # add handler to logger
+    log.addHandler(handler)
+    
 
     text = open(args.in_filename[0]).read()
 
@@ -239,7 +264,7 @@ def main():
     # create the file, will raise IOError if there's a problem
     Hdf5db.createHDF5File(filename)
 
-    with Hdf5db(filename, root_uuid=root_uuid, update_timestamps=False) as db:
+    with Hdf5db(filename, root_uuid=root_uuid, update_timestamps=False, app_logger=log) as db:
         h5writer = Writeh5(db, h5json)
         h5writer.writeFile()
 
