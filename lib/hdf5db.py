@@ -1043,6 +1043,19 @@ class Hdf5db:
         if base_type['class'] != 'H5T_REFERENCE':
             return False
         return True
+        
+    """
+    isReferenceList - return True if this attribute json looks like a reference list
+    """
+    def isReferenceList(self, attr_name, attr_type):
+        if attr_name != "REFERENCE_LIST":
+            return False
+        if type(attr_type) is not dict:
+            return False
+        if attr_type['class'] != "H5T_COMPOUND":
+            return False
+         
+        return True
 
     
     
@@ -1137,8 +1150,10 @@ class Hdf5db:
                 self.log.error(msg)
                 raise IOError(errno.EIO, msg)
         else:
-            if type(value) == tuple:
+            if type(value) is tuple:
                 value = list(value)
+            if type(shape) is list:
+                shape = tuple(shape)
             #print "value to list:", value
             if not is_committed_type:
                 # apparently committed types can not be used as reference types
@@ -1149,17 +1164,17 @@ class Hdf5db:
                  
                 typeItem = hdf5dtype.getTypeItem(dt)
                 value = self.toRef(rank, typeItem, value)
-                            
+                             
                 # create numpy array
                 npdata = np.zeros(shape,dtype=dt)
-                
-                 
+                               
                 if rank == 0:
                     npdata[()] = self.toNumPyValue(attr_type, value, npdata[()])
                 else:
                     self.toNumPyArray(rank, attr_type, value, npdata)
+                obj.attrs.create(attr_name, npdata, shape=shape, dtype=dt)
+                
                  
-                obj.attrs.create(attr_name, npdata, dtype=dt)
 
     """
     createAttribute - create an attribute
@@ -1185,6 +1200,8 @@ class Hdf5db:
         
         if self.isDimensionList(attr_name, attr_type):
             self.makeDimensionList(obj, shape, value)
+        elif self.isReferenceList(attr_name, attr_type):
+            pass  # Skip since reference list will be created by attach scale
         else:  
             self.makeAttribute(obj, attr_name, shape, attr_type, value)
               
