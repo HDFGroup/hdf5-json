@@ -670,7 +670,7 @@ class Hdf5db:
             
         if type_class not in ('H5T_VLEN', 'H5T_OPAQUE'):
             try:
-                if dset.fillvalue is not None:
+                if dset.fillvalue:
                     creationProps['fillValue']  = dset.fillvalue.tolist()
             except RuntimeError:
                 # exception is thrown if fill value is not set
