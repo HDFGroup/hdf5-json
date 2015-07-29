@@ -1855,6 +1855,7 @@ class Hdf5db:
     """
     def setDatasetValuesByUuid(self, obj_uuid, data, slices=None):
         dset = self.getDatasetObjByUuid(obj_uuid)
+        
         if dset == None:
             msg = "Dataset: " + obj_uuid + " not found"
             self.log.info(msg)
@@ -1887,6 +1888,18 @@ class Hdf5db:
                 self.log.error("setDatasetValuesByUuid: number of dims in selection not same as rank")
                 return False
             else:
+               
+                npoints = 1
+                for i in range(rank):
+                    s = slices[i]
+                    count = (s.stop - s.start) // s.step
+                    npoints *= count
+                if count <= 0:
+                    self.log.error("invalid slice specification")  
+                if count == 1 and len(dset.dtype) > 1:
+                    # convert to tuple for compound singleton writes
+                    data = tuple(data)
+                
                 if rank == 1:
                     slice = slices[0]
                     dset[slice] = data
