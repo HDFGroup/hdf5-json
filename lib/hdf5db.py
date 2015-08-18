@@ -2057,8 +2057,7 @@ class Hdf5db:
                                 raise IOError(errno.EINVAL, msg)
                             scaleoffset = filter_prop["scaleOffset"]
                         else:
-                            log.info("Unexpected filter name: " + filter_alias + " , ignoring")                  
-            
+                            log.info("Unexpected filter name: " + filter_alias + " , ignoring")                   
             
         if type(datatype) in (str, unicode) and len(datatype) == UUID_LEN:
             # assume datatype is a uuid of a named datatype
@@ -2086,7 +2085,6 @@ class Hdf5db:
             for i in range(len(fillvalue)):
                 field = dt.names[i]
                 ndscalar[field] = self.toTuple(fillvalue[i])
-                # converted_data.append(self.toTuple(fillvalue[i]))
             fillvalue = ndscalar
             
         dataset_id = None
