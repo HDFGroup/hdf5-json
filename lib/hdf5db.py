@@ -2074,7 +2074,21 @@ class Hdf5db:
             msg = 'Unexpected error, no type returned'
             self.log.error(msg)
             raise IOError(errno.EIO, msg)
-
+            
+        if fillvalue and len(dt) > 1 and type(fillvalue) in (list, tuple):
+            # for compound types, need to convert from list to dataset compatible element
+            converted_data = []
+            if len(dt) != len(fillvalue):
+                msg = 'fillvalue has incorrect number of elements'
+                self.log.info(msg)
+                raise IOError(errno.EINVAL, msg)
+            ndscalar = np.zeros((), dtype=dt)
+            for i in range(len(fillvalue)):
+                field = dt.names[i]
+                ndscalar[field] = self.toTuple(fillvalue[i])
+                # converted_data.append(self.toTuple(fillvalue[i]))
+            fillvalue = ndscalar
+            
         dataset_id = None
         if datashape == None:
             # create null space dataset
