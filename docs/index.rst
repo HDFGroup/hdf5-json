@@ -2,6 +2,10 @@
 HDF5/JSON
 =========
 
+Specification and tools for representing HDF5 in JSON
+
+Contents:
+
 .. toctree::
    :maxdepth: 2
 

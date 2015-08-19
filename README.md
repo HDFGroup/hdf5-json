@@ -3,10 +3,6 @@ hdf5-json
 
 Specification and tools for representing HDF5 in JSON
 
-Documentation: http://hdf5-json.readthedocs.org/en/latest/index.html
-
-h5serv - REST-based service for HDF5 data
-===========================================
 
 Introduction
 ------------
@@ -20,7 +16,8 @@ Server (a RESTful web service for HDF5), and HDF Product Designer (an applicatio
 designs).   
 
 This respository also include utilities to generate code in Fortran or Python based on a JSON file.
-See util/codegen/.
+
+See :doc:`Utilities` for a description of the included utilties.
 
 Websites
 --------
@@ -39,7 +36,7 @@ Related Projects
 Installation
 -------------
 
-Clone the repository.  hd5tojson and jsontoh5 convertors are in the util directory.
+Clone the repository.  The hd5tojson and jsontoh5 convertors are in the util directory.
 See docs/Installation.rst for step by step instructions.
 
  
