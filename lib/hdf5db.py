@@ -795,23 +795,34 @@ class Hdf5db:
     """
     createTypeFromItem - create type given dictionary definition
     """
-    def createTypeFromItem(self, typeItem):
+    def createTypeFromItem(self, attr_type):
         #print "typeItem:", typeItem
         dt = None
-        try:
-            dt = hdf5dtype.createDataType(typeItem)
-        except KeyError as ke:
-            msg = "Unable to create type: " + ke.message
-            self.log.info(msg)
-            raise IOError(errno.EINVAL, msg)
-        except TypeError as te:
-            msg = "Unable to create type: " + te.message
-            self.log.info(msg)
-            raise IOError(errno.EINVAL, msg)
-        if dt is None:
-            msg = "Unexpected error creating type"
-            self.log.error(msg)
-            raise IOError(errno, errno.EIO, msg)
+        
+        if type(attr_type) in (str, unicode) and len(attr_type) == UUID_LEN:
+            # assume attr_type is a uuid of a named datatype
+            tgt = self.getCommittedTypeObjByUuid(attr_type)
+            if tgt is None:
+                msg = "Unable to create attribute, committed type with uuid of: " + attr_type + " not found"
+                self.log.info(msg)
+                raise IOError(errno.ENXIO, msg)
+            dt = tgt  # can use the object as the dt parameter
+        else:
+             
+            try:
+                dt = hdf5dtype.createDataType(attr_type)
+            except KeyError as ke:
+                msg = "Unable to create type: " + ke.message
+                self.log.info(msg)
+                raise IOError(errno.EINVAL, msg)
+            except TypeError as te:
+                msg = "Unable to create type: " + te.message
+                self.log.info(msg)
+                raise IOError(errno.EINVAL, msg)
+            if dt is None:
+                msg = "Unexpected error creating type"
+                self.log.error(msg)
+                raise IOError(errno, errno.EIO, msg)
         return dt
 
     """
@@ -1091,8 +1102,11 @@ class Hdf5db:
                     self.log.error("got runtime error attaching scale")
                     
         
-
-                
+    """
+    writeNdArrayToAttribute - create an attribute given numpy array
+    """
+    def writeNdArrayToAttribute(self, attrs, attr_name, npdata, shape, dt):
+        attrs.create(attr_name, npdata, shape=shape, dtype=dt)            
         
     """
     makeAttribute - create an attribute (except for dimension list attribute)
@@ -1100,24 +1114,12 @@ class Hdf5db:
         
     def makeAttribute(self, obj, attr_name, shape, attr_type, value):
         is_committed_type = False
-
-        dt = None
         if type(attr_type) in (str, unicode) and len(attr_type) == UUID_LEN:
             # assume attr_type is a uuid of a named datatype
             is_committed_type = True
-            tgt = self.getCommittedTypeObjByUuid(attr_type)
-            if tgt is None:
-                msg = "Unable to create attribute, committed type with uuid of: " + attr_type + " not found"
-                self.log.info(msg)
-                raise IOError(errno.ENXIO, msg)
-            dt = tgt  # can use the object as the dt parameter
-        else:
-            dt = self.createTypeFromItem(attr_type)
-        if dt is None:
-            msg = "Unexpected error creating datatype for attribute"
-            self.log.error(msg)
-            raise IOError(errno.EIO, msg)
 
+        dt = self.createTypeFromItem(attr_type)
+        
         if shape == None:
             self.log.info("shape is null - will create null space attribute")
             # create null space attribute
@@ -1172,8 +1174,9 @@ class Hdf5db:
                     npdata[()] = self.toNumPyValue(attr_type, value, npdata[()])
                 else:
                     self.toNumPyArray(rank, attr_type, value, npdata)
-                obj.attrs.create(attr_name, npdata, shape=shape, dtype=dt)
-                
+                    
+                self.writeNdArrayToAttribute(obj.attrs, attr_name, npdata, shape, dt)
+                 
                  
 
     """
@@ -1458,6 +1461,14 @@ class Hdf5db:
     """
     def toRef(self, rank, typeItem, data):
         out = None
+        print "toref, typeItem:", typeItem
+        print "toref, data:", data
+        if type(typeItem) in (str, unicode):
+            # commited type - get json representation
+            committed_type_item = self.getCommittedTypeItemByUuid(typeItem)
+            print "get committed type json:", committed_type_item
+            typeItem = committed_type_item['type']
+        
         typeClass = typeItem['class']
         if typeClass in ('H5T_INTEGER', 'H5T_FLOAT'):
             out = data   # just use as is
@@ -1877,6 +1888,7 @@ class Hdf5db:
 
         if slices == None:
             # write entire dataset
+            print "data:", data
             dset[()] = data
         else:
             if type(slices) != tuple:
@@ -2059,16 +2071,7 @@ class Hdf5db:
                         else:
                             log.info("Unexpected filter name: " + filter_alias + " , ignoring")                   
             
-        if type(datatype) in (str, unicode) and len(datatype) == UUID_LEN:
-            # assume datatype is a uuid of a named datatype
-            tgt = self.getCommittedTypeObjByUuid(datatype)
-            if tgt is None:
-                msg = "Unable to create dataset, committed type object: " + datatype + " not found"
-                self.log.info(msg)
-                raise IOError(errno.ENXIO, msg)
-            dt = tgt  # can use the object as the dt parameter
-        else:
-             dt = self.createTypeFromItem(datatype)
+        dt = self.createTypeFromItem(datatype)
         if dt is None:
             msg = 'Unexpected error, no type returned'
             self.log.error(msg)

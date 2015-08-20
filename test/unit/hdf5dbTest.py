@@ -304,8 +304,20 @@ class Hdf5dbTest(unittest.TestCase):
             rootUuid = db.getUUIDByPath('/')
             self.failUnlessEqual(len(rootUuid), UUID_LEN)
             item = db.getAttributeItem("groups", rootUuid, "attr1")
+            
+    
         
-     
+    def testToRef(self):
+        data_list = [97, 98, 99, 100, 101, 102, 103, 104, 105, 0]
+        type_item = {'order': 'H5T_ORDER_LE', 'base_size': 1, 'class': 'H5T_INTEGER', 'base': 'H5T_STD_I8LE', 'size': 1}
+        getFile('tall.h5')
+        revvalue = None
+        with Hdf5db('tall.h5') as db:
+            ref_value = db.toRef(1, type_item, data_list)
+        print "ref_value:", ref_value
+        print "type:", type(ref_value)
+            
+         
              
              
 if __name__ == '__main__':
