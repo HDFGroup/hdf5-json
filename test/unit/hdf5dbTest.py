@@ -12,6 +12,7 @@
 import unittest
 import sys
 import os
+import time
 import errno
 import os.path as op
 import stat
@@ -47,15 +48,27 @@ class Hdf5dbTest(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(Hdf5dbTest, self).__init__(*args, **kwargs)
         # main
-        logging.info('init!')
+        
         getFile('tall.h5')
-        self.logger = logging.getLogger()
-        self.logger.setLevel(logging.INFO)
+        getFile('empty.h5')
+        self.log = logging.getLogger()
+        lhStdout = self.log.handlers[0]  # stdout is the only handler initially
+        
+        self.log.setLevel(logging.INFO)
+        # create logger
+     
+        handler = logging.FileHandler('./hdf5dbtest.log')
+        # add handler to logger
+        self.log.addHandler(handler)
+        self.log.removeHandler(lhStdout)
+        #self.log.propagate = False  # prevent log out going to stdout
+        self.log.info('init!')
+    
     
     def testGetUUIDByPath(self):
         # get test file
         g1Uuid = None
-        with Hdf5db('tall.h5') as db:
+        with Hdf5db('tall.h5', app_logger=self.log) as db:
             g1Uuid = db.getUUIDByPath('/g1')
             self.failUnlessEqual(len(g1Uuid), UUID_LEN)
             obj = db.getObjByPath('/g1')
@@ -69,13 +82,13 @@ class Hdf5dbTest(unittest.TestCase):
           
         # end of with will close file
         # open again and verify we can get obj by name
-        with Hdf5db('tall.h5') as db:
+        with Hdf5db('tall.h5', app_logger=self.log) as db:
             obj = db.getGroupObjByUuid(g1Uuid) 
             g1 = db.getObjByPath('/g1')
             self.failUnlessEqual(obj, g1)
             
     def testGetCounts(self):
-        with Hdf5db('tall.h5') as db:
+        with Hdf5db('tall.h5', app_logger=self.log) as db:
             cnt = db.getNumberOfGroups()
             self.failUnlessEqual(cnt, 6)
             cnt = db.getNumberOfDatasets()
@@ -83,11 +96,19 @@ class Hdf5dbTest(unittest.TestCase):
             cnt = db.getNumberOfDatatypes()
             self.failUnlessEqual(cnt, 0)
             
+        with Hdf5db('empty.h5', app_logger=self.log) as db:
+            cnt = db.getNumberOfGroups()
+            self.failUnlessEqual(cnt, 1)
+            cnt = db.getNumberOfDatasets()
+            self.failUnlessEqual(cnt, 0)
+            cnt = db.getNumberOfDatatypes()
+            self.failUnlessEqual(cnt, 0)
+            
                
     def testGroupOperations(self):
         # get test file
         getFile('tall.h5', 'tall_del_g11.h5')
-        with Hdf5db('tall_del_g11.h5') as db:
+        with Hdf5db('tall_del_g11.h5', app_logger=self.log) as db:
             rootuuid = db.getUUIDByPath('/')
             root = db.getGroupObjByUuid(rootuuid)
             self.failUnlessEqual('/', root.name)
@@ -103,7 +124,7 @@ class Hdf5dbTest(unittest.TestCase):
     def testCreateGroup(self):
         # get test file
         getFile('tall.h5', 'tall_newgrp.h5')
-        with Hdf5db('tall_newgrp.h5') as db:
+        with Hdf5db('tall_newgrp.h5', app_logger=self.log) as db:
             rootUuid = db.getUUIDByPath('/')
             numRootChildren = len(db.getLinkItems(rootUuid))
             self.assertEqual(numRootChildren, 2)
@@ -121,7 +142,7 @@ class Hdf5dbTest(unittest.TestCase):
         getFile('group100.h5')
         marker = None
         count = 0
-        with Hdf5db('group100.h5') as db:
+        with Hdf5db('group100.h5', app_logger=self.log) as db:
             rootUuid = db.getUUIDByPath('/')
             while True:
                 # get items 13 at a time
@@ -134,7 +155,7 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertEqual(count, 100)
         
     def testGetItemHardLink(self):
-        with Hdf5db('tall.h5') as db:
+        with Hdf5db('tall.h5', app_logger=self.log) as db:
             grpUuid = db.getUUIDByPath('/g1/g1.1')
             item = db.getLinkItemByUuid(grpUuid, "dset1.1.1")
             self.assertTrue('id' in item)
@@ -146,7 +167,7 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertTrue('ctime' in item)
         
     def testGetItemSoftLink(self):
-        with Hdf5db('tall.h5') as db:
+        with Hdf5db('tall.h5', app_logger=self.log) as db:
             grpUuid = db.getUUIDByPath('/g1/g1.2/g1.2.1')
             item = db.getLinkItemByUuid(grpUuid, "slink")
             self.assertTrue('id' not in item)
@@ -158,7 +179,7 @@ class Hdf5dbTest(unittest.TestCase):
             
     def testGetItemExternalLink(self):
         getFile('tall_with_udlink.h5')
-        with Hdf5db('tall_with_udlink.h5') as db:
+        with Hdf5db('tall_with_udlink.h5', app_logger=self.log) as db:
             grpUuid = db.getUUIDByPath('/g1/g1.2')
             item = db.getLinkItemByUuid(grpUuid, "extlink")
             self.assertTrue('uuid' not in item)
@@ -171,7 +192,7 @@ class Hdf5dbTest(unittest.TestCase):
             
     def testGetItemUDLink(self):
         getFile('tall_with_udlink.h5')
-        with Hdf5db('tall_with_udlink.h5') as db:
+        with Hdf5db('tall_with_udlink.h5', app_logger=self.log) as db:
             grpUuid = db.getUUIDByPath('/g2')
             item = db.getLinkItemByUuid(grpUuid, "udlink")
             self.assertTrue('uuid' not in item)
@@ -184,7 +205,7 @@ class Hdf5dbTest(unittest.TestCase):
             
     def testGetNumLinks(self):
         items = None
-        with Hdf5db('tall.h5') as db:
+        with Hdf5db('tall.h5', app_logger=self.log) as db:
             g1= db.getObjByPath('/g1')
             numLinks = db.getNumLinksToObject(g1)
             self.assertEqual(numLinks, 1)
@@ -194,7 +215,7 @@ class Hdf5dbTest(unittest.TestCase):
         hardLink = None
         externalLink = None
         getFile('tall_with_udlink.h5')
-        with Hdf5db('tall_with_udlink.h5') as db:
+        with Hdf5db('tall_with_udlink.h5', app_logger=self.log) as db:
             grpUuid = db.getUUIDByPath('/g1/g1.2')
             items = db.getLinkItems(grpUuid)
             self.assertEqual(len(items), 2)
@@ -214,7 +235,7 @@ class Hdf5dbTest(unittest.TestCase):
     def testDeleteLink(self): 
         # get test file
         getFile('tall.h5', 'tall_grpdelete.h5')
-        with Hdf5db('tall_grpdelete.h5') as db:
+        with Hdf5db('tall_grpdelete.h5', app_logger=self.log) as db:
             rootUuid = db.getUUIDByPath('/')
             numRootChildren = len(db.getLinkItems(rootUuid))
             self.assertEqual(numRootChildren, 2)
@@ -225,7 +246,7 @@ class Hdf5dbTest(unittest.TestCase):
     def testDeleteUDLink(self): 
         # get test file
         getFile('tall_with_udlink.h5')
-        with Hdf5db('tall_with_udlink.h5') as db:
+        with Hdf5db('tall_with_udlink.h5', app_logger=self.log) as db:
             g2Uuid = db.getUUIDByPath('/g2')
             numG2Children = len(db.getLinkItems(g2Uuid))
             self.assertEqual(numG2Children, 3)
@@ -246,7 +267,7 @@ class Hdf5dbTest(unittest.TestCase):
         # remove db file!
         removeFile('.tall_ro.h5')
         g1Uuid = None
-        with Hdf5db('tall_ro.h5') as db:
+        with Hdf5db('tall_ro.h5', app_logger=self.log) as db:
             g1Uuid = db.getUUIDByPath('/g1')
             self.failUnlessEqual(len(g1Uuid), UUID_LEN)
             obj = db.getObjByPath('/g1')
@@ -254,7 +275,7 @@ class Hdf5dbTest(unittest.TestCase):
     
         # end of with will close file
         # open again and verify we can get obj by name
-        with Hdf5db('tall_ro.h5') as db:
+        with Hdf5db('tall_ro.h5', app_logger=self.log) as db:
             obj = db.getGroupObjByUuid(g1Uuid) 
             g1 = db.getObjByPath('/g1')
             self.failUnlessEqual(obj, g1)
@@ -267,7 +288,7 @@ class Hdf5dbTest(unittest.TestCase):
          getFile('tall.h5')
          d111_values = None
          d112_values = None
-         with Hdf5db('tall.h5') as db:
+         with Hdf5db('tall.h5', app_logger=self.log) as db:
             d111Uuid = db.getUUIDByPath('/g1/g1.1/dset1.1.1')
             self.failUnlessEqual(len(d111Uuid), UUID_LEN)
             d111_values = db.getDatasetValuesByUuid(d111Uuid)
@@ -290,7 +311,7 @@ class Hdf5dbTest(unittest.TestCase):
          getFile('zerodim.h5')
          d111_values = None
          d112_values = None
-         with Hdf5db('zerodim.h5') as db:
+         with Hdf5db('zerodim.h5', app_logger=self.log) as db:
             dsetUuid = db.getUUIDByPath('/dset')
             self.failUnlessEqual(len(dsetUuid), UUID_LEN)
             dset_value = db.getDatasetValuesByUuid(dsetUuid)
@@ -300,22 +321,183 @@ class Hdf5dbTest(unittest.TestCase):
         # getAttributeItemByUuid
         item = None
         getFile('tall.h5')
-        with Hdf5db('tall.h5') as db:
+        with Hdf5db('tall.h5', app_logger=self.log) as db:
             rootUuid = db.getUUIDByPath('/')
             self.failUnlessEqual(len(rootUuid), UUID_LEN)
             item = db.getAttributeItem("groups", rootUuid, "attr1")
+           
+    def testWriteScalarAttribute(self):
+        # getAttributeItemByUuid
+        item = None
+        getFile('empty.h5', tgt="test_write_scalar_attr.h5")
+        with Hdf5db('test_write_scalar_attr.h5', app_logger=self.log) as db:
+            root_uuid = db.getUUIDByPath('/')
+            dims = ()
+            datatype = "H5T_STD_I32LE"
+            value = 42
+            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
+            item = db.getAttributeItem("groups", root_uuid, "A1")
+            self.failUnlessEqual(item['name'], "A1")
+            self.failUnlessEqual(item['value'], 42)
+            now = int(time.time())
+            self.assertTrue(item['ctime'] > now - 5)
+            self.assertTrue(item['mtime'] > now - 5)
+            shape = item['shape']
+            self.failUnlessEqual(shape['class'], 'H5S_SCALAR')
+            item_type = item['type']
+            self.failUnlessEqual(item_type['order'], 'H5T_ORDER_LE') 
+            self.failUnlessEqual(item_type['base_size'], 4)
+            self.failUnlessEqual(item_type['class'], 'H5T_INTEGER') 
+            self.failUnlessEqual(item_type['base'], 'H5T_STD_I32LE') 
+            self.failUnlessEqual(item_type['size'], 4)
+            
+    def testWriteFixedStringAttribute(self):
+        # getAttributeItemByUuid
+        item = None
+        getFile('empty.h5', tgt="test_write_fix_string_attr.h5")
+        with Hdf5db('test_write_fix_string_attr.h5', app_logger=self.log) as db:
+            root_uuid = db.getUUIDByPath('/')
+            dims = ()
+            datatype = { 'charSet':   'H5T_CSET_ASCII', 
+                     'class':  'H5T_STRING', 
+                     'strPad': 'H5T_STR_NULLPAD', 
+                     'length': 13}
+            value = "Hello, world!"
+            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
+            item = db.getAttributeItem("groups", root_uuid, "A1")
+            self.failUnlessEqual(item['name'], "A1")
+            self.failUnlessEqual(item['value'], "Hello, world!")
+            now = int(time.time())
+            self.assertTrue(item['ctime'] > now - 5)
+            self.assertTrue(item['mtime'] > now - 5)
+            shape = item['shape']
+            self.failUnlessEqual(shape['class'], 'H5S_SCALAR')
+            item_type = item['type']
+            self.failUnlessEqual(item_type['base_size'], 13)
+            self.failUnlessEqual(item_type['class'], 'H5T_STRING') 
+            self.failUnlessEqual(item_type['strPad'], 'H5T_STR_NULLPAD')
+            self.failUnlessEqual(item_type['charSet'], 'H5T_CSET_ASCII') 
+            self.failUnlessEqual(item_type['size'], 13)
+            
+    def testWriteFixedNullTermStringAttribute(self):
+        # getAttributeItemByUuid
+        item = None
+        getFile('empty.h5', tgt="test_write_fix_nullterm_string_attr.h5")
+        with Hdf5db('test_write_fix_nullterm_string_attr.h5', app_logger=self.log) as db:
+            root_uuid = db.getUUIDByPath('/')
+            dims = ()
+            datatype = { 'charSet':   'H5T_CSET_ASCII', 
+                     'class':  'H5T_STRING', 
+                     'strPad': 'H5T_STR_NULLTERM', 
+                     'length': 15}
+            value = "Hello, world!"
+            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
+            item = db.getAttributeItem("groups", root_uuid, "A1")
+            self.failUnlessEqual(item['name'], "A1")
+            self.failUnlessEqual(item['value'], "Hello, world!")
+            now = int(time.time())
+            self.assertTrue(item['ctime'] > now - 5)
+            self.assertTrue(item['mtime'] > now - 5)
+            shape = item['shape']
+            self.failUnlessEqual(shape['class'], 'H5S_SCALAR')
+            item_type = item['type']
+            self.failUnlessEqual(item_type['base_size'], 15)
+            self.failUnlessEqual(item_type['class'], 'H5T_STRING') 
+            self.failUnlessEqual(item_type['strPad'], 'H5T_STR_NULLPAD')  # todo = fix
+            self.failUnlessEqual(item_type['charSet'], 'H5T_CSET_ASCII') 
+            self.failUnlessEqual(item_type['size'], 15)
+            
+    def testWriteIntAttribute(self):
+        # getAttributeItemByUuid
+        item = None
+        getFile('empty.h5', tgt="test_write_int_attr.h5")
+        with Hdf5db('test_write_int_attr.h5', app_logger=self.log) as db:
+            root_uuid = db.getUUIDByPath('/')
+            dims = (5,)
+            datatype = "H5T_STD_I16LE"
+            value = [2, 3, 5, 7, 11]
+            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
+            item = db.getAttributeItem("groups", root_uuid, "A1")
+            self.failUnlessEqual(item['name'], "A1")
+            self.failUnlessEqual(item['value'], [2, 3, 5, 7, 11])
+            now = int(time.time())
+            self.assertTrue(item['ctime'] > now - 5)
+            self.assertTrue(item['mtime'] > now - 5)
+            shape = item['shape']
+            self.failUnlessEqual(shape['class'], 'H5S_SIMPLE')
+            item_type = item['type']
+            self.failUnlessEqual(item_type['order'], 'H5T_ORDER_LE') 
+            self.failUnlessEqual(item_type['base_size'], 2)
+            self.failUnlessEqual(item_type['class'], 'H5T_INTEGER') 
+            self.failUnlessEqual(item_type['base'], 'H5T_STD_I16LE') 
+            self.failUnlessEqual(item_type['size'], 2)
+            
+    def testWriteCommittedType(self):
+        # getAttributeItemByUuid
+        item = None
+        getFile('empty.h5', tgt="test_write_committed_type.h5")
+        with Hdf5db('test_write_committed_type.h5', app_logger=self.log) as db:
+            root_uuid = db.getUUIDByPath('/')
+            datatype = { 'charSet':   'H5T_CSET_ASCII', 
+                     'class':  'H5T_STRING', 
+                     'strPad': 'H5T_STR_NULLTERM', 
+                     'length': 15}
+            item = db.createCommittedType(datatype)
+            type_uuid = item['id']
+            item = db.getCommittedTypeItemByUuid(type_uuid)
+            print item
+            self.failUnlessEqual(item['id'], type_uuid)
+            self.failUnlessEqual(item['attributeCount'], 0)
+            now = int(time.time())
+            self.assertTrue(item['ctime'] > now - 5)
+            self.assertTrue(item['mtime'] > now - 5)
+            self.failUnlessEqual(len(item['alias']), 0)  # anonymous, so no alias
+             
+            item_type = item['type']
+             
+            #self.failUnlessEqual(item_type['base_size'], 15)
+            self.failUnlessEqual(item_type['class'], 'H5T_STRING') 
+            self.failUnlessEqual(item_type['strPad'], 'H5T_STR_NULLPAD')
+            self.failUnlessEqual(item_type['charSet'], 'H5T_CSET_ASCII') 
+            self.failUnlessEqual(item_type['size'], 15)        
+             
+            
+            
+            
+            
             
     
         
     def testToRef(self):
-        data_list = [97, 98, 99, 100, 101, 102, 103, 104, 105, 0]
-        type_item = {'order': 'H5T_ORDER_LE', 'base_size': 1, 'class': 'H5T_INTEGER', 'base': 'H5T_STD_I8LE', 'size': 1}
-        getFile('tall.h5')
-        revvalue = None
-        with Hdf5db('tall.h5') as db:
+        
+        with Hdf5db('empty.h5', app_logger=self.log) as db:
+            type_item = {'order': 'H5T_ORDER_LE', 'base_size': 1, 'class': 'H5T_INTEGER', 'base': 'H5T_STD_I8LE', 'size': 1}
+            data_list = [2, 3, 5, 7, 11]
             ref_value = db.toRef(1, type_item, data_list)
-        print "ref_value:", ref_value
-        print "type:", type(ref_value)
+            self.assertEqual(ref_value, data_list)
+            
+            type_item =  { "charSet": "H5T_CSET_ASCII", 
+                           "class": "H5T_STRING", 
+                           "length": 8, 
+                           "strPad": "H5T_STR_NULLPAD" }
+            data_list = [ "Hypertext", "as", "engine", "of", "state" ]
+            ref_value = db.toRef(1, type_item, data_list)
+             
+                        
+         
+        
+    def testToTuple(self):
+        with Hdf5db('empty.h5', app_logger=self.log) as db:
+            self.assertEqual(db.toTuple( [1,2,3] ), (1,2,3) ) 
+            self.assertEqual(db.toTuple( [[1,2],[3,4]] ), ((1,2),(3,4))  )
+            self.assertEqual(db.toTuple( ([1,2],[3,4]) ), ((1,2),(3,4))  )
+            self.assertEqual(db.toTuple( [(1,2),(3,4)] ), ((1,2),(3,4))  )
+            self.assertEqual(db.toTuple( [[[1,2],[3,4]], [[5,6],[7,8]]] ), 
+                (((1,2),(3,4)), ((5,6),(7,8)))  )
+            
+         
+            
+        
             
          
              

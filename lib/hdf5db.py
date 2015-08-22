@@ -748,7 +748,7 @@ class Hdf5db:
         item = { 'id': obj_uuid }
 
         alias = []
-        if dset.name:
+        if dset.name and not dset.name.startswith("/__db__"):
             alias.append(dset.name)   # just use the default h5py path for now
         item['alias'] = alias
 
@@ -906,7 +906,7 @@ class Hdf5db:
 
         item = { 'id': obj_uuid }
         alias = []
-        if datatype.name:
+        if datatype.name and not datatype.name.startswith("/__db__"):
             alias.append(datatype.name)   # just use the default h5py path for now
         item['alias'] = alias
         item['attributeCount'] = len(datatype.attrs)
@@ -1165,6 +1165,7 @@ class Hdf5db:
                 # convert python list to numpy object
                  
                 typeItem = hdf5dtype.getTypeItem(dt)
+                #print "typeItem:", typeItem
                 value = self.toRef(rank, typeItem, value)
                              
                 # create numpy array
@@ -1461,8 +1462,7 @@ class Hdf5db:
     """
     def toRef(self, rank, typeItem, data):
         out = None
-        print "toref, typeItem:", typeItem
-        print "toref, data:", data
+         
         if type(typeItem) in (str, unicode):
             # commited type - get json representation
             committed_type_item = self.getCommittedTypeItemByUuid(typeItem)
@@ -1888,7 +1888,6 @@ class Hdf5db:
 
         if slices == None:
             # write entire dataset
-            print "data:", data
             dset[()] = data
         else:
             if type(slices) != tuple:
@@ -2312,7 +2311,7 @@ class Hdf5db:
 
         item = { 'id': obj_uuid }
         alias = []
-        if grp.name:
+        if grp.name and not grp.name.startswith("/__db__"):
             alias.append(grp.name)   # just use the default h5py path for now
         item['alias'] = alias
         item['attributeCount'] = len(grp.attrs)
