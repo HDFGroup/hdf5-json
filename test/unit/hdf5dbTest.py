@@ -445,7 +445,6 @@ class Hdf5dbTest(unittest.TestCase):
             item = db.createCommittedType(datatype)
             type_uuid = item['id']
             item = db.getCommittedTypeItemByUuid(type_uuid)
-            print item
             self.failUnlessEqual(item['id'], type_uuid)
             self.failUnlessEqual(item['attributeCount'], 0)
             now = int(time.time())
