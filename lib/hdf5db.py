@@ -796,7 +796,6 @@ class Hdf5db:
     createTypeFromItem - create type given dictionary definition
     """
     def createTypeFromItem(self, attr_type):
-        #print "typeItem:", typeItem
         dt = None
         
         if type(attr_type) in (str, unicode) and len(attr_type) == UUID_LEN:
@@ -1306,7 +1305,7 @@ class Hdf5db:
         elif typeClass in ('H5T_INTEGER', 'H5T_FLOAT', 'H5T_ENUM'):
             out = value  # just copy value
         elif typeClass == 'H5T_STRING':
-            out = value.encode()  # turn value into a str object
+            out = value
         else:
             msg = "Unexpected type class: " + typeClass
             self.log.info(msg)
@@ -1360,7 +1359,8 @@ class Hdf5db:
             out = value  # just copy value
         elif typeClass == 'H5T_STRING':
             if typeItem['charSet'] == 'H5T_CSET_UTF8':
-                out = value.encode('utf-8')
+                # out = value.encode('utf-8')
+                out = value
             else:
                 out = value.encode()
         else:
@@ -1406,9 +1406,7 @@ class Hdf5db:
             nElements = len(src)
            
             dt = self.createTypeFromItem(baseType)
-            des = np.array(src, dtype=dt)
-            
-            
+            des = np.array(src, dtype=dt)      
             
         elif typeClass == 'H5T_REFERENCE':
             des = src  #self.listToRef(src)
@@ -1421,7 +1419,7 @@ class Hdf5db:
             des = src  # just copy value
         elif typeClass == 'H5T_STRING':
             if typeItem['charSet'] == 'H5T_CSET_UTF8':
-                des = src.encode('utf-8')
+                des = src  #src.encode('utf-8')
             else:
                 des = src.encode()
         else:

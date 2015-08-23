@@ -153,6 +153,10 @@ def getTypeElement(dt):
         # String type
         baseType = getBaseType(dt)
         type_info = baseType  # just use base type
+    elif dt.kind == 'U':
+        # Unicode String type
+        baseType = getBaseType(dt)
+        type_info = baseType  # just use base type
     elif dt.kind == 'i' or dt.kind == 'u':
         # integer type
         baseType = getBaseType(dt)
@@ -209,8 +213,7 @@ def getBaseType(dt):
         type_info['class'] = 'H5T_STRING' 
         type_info['charSet'] = 'H5T_CSET_ASCII'
         type_info['length'] = dt.base.itemsize
-        type_info['strPad'] = 'H5T_STR_NULLPAD'
-        type_info['order'] = 'H5T_ORDER_NONE'
+        type_info['strPad'] = 'H5T_STR_NULLPAD'    
     elif dt.base.kind == 'V':
             type_info['class'] = 'H5T_OPAQUE'
             type_info['size'] = dt.itemsize
@@ -343,13 +346,19 @@ def createBaseDataType(typeItem):
             nStrSize = typeItem['length']
             if type(nStrSize) != int:
                 raise TypeError("expecting integer value for 'length'")
-            dtRet = np.dtype(dims + 'S' + str(nStrSize))  # fixed size ascii string
+            type_code = None
+            if typeItem['charSet'] == 'H5T_CSET_ASCII':
+                type_code = 'S'
+            elif typeItem['charSet'] == 'H5T_CSET_UTF8':
+                raise TypeError("fixed-width unicode strings are not supported")
+            else:
+                raise TypeError("unexpected 'charSet' value")
+            dtRet = np.dtype(dims + type_code + str(nStrSize))  # fixed size string
     elif typeClass == 'H5T_VLEN':
         if dims:
             raise TypeError("ArrayType is not supported for variable len types")
         if 'base' not in typeItem:
             raise KeyError("'base' not provided") 
-        #baseType = getNumpyTypename(typeItem['base'])
         baseType = createBaseDataType(typeItem['base'])
         dtRet = special_dtype(vlen=np.dtype(baseType))
     elif typeClass == 'H5T_OPAQUE':

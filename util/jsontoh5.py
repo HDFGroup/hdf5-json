@@ -249,8 +249,9 @@ def main():
     # add handler to logger
     log.addHandler(handler)
     
-
     text = open(args.in_filename[0]).read()
+    
+    print type(text)
 
     # parse the json file
     h5json = json.loads(text)

@@ -14,6 +14,7 @@ import logging
 import numpy as np
 import sys
 from h5py import special_dtype
+from h5py import check_dtype
 
 sys.path.append('../../lib')
 import hdf5dtype 
@@ -53,6 +54,14 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.failUnlessEqual(typeItem['strPad'], 'H5T_STR_NULLPAD')
         self.failUnlessEqual(typeItem['charSet'], 'H5T_CSET_ASCII')
         
+    def testBaseStringUTFTypeItem(self):
+        dt = np.dtype('U3')
+        try:
+            typeItem = hdf5dtype.getTypeItem(dt)
+            self.assertTrue(False)  # expected exception
+        except TypeError:
+            pass # expected
+         
     def testBaseVLenAsciiTypeItem(self):
         dt = special_dtype(vlen=str)
         typeItem = hdf5dtype.getTypeItem(dt)
@@ -157,19 +166,28 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertEqual(dt.name, 'string48')
         self.assertEqual(dt.kind, 'S')
         
+    def testCreateBaseUnicodeType(self):
+        typeItem = { 'class': 'H5T_STRING', 'charSet': 'H5T_CSET_UTF8', 'length': 32 }
+        try:
+            dt = hdf5dtype.createDataType(typeItem)
+            self.assertTrue(False)  # expected exception
+        except TypeError:
+            pass 
+        
     def testCreateNullTermStringType(self):
         typeItem = { 'class': 'H5T_STRING', 'charSet': 'H5T_CSET_ASCII', 
             'length': 6, 'strPad': 'H5T_STR_NULLTERM'}
         dt = hdf5dtype.createDataType(typeItem)
         self.assertEqual(dt.name, 'string48')
         self.assertEqual(dt.kind, 'S')
-        print dt
+         
         
     def testCreateVLenStringType(self):
         typeItem = { 'class': 'H5T_STRING', 'charSet': 'H5T_CSET_ASCII', 'length': 'H5T_VARIABLE' }
         dt = hdf5dtype.createDataType(typeItem)
         self.assertEqual(dt.name, 'object')
         self.assertEqual(dt.kind, 'O')
+        self.assertEqual(check_dtype(vlen=dt), str)
         
         
     def testCreateVLenUTF8Type(self):      
@@ -177,6 +195,7 @@ class Hdf5dtypeTest(unittest.TestCase):
         dt = hdf5dtype.createDataType(typeItem)
         self.assertEqual(dt.name, 'object')
         self.assertEqual(dt.kind, 'O')
+        self.assertEqual(check_dtype(vlen=dt), unicode)
         
     def testCreateVLenDataType(self):
         typeItem = { 'class': 'H5T_VLEN', 'base': 'H5T_STD_I32BE' }

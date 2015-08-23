@@ -393,35 +393,7 @@ class Hdf5dbTest(unittest.TestCase):
             self.failUnlessEqual(item_type['class'], 'H5T_STRING') 
             self.failUnlessEqual(item_type['strPad'], 'H5T_STR_NULLPAD')
             self.failUnlessEqual(item_type['charSet'], 'H5T_CSET_ASCII') 
-    """        
-    def testWriteFixedUTF8StringAttribute(self):
-        # getAttributeItemByUuid
-        item = None
-        filepath = getFile('empty.h5', 'writefixedutf8stringattribute.h5')
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            root_uuid = db.getUUIDByPath('/')
-            dims = ()
-            datatype = { 'charSet':   'H5T_CSET_UTF8', 
-                     'class':  'H5T_STRING', 
-                     'strPad': 'H5T_STR_NULLPAD', 
-                     'length': 40}
-            value = "e4bda0e5a5bde4b896e7958c".decode('hex')
-            print value
-            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
-            item = db.getAttributeItem("groups", root_uuid, "A1")
-            self.failUnlessEqual(item['name'], "A1")
-            #self.failUnlessEqual(item['value'], value)
-            now = int(time.time())
-            self.assertTrue(item['ctime'] > now - 5)
-            self.assertTrue(item['mtime'] > now - 5)
-            shape = item['shape']
-            self.failUnlessEqual(shape['class'], 'H5S_SCALAR')
-            item_type = item['type']
-            self.failUnlessEqual(item_type['length'], 40)
-            self.failUnlessEqual(item_type['class'], 'H5T_STRING') 
-            self.failUnlessEqual(item_type['strPad'], 'H5T_STR_NULLPAD')
-            self.failUnlessEqual(item_type['charSet'], 'H5T_CSET_UTF8') 
-    """        
+            
             
     def testWriteFixedNullTermStringAttribute(self):
         # getAttributeItemByUuid
@@ -478,6 +450,35 @@ class Hdf5dbTest(unittest.TestCase):
             self.failUnlessEqual(item_type['strPad'], 'H5T_STR_NULLTERM')
             self.failUnlessEqual(item_type['charSet'], 'H5T_CSET_ASCII') 
             self.failUnlessEqual(item_type['length'], 'H5T_VARIABLE')
+            
+    def testWriteVlenUnicodeAttribute(self):
+        # getAttributeItemByUuid
+        item = None
+        filepath = getFile('empty.h5', 'writevlenunicodeattribute.h5')
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            root_uuid = db.getUUIDByPath('/')
+            dims = ()
+            datatype = { 'charSet':   'H5T_CSET_UTF8', 
+                     'class':  'H5T_STRING', 
+                     'strPad': 'H5T_STR_NULLTERM', 
+                     'length': 'H5T_VARIABLE' }
+            value =  u'\u6b22\u8fce\u63d0\u4ea4\u5fae\u535a\u641c\u7d22\u4f7f\u7528\u53cd\u9988\uff0c\u8bf7\u76f4\u63a5'     
+            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
+            item = db.getAttributeItem("groups", root_uuid, "A1")
+           
+            self.failUnlessEqual(item['name'], "A1")
+            self.failUnlessEqual(item['value'], value)
+            now = int(time.time())
+            self.assertTrue(item['ctime'] > now - 5)
+            self.assertTrue(item['mtime'] > now - 5)
+            shape = item['shape']
+            self.failUnlessEqual(shape['class'], 'H5S_SCALAR')
+            item_type = item['type']
+            self.failUnlessEqual(item_type['class'], 'H5T_STRING') 
+            self.failUnlessEqual(item_type['strPad'], 'H5T_STR_NULLTERM')
+            self.failUnlessEqual(item_type['charSet'], 'H5T_CSET_UTF8') 
+            self.failUnlessEqual(item_type['length'], 'H5T_VARIABLE')
+            
             
     def testWriteIntAttribute(self):
         # getAttributeItemByUuid

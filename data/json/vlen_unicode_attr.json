@@ -1,0 +1,57 @@
+{
+    "apiVersion": "1.0.0", 
+    "datasets": {
+        "80bd68d1-4958-11e5-9598-3c15c2da029e": {
+            "alias": [
+                "/DS1"
+            ], 
+            "attributes": [
+                {
+                    "name": "A1", 
+                    "shape": {
+                        "class": "H5S_SCALAR"
+                    }, 
+                    "type": {
+                        "charSet": "H5T_CSET_UTF8", 
+                        "class": "H5T_STRING", 
+                        "length": "H5T_VARIABLE", 
+                        "strPad": "H5T_STR_NULLTERM"
+                    }, 
+                    "value": "\u6b22\u8fce\u63d0\u4ea4\u5fae\u535a\u641c\u7d22\u4f7f\u7528\u53cd\u9988\uff0c\u8bf7\u76f4\u63a5"
+                }
+            ], 
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_LATE", 
+                "fillTime": "H5D_FILL_TIME_IFSET", 
+                "fillValue": 0, 
+                "layout": {
+                    "class": "H5D_CONTIGUOUS"
+                }
+            }, 
+            "shape": {
+                "class": "H5S_NULL"
+            }, 
+            "type": {
+                "base": "H5T_STD_I32LE", 
+                "class": "H5T_INTEGER"
+            }, 
+            "value": null
+        }
+    }, 
+    "groups": {
+        "80bba8c5-4958-11e5-88bb-3c15c2da029e": {
+            "alias": [
+                "/"
+            ], 
+            "links": [
+                {
+                    "class": "H5L_TYPE_HARD", 
+                    "collection": "datasets", 
+                    "id": "80bd68d1-4958-11e5-9598-3c15c2da029e", 
+                    "title": "DS1"
+                }
+            ]
+        }
+    }, 
+    "root": "80bba8c5-4958-11e5-88bb-3c15c2da029e"
+}
