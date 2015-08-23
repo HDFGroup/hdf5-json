@@ -104,24 +104,22 @@ def getTypeElement(dt):
         # numpy object type - assume this is a h5py variable length extension
         h5t_check = check_dtype(vlen=dt)
         if h5t_check is not None:
-            type_info['base_size'] = 8  # machine pointer size
+            
             if h5t_check == str:
                 type_info['class'] = 'H5T_STRING'
                 type_info['length'] = 'H5T_VARIABLE'
                 type_info['charSet'] = 'H5T_CSET_ASCII'
                 type_info['strPad'] = 'H5T_STR_NULLTERM'
-                type_info['order'] = 'H5T_ORDER_NONE'
             elif h5t_check == unicode:
                 type_info['class'] = 'H5T_STRING'
                 type_info['length'] = 'H5T_VARIABLE'
                 type_info['charSet'] = 'H5T_CSET_UTF8'
                 type_info['strPad'] = 'H5T_STR_NULLTERM'
-                type_info['order'] = 'H5T_ORDER_NONE'
             elif type(h5t_check) == np.dtype:
                 # vlen data
                 type_info['class'] = 'H5T_VLEN'
                 type_info['size'] = 'H5T_VARIABLE'
-                type_info['base'] = getBaseType(h5t_check)   
+                type_info['base'] = getBaseType(h5t_check)  
             else:
                 #unknown vlen type
                 raise TypeError("Unknown h5py vlen type: " + h5t_check)
@@ -130,7 +128,7 @@ def getTypeElement(dt):
             h5t_check = check_dtype(ref=dt)
             if h5t_check is not None:
                 type_info['class'] = 'H5T_REFERENCE'
-                type_info['order'] = 'H5T_ORDER_NONE'
+              
                 if h5t_check is Reference:
                     type_info['base'] = 'H5T_STD_REF_OBJ'  # objref
                 elif h5t_check is RegionReference:
@@ -202,8 +200,8 @@ def getBaseType(dt):
         'float64': 'H5T_IEEE_F64'
     }
     type_info = {}
-    type_info['size'] = dt.itemsize
-    type_info['base_size'] = dt.base.itemsize
+    
+    #type_info['base_size'] = dt.base.itemsize
          
     # primitive type
     if dt.base.kind == 'S':
@@ -215,13 +213,13 @@ def getBaseType(dt):
         type_info['order'] = 'H5T_ORDER_NONE'
     elif dt.base.kind == 'V':
             type_info['class'] = 'H5T_OPAQUE'
-            type_info['order'] = 'H5T_ORDER_NONE'
+            type_info['size'] = dt.itemsize
+            type_info['tag'] = ''  # todo - determine tag
     elif dt.base.kind == 'i' or dt.base.kind == 'u':    
         type_info['class'] = 'H5T_INTEGER'
         byteorder = 'LE'
         if dt.base.byteorder == '>':
             byteorder = 'BE'
-        type_info['order'] = 'H5T_ORDER_' + byteorder
         if dt.base.name in predefined_int_types:
             #maps to one of the HDF5 predefined types
             type_info['base'] = predefined_int_types[dt.base.name] + byteorder  
@@ -230,7 +228,6 @@ def getBaseType(dt):
         byteorder = 'LE'
         if dt.base.byteorder == '>':
             byteorder = 'BE'
-        type_info['order'] = 'H5T_ORDER_' + byteorder
         if dt.base.name in predefined_float_types:
             #maps to one of the HDF5 predefined types
             type_info['base'] = predefined_float_types[dt.base.name] + byteorder 
