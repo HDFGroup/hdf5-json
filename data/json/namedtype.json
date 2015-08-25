@@ -1,6 +1,7 @@
 {
+    "apiVersion": "1.0.0", 
     "datatypes": {
-        "b6ce0a70-cd15-11e4-b45e-3c15c2da029e": {
+        "79c561de-4a9d-11e5-a5c8-3c15c2da029e": {
             "alias": [
                 "/dtype_compound"
             ], 
@@ -24,7 +25,7 @@
                 ]
             }
         }, 
-        "b6ce18a8-cd15-11e4-a4ec-3c15c2da029e": {
+        "79c5769c-4a9d-11e5-950e-3c15c2da029e": {
             "alias": [
                 "/dtype_simple"
             ], 
@@ -38,7 +39,6 @@
                         "charSet": "H5T_CSET_ASCII", 
                         "class": "H5T_STRING", 
                         "length": "H5T_VARIABLE", 
-                        "order": "H5T_ORDER_NONE", 
                         "strPad": "H5T_STR_NULLTERM"
                     }, 
                     "value": "this is a committed datatype of float32"
@@ -51,7 +51,7 @@
         }
     }, 
     "groups": {
-        "b6ccfe6e-cd15-11e4-aa31-3c15c2da029e": {
+        "79c44830-4a9d-11e5-9b42-3c15c2da029e": {
             "alias": [
                 "/"
             ], 
@@ -59,17 +59,17 @@
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datatypes", 
-                    "id": "b6ce0a70-cd15-11e4-b45e-3c15c2da029e", 
+                    "id": "79c561de-4a9d-11e5-a5c8-3c15c2da029e", 
                     "title": "dtype_compound"
                 }, 
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datatypes", 
-                    "id": "b6ce18a8-cd15-11e4-a4ec-3c15c2da029e", 
+                    "id": "79c5769c-4a9d-11e5-950e-3c15c2da029e", 
                     "title": "dtype_simple"
                 }
             ]
         }
     }, 
-    "root": "b6ccfe6e-cd15-11e4-aa31-3c15c2da029e"
+    "root": "79c44830-4a9d-11e5-9b42-3c15c2da029e"
 }

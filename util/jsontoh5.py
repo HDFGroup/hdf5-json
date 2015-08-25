@@ -58,7 +58,8 @@ class Writeh5:
     # Create HDF5 dataset object and write data values
     #
     def createDataset(self, uuid, body):
-        # print "creating dataset: ", uuid
+        print "creating dataset: ", uuid
+        print "body:", body
         datatype = body['type']
         if type(datatype) in (str, unicode) and datatype.startswith("datatypes/"):
             #committed datatype, just pass in the UUID part
@@ -251,7 +252,6 @@ def main():
     
     text = open(args.in_filename[0]).read()
     
-    print type(text)
 
     # parse the json file
     h5json = json.loads(text)

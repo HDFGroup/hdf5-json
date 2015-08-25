@@ -1,9 +1,24 @@
 {
+    "apiVersion": "1.0.0", 
     "datasets": {
-        "b5d4c563-cd15-11e4-871e-3c15c2da029e": {
+        "62880ad1-4a9d-11e5-bfb1-3c15c2da029e": {
             "alias": [
                 "/dset"
             ], 
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_LATE", 
+                "fillTime": "H5D_FILL_TIME_IFSET", 
+                "fillValue": [
+                    999, 
+                    "99:90", 
+                    999, 
+                    999.0, 
+                    "N"
+                ], 
+                "layout": {
+                    "class": "H5D_CONTIGUOUS"
+                }
+            }, 
             "shape": {
                 "class": "H5S_SIMPLE", 
                 "dims": [
@@ -26,7 +41,6 @@
                             "charSet": "H5T_CSET_ASCII", 
                             "class": "H5T_STRING", 
                             "length": 6, 
-                            "order": "H5T_ORDER_NONE", 
                             "strPad": "H5T_STR_NULLPAD"
                         }
                     }, 
@@ -50,7 +64,6 @@
                             "charSet": "H5T_CSET_ASCII", 
                             "class": "H5T_STRING", 
                             "length": 6, 
-                            "order": "H5T_ORDER_NONE", 
                             "strPad": "H5T_STR_NULLPAD"
                         }
                     }
@@ -565,7 +578,7 @@
         }
     }, 
     "groups": {
-        "b5d3c485-cd15-11e4-9be3-3c15c2da029e": {
+        "6286cbae-4a9d-11e5-b670-3c15c2da029e": {
             "alias": [
                 "/"
             ], 
@@ -579,7 +592,6 @@
                         "charSet": "H5T_CSET_ASCII", 
                         "class": "H5T_STRING", 
                         "length": "H5T_VARIABLE", 
-                        "order": "H5T_ORDER_NONE", 
                         "strPad": "H5T_STR_NULLTERM"
                     }, 
                     "value": "Seattle, WA Weather observations Sept 21-24, 2014. KSEA station.\nSource: NOAA"
@@ -589,11 +601,11 @@
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "b5d4c563-cd15-11e4-871e-3c15c2da029e", 
+                    "id": "62880ad1-4a9d-11e5-bfb1-3c15c2da029e", 
                     "title": "dset"
                 }
             ]
         }
     }, 
-    "root": "b5d3c485-cd15-11e4-9be3-3c15c2da029e"
+    "root": "6286cbae-4a9d-11e5-b670-3c15c2da029e"
 }

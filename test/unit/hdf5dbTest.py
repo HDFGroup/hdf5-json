@@ -323,6 +323,31 @@ class Hdf5dbTest(unittest.TestCase):
             for i in range(20):
                 self.assertEqual(d112_values[i], i)
                 
+    def testCreateScalarDataset(self):
+        
+        
+        creation_props = {
+                "allocTime": "H5D_ALLOC_TIME_LATE",
+                "fillTime": "H5D_FILL_TIME_IFSET",
+                "fillValue": "",
+                "layout": {
+                    "class": "H5D_CONTIGUOUS"
+                }
+            }
+        datatype = {
+                "charSet": "H5T_CSET_ASCII",
+                "class": "H5T_STRING",
+                "length": 1,
+                "strPad": "H5T_STR_NULLPAD"
+            }
+        filepath = getFile('empty.h5', 'createscalardataset.h5')
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            dims = ()  # if no space in body, default to scalar
+            max_shape=None
+        
+            db.createDataset(datatype, dims, max_shape=max_shape, creation_props=creation_props)
+             
+                
     def testReadZeroDimDataset(self):
          filepath = getFile('zerodim.h5', 'readzerodeimdataset.h5')
          d111_values = None

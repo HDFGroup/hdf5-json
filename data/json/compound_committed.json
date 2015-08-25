@@ -1,9 +1,22 @@
 {
+    "apiVersion": "1.0.0", 
     "datasets": {
-        "b6046359-cd15-11e4-a7cd-3c15c2da029e": {
+        "630e9119-4a9d-11e5-84f9-3c15c2da029e": {
             "alias": [
                 "/dset"
             ], 
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_LATE", 
+                "fillTime": "H5D_FILL_TIME_IFSET", 
+                "fillValue": [
+                    0, 
+                    "", 
+                    0
+                ], 
+                "layout": {
+                    "class": "H5D_CONTIGUOUS"
+                }
+            }, 
             "shape": {
                 "class": "H5S_SIMPLE", 
                 "dims": [
@@ -26,7 +39,6 @@
                             "charSet": "H5T_CSET_ASCII", 
                             "class": "H5T_STRING", 
                             "length": 6, 
-                            "order": "H5T_ORDER_NONE", 
                             "strPad": "H5T_STR_NULLPAD"
                         }
                     }, 
@@ -404,7 +416,7 @@
         }
     }, 
     "datatypes": {
-        "b6047ff3-cd15-11e4-9bff-3c15c2da029e": {
+        "630eb833-4a9d-11e5-bcf5-3c15c2da029e": {
             "alias": [
                 "/types/date"
             ], 
@@ -413,7 +425,7 @@
                 "class": "H5T_INTEGER"
             }
         }, 
-        "b6048c9c-cd15-11e4-8a35-3c15c2da029e": {
+        "630ecafd-4a9d-11e5-9549-3c15c2da029e": {
             "alias": [
                 "/types/temp"
             ], 
@@ -422,7 +434,7 @@
                 "class": "H5T_INTEGER"
             }
         }, 
-        "b6049b5e-cd15-11e4-a441-3c15c2da029e": {
+        "630ede70-4a9d-11e5-8be8-3c15c2da029e": {
             "alias": [
                 "/types/time"
             ], 
@@ -430,13 +442,12 @@
                 "charSet": "H5T_CSET_ASCII", 
                 "class": "H5T_STRING", 
                 "length": 6, 
-                "order": "H5T_ORDER_NONE", 
                 "strPad": "H5T_STR_NULLPAD"
             }
         }
     }, 
     "groups": {
-        "b6036521-cd15-11e4-9870-3c15c2da029e": {
+        "630d8035-4a9d-11e5-97e0-3c15c2da029e": {
             "alias": [
                 "/"
             ], 
@@ -450,7 +461,6 @@
                         "charSet": "H5T_CSET_ASCII", 
                         "class": "H5T_STRING", 
                         "length": "H5T_VARIABLE", 
-                        "order": "H5T_ORDER_NONE", 
                         "strPad": "H5T_STR_NULLTERM"
                     }, 
                     "value": "Seattle, WA Weather observations Sept 21-24, 2014. KSEA station.\nSource: NOAA"
@@ -460,18 +470,18 @@
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "b6046359-cd15-11e4-a7cd-3c15c2da029e", 
+                    "id": "630e9119-4a9d-11e5-84f9-3c15c2da029e", 
                     "title": "dset"
                 }, 
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "groups", 
-                    "id": "b60472c7-cd15-11e4-85ba-3c15c2da029e", 
+                    "id": "630ea682-4a9d-11e5-aa98-3c15c2da029e", 
                     "title": "types"
                 }
             ]
         }, 
-        "b60472c7-cd15-11e4-85ba-3c15c2da029e": {
+        "630ea682-4a9d-11e5-aa98-3c15c2da029e": {
             "alias": [
                 "/types"
             ], 
@@ -479,23 +489,23 @@
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datatypes", 
-                    "id": "b6047ff3-cd15-11e4-9bff-3c15c2da029e", 
+                    "id": "630eb833-4a9d-11e5-bcf5-3c15c2da029e", 
                     "title": "date"
                 }, 
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datatypes", 
-                    "id": "b6048c9c-cd15-11e4-8a35-3c15c2da029e", 
+                    "id": "630ecafd-4a9d-11e5-9549-3c15c2da029e", 
                     "title": "temp"
                 }, 
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datatypes", 
-                    "id": "b6049b5e-cd15-11e4-a441-3c15c2da029e", 
+                    "id": "630ede70-4a9d-11e5-8be8-3c15c2da029e", 
                     "title": "time"
                 }
             ]
         }
     }, 
-    "root": "b6036521-cd15-11e4-9870-3c15c2da029e"
+    "root": "630d8035-4a9d-11e5-97e0-3c15c2da029e"
 }

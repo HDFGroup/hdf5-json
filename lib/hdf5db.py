@@ -1027,8 +1027,8 @@ class Hdf5db:
             if self.getModifiedTime(obj_uuid, objType="attribute", name=name, useRoot=False):
                 # attribute has been removed
                 msg = "Attribute: [" + name + "] of object: " + obj_uuid + " has been previously deleted"
-                self.log(msg)
-                raise IOError(errno.ENOINT, msg)
+                self.log.info(msg)
+                raise IOError(errno.ENOENT, msg)
             msg = "Attribute: [" + name + "] of object: " + obj_uuid + " not found"
             self.log.info(msg)
             raise IOError(errno.ENXIO, msg)
@@ -1105,7 +1105,30 @@ class Hdf5db:
     writeNdArrayToAttribute - create an attribute given numpy array
     """
     def writeNdArrayToAttribute(self, attrs, attr_name, npdata, shape, dt):
-        attrs.create(attr_name, npdata, shape=shape, dtype=dt)            
+        attrs.create(attr_name, npdata, shape=shape, dtype=dt)   
+        
+    """
+    create a scalar string attribute using nullterm padding
+    """
+    def makeNullTermStringAttribute(self, obj, attr_name, strLength, value):
+        self.log.info("make nullterm, length: " +str(strLength) + " value:" + value) 
+        if type(value) == unicode:
+            value = str(value)
+        if strLength < len(value): 
+            self.log.info("makeNullTermStringAttribute: value string longer than strLength - truncating")
+            value = value[:strLength]  # truncate to length
+             
+        # create the attribute
+        tid = h5py.h5t.TypeID.copy(h5py.h5t.C_S1)
+        tid.set_size(strLength)
+        tid.set_strpad(h5py.h5t.STR_NULLTERM)
+        sid = h5py.h5s.create(h5py.h5s.SCALAR)
+        aid = h5py.h5a.create(obj.id, attr_name, tid, sid)
+        # write the value
+        dtype_code = 'S' + str(strLength)
+        ndarr = np.array(value, dtype=np.dtype(dtype_code))
+        ret = aid.write(ndarr)
+         
         
     """
     makeAttribute - create an attribute (except for dimension list attribute)
@@ -1162,20 +1185,28 @@ class Hdf5db:
 
                 rank = len(shape)
                 # convert python list to numpy object
-                 
-                typeItem = hdf5dtype.getTypeItem(dt)
-                #print "typeItem:", typeItem
-                value = self.toRef(rank, typeItem, value)
-                             
-                # create numpy array
-                npdata = np.zeros(shape,dtype=dt)
-                               
-                if rank == 0:
-                    npdata[()] = self.toNumPyValue(attr_type, value, npdata[()])
-                else:
-                    self.toNumPyArray(rank, attr_type, value, npdata)
+                strPad = None
+                strLength = 0
+                if type(attr_type) == dict and attr_type['class'] == 'H5T_STRING' and "strPad" in attr_type:
+                    strPad = attr_type["strPad"]
+                    strLength = attr_type['length']                
                     
-                self.writeNdArrayToAttribute(obj.attrs, attr_name, npdata, shape, dt)
+                if rank == 0 and type(strLength) == int and strPad == "H5T_STR_NULLTERM":
+                    self.makeNullTermStringAttribute(obj, attr_name, strLength, value)
+                else: 
+                    typeItem = hdf5dtype.getTypeItem(dt)
+                    #print "typeItem:", typeItem
+                    value = self.toRef(rank, typeItem, value)
+                             
+                    # create numpy array
+                    npdata = np.zeros(shape,dtype=dt)
+                               
+                    if rank == 0:
+                        npdata[()] = self.toNumPyValue(attr_type, value, npdata[()])
+                    else:
+                        self.toNumPyArray(rank, attr_type, value, npdata)
+                    
+                    self.writeNdArrayToAttribute(obj.attrs, attr_name, npdata, shape, dt)
                  
                  
 
@@ -1464,7 +1495,6 @@ class Hdf5db:
         if type(typeItem) in (str, unicode):
             # commited type - get json representation
             committed_type_item = self.getCommittedTypeItemByUuid(typeItem)
-            print "get committed type json:", committed_type_item
             typeItem = committed_type_item['type']
         
         typeClass = typeItem['class']
@@ -1975,15 +2005,9 @@ class Hdf5db:
         item = {}
         
         # h5py.createdataset fields
-        fillvalue = None
-        compression = None
-        chunks = None
-        shuffle = None
-        fletcher32=None
-        compression_opts=None
-        scaleoffset=None
-        track_times=None
-        
+        kwargs = {}  # key word arguments for h5py dataset creation
+       
+        fillvalue = None       
         
         if creation_props is None:
             creation_props = {} # create empty list for convience 
@@ -1992,11 +2016,11 @@ class Hdf5db:
             if "fillValue" in creation_props:
                 fillvalue = creation_props["fillValue"]
             if "trackTimes" in creation_props:
-                track_times = creation_props["trackTimes"]
+                kwargs['track_times'] = creation_props["trackTimes"]
             if "layout" in creation_props:
                 layout = creation_props["layout"]
                 if "dims" in layout:
-                    chunks = tuple(layout["dims"])
+                    kwargs['chunks'] = tuple(layout["dims"])
             if "filters" in creation_props:
                 filter_props = creation_props["filters"]
                 for filter_prop in filter_props:
@@ -2021,16 +2045,16 @@ class Hdf5db:
                         self.log.info("compression filter not available, filter: " + filter_alias + " will be ignored")
                         continue
                     if filter_alias in _H5PY_COMPRESSION_FILTERS:
-                        if compression:
+                        if kwargs['compression']:
                             self.log.info("compression filter already set, filter: " + filter_alias + " will be ignored")
                             continue
                         
-                        compression = filter_alias
-                        self.log.info("setting compression filter to: " + compression)
+                        kwargs['compression'] = filter_alias
+                        self.log.info("setting compression filter to: " + kwargs['compression'])
                         if filter_alias == "gzip":
                             # check for an optional compression value
                             if "level" in filter_prop:
-                                compression_opts = filter_prop["level"]
+                                kwargs['compression_opts'] = filter_prop["level"]
                         elif filter_alias == "szip":
                             bitsPerPixel = None
                             coding = 'nn'
@@ -2053,18 +2077,18 @@ class Hdf5db:
                             if "pixelsPerScanline" in filter_props:
                                 self.log.info("ignoring szip option: 'pixelsPerScanline'")
                             if bitsPerPixel:
-                                compression_opts = (coding, bitsPerPixel)                                 
+                                kwargs['compression_opts'] = (coding, bitsPerPixel)                                 
                     else:
                         if filter_alias == "shuffle":
-                            shuffle = True
+                            kwargs['shuffle'] = True
                         elif filter_alias == "fletcher32":
-                            fletcher32 = True
+                            kwargs['fletcher32'] = True
                         elif filter_alias == "scaleoffset":
                             if "scaleOffset" not in filter_prop:
                                 msg = "No scale_offset provided for scale offset filter"
                                 self.log(msg)
                                 raise IOError(errno.EINVAL, msg)
-                            scaleoffset = filter_prop["scaleOffset"]
+                            kwargs['scaleoffset'] = filter_prop["scaleOffset"]
                         else:
                             log.info("Unexpected filter name: " + filter_alias + " , ignoring")                   
             
@@ -2086,6 +2110,9 @@ class Hdf5db:
                 field = dt.names[i]
                 ndscalar[field] = self.toTuple(fillvalue[i])
             fillvalue = ndscalar
+       
+        if fillvalue:
+            kwargs['fillvalue'] = fillvalue
             
         dataset_id = None
         if datashape == None:
@@ -2112,17 +2139,12 @@ class Hdf5db:
             # create the dataset
             
             try:
-                newDataset = datasets.create_dataset(obj_uuid, shape=datashape, dtype=dt,
-                chunks=chunks, compression=compression,
-                shuffle=shuffle, fletcher32=fletcher32, maxshape=max_shape, 
-                compression_opts=compression_opts, fillvalue=fillvalue, 
-                scaleoffset=scaleoffset, track_times=track_times)
+                newDataset = datasets.create_dataset(obj_uuid, shape=datashape, dtype=dt, **kwargs)
             except ValueError as ve:
                 msg = "Unable to creation dataset: " + ve.message
                 self.log.info(msg)
                 raise IOError(errno.EINVAL, msg) # assume this is due to invalid params
-                
-            
+                       
             if newDataset:
                 dataset_id = newDataset.id
 

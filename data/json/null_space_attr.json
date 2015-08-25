@@ -1,6 +1,7 @@
 {
+    "apiVersion": "1.0.0", 
     "groups": {
-        "b6fd1b59-cd15-11e4-b75b-3c15c2da029e": {
+        "7a0e4b94-4a9d-11e5-a2a3-3c15c2da029e": {
             "alias": [
                 "/"
             ], 
@@ -18,5 +19,5 @@
             ]
         }
     }, 
-    "root": "b6fd1b59-cd15-11e4-b75b-3c15c2da029e"
+    "root": "7a0e4b94-4a9d-11e5-a2a3-3c15c2da029e"
 }

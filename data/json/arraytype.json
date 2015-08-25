@@ -1,9 +1,27 @@
 {
+    "apiVersion": "1.0.0", 
     "datasets": {
-        "b4bd0b47-cd15-11e4-9761-3c15c2da029e": {
+        "614be17a-4a9d-11e5-91a2-3c15c2da029e": {
             "alias": [
                 "/array"
             ], 
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_LATE", 
+                "fillTime": "H5D_FILL_TIME_IFSET", 
+                "fillValue": [
+                    [
+                        0.0, 
+                        0.0
+                    ], 
+                    [
+                        0.0, 
+                        0.0
+                    ]
+                ], 
+                "layout": {
+                    "class": "H5D_CONTIGUOUS"
+                }
+            }, 
             "shape": {
                 "class": "H5S_SIMPLE", 
                 "dims": [
@@ -1026,7 +1044,7 @@
         }
     }, 
     "groups": {
-        "b4bc0597-cd15-11e4-8450-3c15c2da029e": {
+        "614ad3c7-4a9d-11e5-8954-3c15c2da029e": {
             "alias": [
                 "/"
             ], 
@@ -1034,11 +1052,11 @@
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "b4bd0b47-cd15-11e4-9761-3c15c2da029e", 
+                    "id": "614be17a-4a9d-11e5-91a2-3c15c2da029e", 
                     "title": "array"
                 }
             ]
         }
     }, 
-    "root": "b4bc0597-cd15-11e4-8450-3c15c2da029e"
+    "root": "614ad3c7-4a9d-11e5-8954-3c15c2da029e"
 }

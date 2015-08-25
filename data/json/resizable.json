@@ -1,10 +1,21 @@
 {
+    "apiVersion": "1.0.0", 
     "datasets": {
-        "b7c1d587-cd15-11e4-b35f-3c15c2da029e": {
+        "7ada03e1-4a9d-11e5-9e77-3c15c2da029e": {
             "alias": [
                 "/resizable_1d"
             ], 
-            "fillvalue": 0, 
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_INCR", 
+                "fillTime": "H5D_FILL_TIME_ALLOC", 
+                "fillValue": 0, 
+                "layout": {
+                    "class": "H5D_CHUNKED", 
+                    "dims": [
+                        10
+                    ]
+                }
+            }, 
             "shape": {
                 "class": "H5S_SIMPLE", 
                 "dims": [
@@ -31,11 +42,22 @@
                 18
             ]
         }, 
-        "b7c1f1cf-cd15-11e4-b328-3c15c2da029e": {
+        "7ada2e26-4a9d-11e5-a11d-3c15c2da029e": {
             "alias": [
                 "/resizable_2d"
             ], 
-            "fillvalue": 0, 
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_INCR", 
+                "fillTime": "H5D_FILL_TIME_ALLOC", 
+                "fillValue": 0, 
+                "layout": {
+                    "class": "H5D_CHUNKED", 
+                    "dims": [
+                        10, 
+                        10
+                    ]
+                }
+            }, 
             "shape": {
                 "class": "H5S_SIMPLE", 
                 "dims": [
@@ -174,10 +196,21 @@
                 ]
             ]
         }, 
-        "b7c20499-cd15-11e4-b955-3c15c2da029e": {
+        "7ada4bf3-4a9d-11e5-b9fb-3c15c2da029e": {
             "alias": [
                 "/unlimited_1d"
             ], 
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_INCR", 
+                "fillTime": "H5D_FILL_TIME_ALLOC", 
+                "fillValue": 0, 
+                "layout": {
+                    "class": "H5D_CHUNKED", 
+                    "dims": [
+                        10
+                    ]
+                }
+            }, 
             "shape": {
                 "class": "H5S_SIMPLE", 
                 "dims": [
@@ -204,10 +237,22 @@
                 18
             ]
         }, 
-        "b7c21b38-cd15-11e4-bf90-3c15c2da029e": {
+        "7ada7282-4a9d-11e5-92c6-3c15c2da029e": {
             "alias": [
                 "/unlimited_2d"
             ], 
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_INCR", 
+                "fillTime": "H5D_FILL_TIME_ALLOC", 
+                "fillValue": 0, 
+                "layout": {
+                    "class": "H5D_CHUNKED", 
+                    "dims": [
+                        10, 
+                        10
+                    ]
+                }
+            }, 
             "shape": {
                 "class": "H5S_SIMPLE", 
                 "dims": [
@@ -348,7 +393,7 @@
         }
     }, 
     "groups": {
-        "b7c0c2c5-cd15-11e4-a1cb-3c15c2da029e": {
+        "7ad8abdc-4a9d-11e5-b7a1-3c15c2da029e": {
             "alias": [
                 "/"
             ], 
@@ -356,29 +401,29 @@
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "b7c1d587-cd15-11e4-b35f-3c15c2da029e", 
+                    "id": "7ada03e1-4a9d-11e5-9e77-3c15c2da029e", 
                     "title": "resizable_1d"
                 }, 
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "b7c1f1cf-cd15-11e4-b328-3c15c2da029e", 
+                    "id": "7ada2e26-4a9d-11e5-a11d-3c15c2da029e", 
                     "title": "resizable_2d"
                 }, 
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "b7c20499-cd15-11e4-b955-3c15c2da029e", 
+                    "id": "7ada4bf3-4a9d-11e5-b9fb-3c15c2da029e", 
                     "title": "unlimited_1d"
                 }, 
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "b7c21b38-cd15-11e4-bf90-3c15c2da029e", 
+                    "id": "7ada7282-4a9d-11e5-92c6-3c15c2da029e", 
                     "title": "unlimited_2d"
                 }
             ]
         }
     }, 
-    "root": "b7c0c2c5-cd15-11e4-a1cb-3c15c2da029e"
+    "root": "7ad8abdc-4a9d-11e5-b7a1-3c15c2da029e"
 }
