@@ -1,6 +1,6 @@
 from string import Template
 import posixpath as pp
-from util import StringStore
+from fast_strconcat import StringStore
 
 
 class MCode(object):

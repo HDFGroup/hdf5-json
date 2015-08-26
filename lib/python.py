@@ -1,6 +1,6 @@
 import json
 import posixpath as pp
-from util import StringStore
+from fast_strconcat import StringStore
 
 
 class PyCode(object):
