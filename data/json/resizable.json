@@ -1,7 +1,7 @@
 {
     "apiVersion": "1.0.0", 
     "datasets": {
-        "7ada03e1-4a9d-11e5-9e77-3c15c2da029e": {
+        "2d6d477d-4c30-11e5-9550-3c15c2da029e": {
             "alias": [
                 "/resizable_1d"
             ], 
@@ -42,7 +42,7 @@
                 18
             ]
         }, 
-        "7ada2e26-4a9d-11e5-a11d-3c15c2da029e": {
+        "2d6d6c05-4c30-11e5-a672-3c15c2da029e": {
             "alias": [
                 "/resizable_2d"
             ], 
@@ -196,7 +196,7 @@
                 ]
             ]
         }, 
-        "7ada4bf3-4a9d-11e5-b9fb-3c15c2da029e": {
+        "2d6d832e-4c30-11e5-8e02-3c15c2da029e": {
             "alias": [
                 "/unlimited_1d"
             ], 
@@ -217,7 +217,7 @@
                     10
                 ], 
                 "maxdims": [
-                    0
+                    "H5S_UNLIMITED"
                 ]
             }, 
             "type": {
@@ -237,7 +237,7 @@
                 18
             ]
         }, 
-        "7ada7282-4a9d-11e5-92c6-3c15c2da029e": {
+        "2d6da226-4c30-11e5-900a-3c15c2da029e": {
             "alias": [
                 "/unlimited_2d"
             ], 
@@ -261,7 +261,7 @@
                 ], 
                 "maxdims": [
                     10, 
-                    0
+                    "H5S_UNLIMITED"
                 ]
             }, 
             "type": {
@@ -393,7 +393,7 @@
         }
     }, 
     "groups": {
-        "7ad8abdc-4a9d-11e5-b7a1-3c15c2da029e": {
+        "2d6ba838-4c30-11e5-aa95-3c15c2da029e": {
             "alias": [
                 "/"
             ], 
@@ -401,29 +401,29 @@
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "7ada03e1-4a9d-11e5-9e77-3c15c2da029e", 
+                    "id": "2d6d477d-4c30-11e5-9550-3c15c2da029e", 
                     "title": "resizable_1d"
                 }, 
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "7ada2e26-4a9d-11e5-a11d-3c15c2da029e", 
+                    "id": "2d6d6c05-4c30-11e5-a672-3c15c2da029e", 
                     "title": "resizable_2d"
                 }, 
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "7ada4bf3-4a9d-11e5-b9fb-3c15c2da029e", 
+                    "id": "2d6d832e-4c30-11e5-8e02-3c15c2da029e", 
                     "title": "unlimited_1d"
                 }, 
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "7ada7282-4a9d-11e5-92c6-3c15c2da029e", 
+                    "id": "2d6da226-4c30-11e5-900a-3c15c2da029e", 
                     "title": "unlimited_2d"
                 }
             ]
         }
     }, 
-    "root": "7ad8abdc-4a9d-11e5-b7a1-3c15c2da029e"
+    "root": "2d6ba838-4c30-11e5-aa95-3c15c2da029e"
 }

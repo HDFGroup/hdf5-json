@@ -1,0 +1,83 @@
+{
+    "apiVersion": "1.0.0", 
+    "datasets": {
+        "78e1b405-4a9d-11e5-80b8-3c15c2da029e": {
+            "alias": [
+                "/DS1"
+            ], 
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_LATE", 
+                "fillTime": "H5D_FILL_TIME_IFSET", 
+                "fillValue": 0, 
+                "layout": {
+                    "class": "H5D_CONTIGUOUS"
+                }
+            }, 
+            "shape": {
+                "class": "H5S_SIMPLE", 
+                "dims": [
+                    4, 
+                    7
+                ]
+            }, 
+            "type": {
+                "base": "H5T_STD_I32LE", 
+                "class": "H5T_INTEGER"
+            }, 
+            "value": [
+                [
+                    0, 
+                    -1, 
+                    -2, 
+                    -3, 
+                    -4, 
+                    -5, 
+                    -6
+                ], 
+                [
+                    0, 
+                    0, 
+                    0, 
+                    0, 
+                    0, 
+                    0, 
+                    0
+                ], 
+                [
+                    0, 
+                    1, 
+                    2, 
+                    3, 
+                    4, 
+                    5, 
+                    6
+                ], 
+                [
+                    0, 
+                    2, 
+                    4, 
+                    6, 
+                    8, 
+                    10, 
+                    12
+                ]
+            ]
+        }
+    }, 
+    "groups": {
+        "78e08e6b-4a9d-11e5-8191-3c15c2da029e": {
+            "alias": [
+                "/"
+            ], 
+            "links": [
+                {
+                    "class": "H5L_TYPE_HARD", 
+                    "collection": "datasets", 
+                    "id": "78e1b405-4a9d-11e5-80b8-3c15c2da029e", 
+                    "title": "DS1"
+                }
+            ]
+        }
+    }, 
+    "root": "78e08e6b-4a9d-11e5-8191-3c15c2da029e"
+}

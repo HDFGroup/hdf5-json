@@ -272,7 +272,8 @@ def main():
     # open with h5py and remove the _db_ group
     # Note: this will delete any anonymous (un-linked) objects
     f = h5py.File(filename, 'a')
-    del f["__db__"]
+    if "__db__" in f:
+        del f["__db__"]
     f.close()
 
     print "done!"

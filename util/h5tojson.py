@@ -124,7 +124,19 @@ class DumpJson:
         typeItem = item['type']
         response['type'] = hdf5dtype.getTypeResponse(typeItem)
         shapeItem = item['shape']
-        response['shape'] = shapeItem
+        shape_rsp = {}
+        shape_rsp['class'] = shapeItem['class']
+        if 'dims' in shapeItem:
+            shape_rsp['dims'] = shapeItem['dims']
+        if 'maxdims' in shapeItem:
+            maxdims = []
+            for dim in shapeItem['maxdims']:
+                if dim == 0:
+                    maxdims.append('H5S_UNLIMITED')
+                else:
+                    maxdims.append(dim)
+            shape_rsp['maxdims'] = maxdims
+        response['shape'] = shape_rsp
        
         if 'creationProperties' in item:
             response['creationProperties'] = item['creationProperties']
