@@ -2045,7 +2045,7 @@ class Hdf5db:
                         self.log.info("compression filter not available, filter: " + filter_alias + " will be ignored")
                         continue
                     if filter_alias in _H5PY_COMPRESSION_FILTERS:
-                        if 'compression' in kwargs and kwargs['compression']:
+                        if kwargs.get('compression'):
                             self.log.info("compression filter already set, filter: " + filter_alias + " will be ignored")
                             continue
                         

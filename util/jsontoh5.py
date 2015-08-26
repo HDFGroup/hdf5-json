@@ -84,9 +84,9 @@ class Writeh5:
                         #convert to array
                         dim1 = max_shape
                         max_shape = [dim1]
-                    # convert 0's to None's
+                    # convert H5S_UNLIMITED's to None's
                     for i in range(len(max_shape)):
-                        if max_shape[i] == 0:
+                        if max_shape[i] == 'H5S_UNLIMITED':
                             max_shape[i] = None
             elif shape["class"] == 'H5S_NULL':
                 dims = None
@@ -170,7 +170,7 @@ class Writeh5:
     # may use a committed datatype
     #
     def createAttributes(self):
-        dimension_list_attrs = []  # track dimension list attributes 
+        dimension_list_attrs = []  # track dimension list attributes
         # create datatype attributes
         if "datatypes" in self.json:
             datatypes = self.json["datatypes"]
@@ -239,19 +239,19 @@ def main():
     parser.add_argument('in_filename', nargs='+', help='JSon file to be converted to h5')
     parser.add_argument('out_filename', nargs='+', help='name of HDF5 output file')
     args = parser.parse_args()
-    
+
     # create logger
     log = logging.getLogger("h5serv")
     # log.setLevel(logging.WARN)
     log.setLevel(logging.INFO)
     # add log handler
     handler = logging.FileHandler('./jsontoh5.log')
-    
+
     # add handler to logger
     log.addHandler(handler)
-    
+
     text = open(args.in_filename[0]).read()
-    
+
 
     # parse the json file
     h5json = json.loads(text)
