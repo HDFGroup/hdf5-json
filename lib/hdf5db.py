@@ -2139,7 +2139,8 @@ class Hdf5db:
             # create the dataset
             
             try:
-                newDataset = datasets.create_dataset(obj_uuid, shape=datashape, dtype=dt, **kwargs)
+                newDataset = datasets.create_dataset(obj_uuid, shape=datashape, 
+                    maxshape=max_shape, dtype=dt, **kwargs)
             except ValueError as ve:
                 msg = "Unable to creation dataset: " + ve.message
                 self.log.info(msg)

@@ -323,9 +323,7 @@ class Hdf5dbTest(unittest.TestCase):
             for i in range(20):
                 self.assertEqual(d112_values[i], i)
                 
-    def testCreateScalarDataset(self):
-        
-        
+    def testCreateScalarDataset(self):      
         creation_props = {
                 "allocTime": "H5D_ALLOC_TIME_LATE",
                 "fillTime": "H5D_FILL_TIME_IFSET",
@@ -346,7 +344,45 @@ class Hdf5dbTest(unittest.TestCase):
             max_shape=None
         
             db.createDataset(datatype, dims, max_shape=max_shape, creation_props=creation_props)
-             
+            
+    def testCreate1dDataset(self):          
+        datatype = "H5T_STD_I64LE"
+        dims = (10,)
+        filepath = getFile('empty.h5', 'create1ddataset.h5')
+        dset_uuid = None
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            rsp = db.createDataset(datatype, dims)
+            
+            dset_uuid = rsp['id']
+            item = db.getDatasetItemByUuid(dset_uuid)
+            self.failUnlessEqual(item['attributeCount'], 0)
+            type_item = item['type']
+            self.failUnlessEqual(type_item['class'], 'H5T_INTEGER')
+            self.failUnlessEqual(type_item['base'], 'H5T_STD_I64LE')
+            shape_item = item['shape']
+            self.failUnlessEqual(shape_item['class'], 'H5S_SIMPLE')
+            self.failUnlessEqual(shape_item['dims'], (10,))
+            
+    def testCreate2dExtendableDataset(self):          
+        datatype = "H5T_STD_I64LE"
+        dims = (10, 10)
+        max_shape = (None, 10)
+        filepath = getFile('empty.h5', 'create2dextendabledataset.h5')
+        dset_uuid = None
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            rsp = db.createDataset(datatype, dims, max_shape=max_shape)            
+            dset_uuid = rsp['id']
+            item = db.getDatasetItemByUuid(dset_uuid)
+            self.failUnlessEqual(item['attributeCount'], 0)
+            type_item = item['type']
+            self.failUnlessEqual(type_item['class'], 'H5T_INTEGER')
+            self.failUnlessEqual(type_item['base'], 'H5T_STD_I64LE')
+            shape_item = item['shape']
+            self.failUnlessEqual(shape_item['class'], 'H5S_SIMPLE')
+            self.failUnlessEqual(shape_item['dims'], (10,10))
+            self.assertTrue('maxdims' in shape_item)
+            self.failUnlessEqual(shape_item['maxdims'], [0, 10])
+                       
                 
     def testReadZeroDimDataset(self):
          filepath = getFile('zerodim.h5', 'readzerodeimdataset.h5')
