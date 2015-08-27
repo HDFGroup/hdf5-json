@@ -414,7 +414,7 @@ class PyCode(object):
             raise Exception("unexpected link type: " + link_json["class"])
 
     def doLinks(self, h5json, group_json, level):
-        links = group_json["links"]
+        links = group_json.get("links", [])
         for link in links:
             self.doLink(h5json, link, level)
 
