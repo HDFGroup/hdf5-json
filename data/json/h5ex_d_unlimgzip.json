@@ -1,0 +1,135 @@
+{
+    "apiVersion": "1.0.0", 
+    "datasets": {
+        "8abca987-4c30-11e5-83ae-3c15c2da029e": {
+            "alias": [
+                "/DS1"
+            ], 
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_INCR", 
+                "fillTime": "H5D_FILL_TIME_IFSET", 
+                "fillValue": 0, 
+                "filters": [
+                    {
+                        "class": "H5Z_FILTER_DEFLATE", 
+                        "id": 1, 
+                        "level": 9, 
+                        "name": "deflate"
+                    }
+                ], 
+                "layout": {
+                    "class": "H5D_CHUNKED", 
+                    "dims": [
+                        4, 
+                        4
+                    ]
+                }
+            }, 
+            "shape": {
+                "class": "H5S_SIMPLE", 
+                "dims": [
+                    6, 
+                    10
+                ], 
+                "maxdims": [
+                    "H5S_UNLIMITED", 
+                    "H5S_UNLIMITED"
+                ]
+            }, 
+            "type": {
+                "base": "H5T_STD_I32LE", 
+                "class": "H5T_INTEGER"
+            }, 
+            "value": [
+                [
+                    0, 
+                    -1, 
+                    -2, 
+                    -3, 
+                    -4, 
+                    -5, 
+                    -6, 
+                    7, 
+                    8, 
+                    9
+                ], 
+                [
+                    0, 
+                    0, 
+                    0, 
+                    0, 
+                    0, 
+                    0, 
+                    0, 
+                    7, 
+                    8, 
+                    9
+                ], 
+                [
+                    0, 
+                    1, 
+                    2, 
+                    3, 
+                    4, 
+                    5, 
+                    6, 
+                    7, 
+                    8, 
+                    9
+                ], 
+                [
+                    0, 
+                    2, 
+                    4, 
+                    6, 
+                    8, 
+                    10, 
+                    12, 
+                    7, 
+                    8, 
+                    9
+                ], 
+                [
+                    0, 
+                    1, 
+                    2, 
+                    3, 
+                    4, 
+                    5, 
+                    6, 
+                    7, 
+                    8, 
+                    9
+                ], 
+                [
+                    0, 
+                    1, 
+                    2, 
+                    3, 
+                    4, 
+                    5, 
+                    6, 
+                    7, 
+                    8, 
+                    9
+                ]
+            ]
+        }
+    }, 
+    "groups": {
+        "8abb524a-4c30-11e5-99c4-3c15c2da029e": {
+            "alias": [
+                "/"
+            ], 
+            "links": [
+                {
+                    "class": "H5L_TYPE_HARD", 
+                    "collection": "datasets", 
+                    "id": "8abca987-4c30-11e5-83ae-3c15c2da029e", 
+                    "title": "DS1"
+                }
+            ]
+        }
+    }, 
+    "root": "8abb524a-4c30-11e5-99c4-3c15c2da029e"
+}
