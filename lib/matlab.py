@@ -302,14 +302,13 @@ class MCode(object):
                            + '}')
             else:
                 # Left-justified, fixed-length string format...
-                # fmt = '{{:<{0:d}.{0:d}}}'.format(attr['type']['length'])
+                fmt = "'%-{0:d}.{0:d}s'".format(attr['type']['length'])
 
                 if attr['shape']['class'] == 'H5S_SCALAR':
-                    # val_str = "'%s'" % fmt.format(value)
-                    val_str = value
+                    val_str = "sprintf({}, {})".format(fmt, value)
                 else:
-                    # for i in xrange(len(value)):
-                    #     value[i] = fmt.format(value[i])
+                    for i in xrange(len(value)):
+                        value[i] = "sprintf({}, {})".format(fmt, value[i])
                     val_str = (
                         '[' + '; '.join(value)
                         + "]'")
