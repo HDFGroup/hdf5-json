@@ -107,15 +107,8 @@ class IdlCode(object):
                     "sid = H5S_CREATE_SIMPLE(REVERSE($dims), "
                     "MAX_DIMENSIONS=REVERSE($maxdims))\n"
                 )
-            maxdims = []
-            for d in shape['maxdims']:
-                if d == 'H5S_UNLIMITED':
-                    # Unlimited dimension
-                    maxdims.append(-1)
-                else:
-                    maxdims.append(d)
             vars = {'dims': self._dims2str(shape['dims']),
-                    'maxdims': self._dims2str(shape['maxdims'])}
+                    'maxdims': self._dims2str(shape.get('maxdims', []))}
             return tmplt.substitute(vars)
         else:
             raise NotImplementedError('%s: Not supported' % shape['class'])
