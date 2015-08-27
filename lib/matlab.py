@@ -138,6 +138,8 @@ class MCode(object):
                     'maxdims': self._dims2str(shape['maxdims']),
                     'rank': rank}
             return tmplt.substitute(vars)
+        elif shape['class'] == 'H5S_NULL':
+            return "sid = H5S.create('H5S_NULL');\n"
         else:
             raise NotImplementedError('%s: Not supported' % shape['class'])
 
