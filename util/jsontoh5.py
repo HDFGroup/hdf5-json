@@ -58,8 +58,6 @@ class Writeh5:
     # Create HDF5 dataset object and write data values
     #
     def createDataset(self, uuid, body):
-        print "creating dataset: ", uuid
-        print "body:", body
         datatype = body['type']
         if type(datatype) in (str, unicode) and datatype.startswith("datatypes/"):
             #committed datatype, just pass in the UUID part
