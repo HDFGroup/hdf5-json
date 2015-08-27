@@ -135,7 +135,7 @@ class MCode(object):
                     "fliplr($maxdims));\n"
                 )
             vars = {'dims': self._dims2str(shape['dims']),
-                    'maxdims': self._dims2str(shape['maxdims']),
+                    'maxdims': self._dims2str(shape.get('maxdims', [])),
                     'rank': rank}
             return tmplt.substitute(vars)
         elif shape['class'] == 'H5S_NULL':
