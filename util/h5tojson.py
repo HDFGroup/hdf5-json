@@ -125,9 +125,12 @@ class DumpJson:
         response['type'] = hdf5dtype.getTypeResponse(typeItem)
         shapeItem = item['shape']
         shape_rsp = {}
+        num_elements = 1
         shape_rsp['class'] = shapeItem['class']
         if 'dims' in shapeItem:
             shape_rsp['dims'] = shapeItem['dims']
+            for dim in shapeItem['dims']:
+                num_elements *= dim
         if 'maxdims' in shapeItem:
             maxdims = []
             for dim in shapeItem['maxdims']:
@@ -144,10 +147,14 @@ class DumpJson:
         attributes = self.dumpAttributes('datasets', uuid)
         if attributes:
             response['attributes'] = attributes
-        value = self.db.getDatasetValuesByUuid(uuid)
+        
         
         if not (self.options.D or self.options.d):
-            response['value'] = value   # dump values unless header flag was passed
+            if num_elements > 0:
+                value = self.db.getDatasetValuesByUuid(uuid)
+                response['value'] = value   # dump values unless header flag was passed
+            else:
+                response['value'] = []  # empty list
         return response
         
     def dumpDatasets(self):
