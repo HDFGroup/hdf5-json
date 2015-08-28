@@ -840,7 +840,7 @@ class Hdf5db:
             obj_uuid = str(uuid.uuid1())
         dt = self.createTypeFromItem(datatype)
 
-        datatypes[obj_uuid] = dt # np.dtype(dt)  # dt
+        datatypes[obj_uuid] = dt 
 
         if obj_uuid not in datatypes:
             msg = "Unexpected failure to create committed datatype"
