@@ -805,7 +805,7 @@ class Hdf5db:
                 msg = "Unable to create attribute, committed type with uuid of: " + attr_type + " not found"
                 self.log.info(msg)
                 raise IOError(errno.ENXIO, msg)
-            dt = tgt  # can use the object as the dt parameter
+            dt = tgt.dtype  # can use the object as the dt parameter
         else:
              
             try:
@@ -840,7 +840,7 @@ class Hdf5db:
             obj_uuid = str(uuid.uuid1())
         dt = self.createTypeFromItem(datatype)
 
-        datatypes[obj_uuid] = np.dtype(dt)  # dt
+        datatypes[obj_uuid] = dt # np.dtype(dt)  # dt
 
         if obj_uuid not in datatypes:
             msg = "Unexpected failure to create committed datatype"
@@ -2100,6 +2100,7 @@ class Hdf5db:
             
         if fillvalue and len(dt) > 1 and type(fillvalue) in (list, tuple):
             # for compound types, need to convert from list to dataset compatible element
+             
             converted_data = []
             if len(dt) != len(fillvalue):
                 msg = 'fillvalue has incorrect number of elements'

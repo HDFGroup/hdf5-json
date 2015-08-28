@@ -10,7 +10,7 @@
                 "fillTime": "H5D_FILL_TIME_ALLOC", 
                 "fillValue": [
                     0, 
-                    null, 
+                    "", 
                     0.0, 
                     0.0
                 ], 
@@ -73,8 +73,8 @@
                         "type": {
                             "charSet": "H5T_CSET_ASCII", 
                             "class": "H5T_STRING", 
-                            "length": "H5T_VARIABLE", 
-                            "strPad": "H5T_STR_NULLTERM"
+                            "length": 3, 
+                            "strPad": "H5T_STR_NULLPAD"
                         }
                     }, 
                     {

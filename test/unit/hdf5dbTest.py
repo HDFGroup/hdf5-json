@@ -565,8 +565,6 @@ class Hdf5dbTest(unittest.TestCase):
              
             
     def testWriteCommittedType(self):
-        # getAttributeItemByUuid
-        item = None
         filepath = getFile('empty.h5', 'writecommittedtype.h5')
         with Hdf5db(filepath, app_logger=self.log) as db:
             root_uuid = db.getUUIDByPath('/')
@@ -589,7 +587,60 @@ class Hdf5dbTest(unittest.TestCase):
             self.failUnlessEqual(item_type['class'], 'H5T_STRING') 
             self.failUnlessEqual(item_type['strPad'], 'H5T_STR_NULLPAD')
             self.failUnlessEqual(item_type['charSet'], 'H5T_CSET_ASCII') 
-            self.failUnlessEqual(item_type['length'], 15)        
+            self.failUnlessEqual(item_type['length'], 15)  
+            
+    def testWriteCommittedCompoundType(self):
+        filepath = getFile('empty.h5', 'writecommittedcompoundtype.h5')
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            root_uuid = db.getUUIDByPath('/')
+            datatype = {'class': 'H5T_COMPOUND',
+                        'fields': [] }
+             
+            fixed_str_type = { 'charSet':   'H5T_CSET_ASCII', 
+                     'class':  'H5T_STRING', 
+                     'strPad': 'H5T_STR_NULLTERM', 
+                     'length': 15}
+                     
+            var_str_type = {
+                     "charSet": "H5T_CSET_ASCII", 
+                     "class": "H5T_STRING", 
+                     "length": "H5T_VARIABLE", 
+                     "strPad": "H5T_STR_NULLTERM" }
+            type_fields = []
+            type_fields.append({'name': 'field_1', 'type': 'H5T_STD_I64BE' })
+            type_fields.append({'name': 'field_2', 'type': 'H5T_IEEE_F64BE' })
+            type_fields.append({'name': 'field_3', 'type': fixed_str_type })
+            type_fields.append({'name': 'field_4', 'type': var_str_type })
+            datatype['fields'] = type_fields
+         
+            
+            item = db.createCommittedType(datatype)
+            type_uuid = item['id']
+            item = db.getCommittedTypeItemByUuid(type_uuid)
+            self.failUnlessEqual(item['id'], type_uuid)
+            self.failUnlessEqual(item['attributeCount'], 0)
+            now = int(time.time())
+            self.assertTrue(item['ctime'] > now - 5)
+            self.assertTrue(item['mtime'] > now - 5)
+            self.failUnlessEqual(len(item['alias']), 0)  # anonymous, so no alias
+             
+            item_type = item['type']
+             
+            self.failUnlessEqual(item_type['class'], 'H5T_COMPOUND') 
+            fields = item_type['fields']
+            self.failUnlessEqual(len(fields), 4)
+            # todo - the last field class should be H5T_STRING, but it is getting
+            # saved to HDF5 as Opaque - see: https://github.com/h5py/h5py/issues/613 
+            field_classes = ('H5T_INTEGER', 'H5T_FLOAT', 'H5T_STRING', 'H5T_OPAQUE')
+            for i in range(4):
+                field = fields[i]
+                self.failUnlessEqual(field['name'], 'field_' + str(i+1))
+                field_type = field['type']
+                self.failUnlessEqual(field_type['class'], field_classes[i])
+                
+               
+                   
+             
                      
     
         

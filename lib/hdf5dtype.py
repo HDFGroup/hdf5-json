@@ -406,7 +406,6 @@ def createBaseDataType(typeItem):
     
 def createDataType(typeItem):
     dtRet = None
-     
     if type(typeItem) == str or type(typeItem) == unicode:
         # should be one of the predefined types
         dtName = getNumpyTypename(typeItem)

@@ -213,12 +213,21 @@ class Hdf5dtypeTest(unittest.TestCase):
         typeItem = {'class': 'H5T_COMPOUND', 'fields': 
                 [{'name': 'temp',     'type': 'H5T_IEEE_F32LE'},
                  {'name': 'pressure', 'type': 'H5T_IEEE_F32LE'}, 
+                 {'name': 'location', 'type': {
+                     'length': 'H5T_VARIABLE', 
+                     'charSet': 'H5T_CSET_ASCII', 
+                     'class': 'H5T_STRING', 
+                     'strPad': 'H5T_STR_NULLTERM' } },
                  {'name': 'wind',     'type': 'H5T_STD_I16LE'} ] }
         
         dt = hdf5dtype.createDataType(typeItem)
-        self.assertEqual(dt.name, 'void80')
+        self.assertEqual(dt.name, 'void144')
         self.assertEqual(dt.kind, 'V')
-        self.assertEqual(len(dt.fields), 3)
+        self.assertEqual(len(dt.fields), 4)
+        dtLocation = dt[2]
+        self.assertEqual(dtLocation.name, 'object')
+        self.assertEqual(dtLocation.kind, 'O')
+        self.assertEqual(check_dtype(vlen=dtLocation), str)
         
     def testCreateCompoundTypeUnicodeFields(self):
         typeItem = {'class': 'H5T_COMPOUND', 'fields': 
