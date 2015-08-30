@@ -18,6 +18,19 @@
                         "strPad": "H5T_STR_NULLPAD"
                     }, 
                     "value": "12345"
+                },
+                {
+                    "name": "A2",
+                    "shape": {
+                        "class": "H5S_SCALAR"
+                    },
+                    "type": {
+                        "charSet": "H5T_CSET_ASCII",
+                        "class": "H5T_STRING",
+                        "length": 5,
+                        "strPad": "H5T_STR_NULLTERM"
+                    },
+                    "value": "12345"
                 }
             ], 
             "creationProperties": {

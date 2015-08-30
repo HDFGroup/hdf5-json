@@ -1128,6 +1128,7 @@ class Hdf5db:
         dtype_code = 'S' + str(strLength)
         ndarr = np.array(value, dtype=np.dtype(dtype_code))
         ret = aid.write(ndarr)
+        
          
         
     """
