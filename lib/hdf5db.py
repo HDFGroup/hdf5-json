@@ -1115,8 +1115,8 @@ class Hdf5db:
         if type(value) == unicode:
             value = str(value)
         if strLength < len(value): 
-            self.log.info("makeNullTermStringAttribute: value string longer than strLength - truncating")
-            value = value[:strLength]  # truncate to length
+            self.log.warn("makeNullTermStringAttribute: value string longer than length")
+            #value = value[:strLength]  # truncate to length
              
         # create the attribute
         tid = h5py.h5t.TypeID.copy(h5py.h5t.C_S1)
