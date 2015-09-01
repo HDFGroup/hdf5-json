@@ -130,7 +130,7 @@ class Hdf5db:
         return versionInfo
 
 
-    def __init__(self, filePath, dbFilePath=None, readonly=False, app_logger=None, root_uuid=None, update_timestamps=True):
+    def __init__(self, filePath, dbFilePath=None, readonly=False, app_logger=None, root_uuid=None, update_timestamps=True, userid=None):
         if app_logger:
             self.log = app_logger
         else:
@@ -304,6 +304,108 @@ class Hdf5db:
                 root_uuid = self.dbGrp.attrs["rootUUID"]
                 timestamp = mtime_grp.attrs[root_uuid]
         return timestamp
+        
+    """
+      getAclGroup - return the db group "{acl}" if present,
+        otherwise return None
+    """
+    def getAclGroup(self, create=False):
+        if not self.dbGrp:
+            return None  # file not initialized
+        if "{acl}" in self.dbGrp:
+            return self.dbGrp["{acl}"]
+        if not create:
+            return None
+        self.dbGrp.create_group("{acl}")
+        return self.dbGrp["{acl}"]
+    
+    """
+      getAclDataset - return ACL datset for given uuid
+    """        
+    def getAclDataset(self, obj_uuid, create=False):
+        acl_group = self.getAclGroup(create=True)
+        if obj_uuid in acl_group:
+            return acl_group[obj_uuid]
+        if not create:
+            return None
+        # create dataset
+        fields = []
+        fields.append(('userid', np.int32))
+        fields.append(('create', np.int8))
+        fields.append(('read', np.int8))
+        fields.append(('update', np.int8))
+        fields.append(('delete', np.int8))
+        fields.append(('readACL', np.int8))
+        fields.append(('updateACL', np.int8))
+        dt = np.dtype(fields)
+        acl_group.create_dataset(obj_uuid, (0,), dtype=dt, maxshape=(None,))
+        return acl_group[obj_uuid]
+    
+    """
+      getAcl - return ACL for given uuid and userid
+    """    
+    def getAcl(self, obj_uuid, userid, create=False):
+        acl_dset = self.getAclDataset(obj_uuid, create)
+        """
+        if acl_dset is None:
+            # no obj dataset, get root dataset
+            if obj_uuid == self.root_uuid:
+                return None
+            acl_dset = self.getAclDataset(root_uuid)
+        """
+        if acl_dset is None:
+            print "no dset"
+            return None
+        # iterate through elements, looking for user_id
+        acls = acl_dset[...]
+        num_acls = acl_dset.shape[0]
+        acl = None
+        for i in range(num_acls):
+            acl = acls[i]
+            if acl['userid'] == userid:
+                return acl
+        
+        # userid not found
+        if create:
+            acl_dset.resize(((num_acls+1),))
+            acl = acl_dset[num_acls]
+            acl['userid'] = userid
+            acl['create'] = 0
+            acl['read'] = 0
+            acl['update'] = 0
+            acl['delete'] = 0
+            acl['readACL'] = 0
+            acl['updateACL'] = 0
+            acl_dset[num_acls] = acl
+            
+        return acl
+    """
+      setAcl -  set the acl for given uuid.
+    """    
+    def setAcl(self, obj_uuid, acl):
+        acl_dset = self.getAclDataset(obj_uuid, create=True)
+        userid = acl['userid']
+        
+        if acl_dset is None:
+            msg = "Unexpected error acl not found for uuid:[" + obj_uuid + "]"
+            self.log.error(msg)
+            raise IOError(errno.EIO, msg)
+        
+        # iterate through elements, looking for user_id
+        acls = acl_dset[...]
+        num_acls = acl_dset.shape[0]
+        
+        for i in range(num_acls):
+            item = acls[i]
+            if item['userid'] == userid:
+                # update this element
+                acl_dset[i] = acl
+                return
+        
+        # userid not found - add row
+        acl_dset.resize(num_acls+1)
+        acl_dset[num_acls] = acl  
+          
 
     def initFile(self):
         # self.log.info("initFile")

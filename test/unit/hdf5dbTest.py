@@ -683,11 +683,7 @@ class Hdf5dbTest(unittest.TestCase):
                 field_type = field['type']
                 self.failUnlessEqual(field_type['class'], field_classes[i])
                 
-               
-                   
-             
-                     
-    
+                 
         
     def testToRef(self):
         
@@ -717,10 +713,39 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(db.toTuple( [(1,2),(3,4)] ), ((1,2),(3,4))  )
             self.assertEqual(db.toTuple( [[[1,2],[3,4]], [[5,6],[7,8]]] ), 
                 (((1,2),(3,4)), ((5,6),(7,8)))  )
+                
+    def testGetAclDataset(self):
+        filepath = getFile('tall.h5', 'getacldataset.h5')
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            d111_uuid = db.getUUIDByPath('/g1/g1.1/dset1.1.1')
+            acl_dset = db.getAclDataset(d111_uuid, create=True)
+            self.assertTrue(acl_dset.name.endswith(d111_uuid))
+            self.failUnlessEqual(len(acl_dset.dtype), 7)
+            self.failUnlessEqual(len(acl_dset.shape), 1)
+            self.failUnlessEqual(acl_dset.shape[0], 0)
             
+    def testSetAcl(self):
+        filepath = getFile('tall.h5', 'setacl.h5')
+        user1 = 123
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            d111_uuid = db.getUUIDByPath('/g1/g1.1/dset1.1.1')
+            acl = db.getAcl(d111_uuid, user1, create=True)
+            
+            self.failUnlessEqual(acl['userid'], user1)
+            acl['create'] = True
+            acl['update'] = True
+            db.setAcl(d111_uuid, acl)
+            acl = db.getAcl(d111_uuid, user1)
+            print acl
+            self.failUnlessEqual(acl['userid'], user1)
+            self.failUnlessEqual(acl['create'], 1)
+            self.failUnlessEqual(acl['update'], 1)
+            self.failUnlessEqual(acl['delete'], 0)
+            
+             
+            
+                    
          
-            
-        
             
          
              
