@@ -318,17 +318,11 @@ class Hdf5db:
             return None
         self.dbGrp.create_group("{acl}")
         return self.dbGrp["{acl}"]
-    
+        
     """
-      getAclDataset - return ACL datset for given uuid
-    """        
-    def getAclDataset(self, obj_uuid, create=False):
-        acl_group = self.getAclGroup(create=True)
-        if obj_uuid in acl_group:
-            return acl_group[obj_uuid]
-        if not create:
-            return None
-        # create dataset
+      getAclDtype - return detype for ACL
+    """
+    def getAclDtype(self):
         fields = []
         fields.append(('userid', np.int32))
         fields.append(('create', np.int8))
@@ -338,58 +332,122 @@ class Hdf5db:
         fields.append(('readACL', np.int8))
         fields.append(('updateACL', np.int8))
         dt = np.dtype(fields)
+        return dt
+        
+    
+    """
+      getAclDataset - return ACL datset for given uuid
+    """        
+    def getAclDataset(self, obj_uuid, create=False):
+        acl_group = self.getAclGroup(create=create)
+        
+        if acl_group is None:
+            return None
+            
+        if obj_uuid in acl_group:
+            return acl_group[obj_uuid]
+            
+        if not create:         
+            return None
+             
+        # create dataset
+        dt = self.getAclDtype()   
         acl_group.create_dataset(obj_uuid, (0,), dtype=dt, maxshape=(None,))
         return acl_group[obj_uuid]
+        
+    """
+      getNumAcls - return number of acls associatted with given uuid
+    """        
+    def getNumAcls(self, obj_uuid):
+        acl_group = self.getAclGroup()
+        if acl_group is None:
+            return 0
+        if obj_uuid not in acl_group:
+            return 0
+        acls = acl_group[obj_uuid]
+        return acls.shape[0]
+             
     
     """
       getAcl - return ACL for given uuid and userid
-    """    
-    def getAcl(self, obj_uuid, userid, create=False):
-        acl_dset = self.getAclDataset(obj_uuid, create)
-        """
-        if acl_dset is None:
-            # no obj dataset, get root dataset
-            if obj_uuid == self.root_uuid:
-                return None
-            acl_dset = self.getAclDataset(root_uuid)
-        """
-        if acl_dset is None:
-            print "no dset"
-            return None
-        # iterate through elements, looking for user_id
-        acls = acl_dset[...]
-        num_acls = acl_dset.shape[0]
-        acl = None
-        for i in range(num_acls):
-            acl = acls[i]
-            if acl['userid'] == userid:
-                return acl
+        returns ACL associated with the given uuid, or if none exists,
+        the ACL associatted with the root group.
         
-        # userid not found
-        if create:
-            acl_dset.resize(((num_acls+1),))
-            acl = acl_dset[num_acls]
-            acl['userid'] = userid
-            acl['create'] = 0
-            acl['read'] = 0
-            acl['update'] = 0
-            acl['delete'] = 0
-            acl['readACL'] = 0
-            acl['updateACL'] = 0
-            acl_dset[num_acls] = acl
+        If an ACL is not present for a userid/obj and ACL will be returned
+        via the following precedence:
             
+        1) obj_uuid, user_id
+        2) root_uuid, user_id
+        3) obj_uuid, 0 
+        4) root_uuid, 0
+        5) 'all perm' ACL
+    """    
+    def getAcl(self, obj_uuid, userid):
+        acl_grp = self.getAclGroup()
+        
+        if acl_grp is not None:
+            acl = self.getAclByObjAndUser(obj_uuid, userid)
+            if acl is not None:
+                return acl
+            
+            if obj_uuid != self.root_uuid and userid != 0:
+                # get the root acl for this user
+                acl = self.getAclByObjAndUser(self.root_uuid, userid)
+                if acl is not None:
+                    return acl
+                
+            if userid != 0:
+                # get acl for default user
+                acl = self.getAclByObjAndUser(obj_uuid, 0)
+                if acl is not None:
+                    return acl
+        
+            if obj_uuid != self.root_uuid:
+                # get root acl for default user
+                acl = self.getAclByObjAndUser(self.root_uuid, 0)
+                if acl is not None:
+                    return acl
+                
+        # create an ACL with default permissions
+        dt = self.getAclDtype()
+        acl = np.ones((), dtype=dt)
+        acl['userid'] = 0
         return acl
+                   
+    """
+      get ACL for specific uuid and user
+         return None if not found
+    """    
+    def getAclByObjAndUser(self, obj_uuid, userid):
+        
+        acl = None
+        acl_dset = self.getAclDataset(obj_uuid)
+         
+        if acl_dset:           
+            # iterate through elements, looking for user_id
+            acls = acl_dset[...]
+            num_acls = acl_dset.shape[0]
+            acl = None
+            for i in range(num_acls):
+                item = acls[i]
+                if item['userid'] == userid:
+                    acl = item
+                    
+        return acl
+                        
+        
     """
       setAcl -  set the acl for given uuid.
     """    
     def setAcl(self, obj_uuid, acl):
         acl_dset = self.getAclDataset(obj_uuid, create=True)
-        userid = acl['userid']
         
         if acl_dset is None:
-            msg = "Unexpected error acl not found for uuid:[" + obj_uuid + "]"
+            msg = "Unexpected error acl not created for uuid:[" + obj_uuid + "]"
             self.log.error(msg)
             raise IOError(errno.EIO, msg)
+            
+        userid = acl['userid']
         
         # iterate through elements, looking for user_id
         acls = acl_dset[...]
@@ -403,7 +461,7 @@ class Hdf5db:
                 return
         
         # userid not found - add row
-        acl_dset.resize(num_acls+1)
+        acl_dset.resize(((num_acls+1),))
         acl_dset[num_acls] = acl  
           
 

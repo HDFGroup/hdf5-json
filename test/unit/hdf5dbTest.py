@@ -700,9 +700,7 @@ class Hdf5dbTest(unittest.TestCase):
                            "strPad": "H5T_STR_NULLPAD" }
             data_list = [ "Hypertext", "as", "engine", "of", "state" ]
             ref_value = db.toRef(1, type_item, data_list)
-             
-                        
-         
+                 
         
     def testToTuple(self):
         filepath = getFile('empty.h5', 'totuple.h5')
@@ -718,36 +716,111 @@ class Hdf5dbTest(unittest.TestCase):
         filepath = getFile('tall.h5', 'getacldataset.h5')
         with Hdf5db(filepath, app_logger=self.log) as db:
             d111_uuid = db.getUUIDByPath('/g1/g1.1/dset1.1.1')
+            num_acls = db.getNumAcls(d111_uuid)
+            self.failUnlessEqual(num_acls, 0)
             acl_dset = db.getAclDataset(d111_uuid, create=True)
             self.assertTrue(acl_dset.name.endswith(d111_uuid))
             self.failUnlessEqual(len(acl_dset.dtype), 7)
             self.failUnlessEqual(len(acl_dset.shape), 1)
             self.failUnlessEqual(acl_dset.shape[0], 0)
+            num_acls = db.getNumAcls(d111_uuid)
+            self.failUnlessEqual(num_acls, 0)
             
     def testSetAcl(self):
         filepath = getFile('tall.h5', 'setacl.h5')
         user1 = 123
+        user2 = 456
         with Hdf5db(filepath, app_logger=self.log) as db:
             d111_uuid = db.getUUIDByPath('/g1/g1.1/dset1.1.1')
-            acl = db.getAcl(d111_uuid, user1, create=True)
+            num_acls = db.getNumAcls(d111_uuid)
+            self.failUnlessEqual(num_acls, 0)
             
-            self.failUnlessEqual(acl['userid'], user1)
-            acl['create'] = True
-            acl['update'] = True
-            db.setAcl(d111_uuid, acl)
+            # add read/write acl for user1
+            acl_user1 = db.getAcl(d111_uuid, user1)
+            self.failUnlessEqual(acl_user1['userid'], 0)
+            acl_user1['userid'] = user1
+            acl_user1['readACL'] = 0
+            acl_user1['updateACL'] = 0
+            num_acls = db.getNumAcls(d111_uuid)       
+            self.failUnlessEqual(num_acls, 0)
+            db.setAcl(d111_uuid, acl_user1)
             acl = db.getAcl(d111_uuid, user1)
-            print acl
+            num_acls = db.getNumAcls(d111_uuid)       
+            self.failUnlessEqual(num_acls, 1)
+            
+            
+            # add read-only acl for user2
+            acl_user2 = db.getAcl(d111_uuid, user2)
+            self.failUnlessEqual(acl_user2['userid'], 0)
+            acl_user2['userid'] = user2
+            acl_user2['create'] = 0
+            acl_user2['read'] = 1
+            acl_user2['update'] = 0
+            acl_user2['delete'] = 0
+            acl_user2['readACL'] = 0
+            acl_user2['updateACL'] = 0
+            db.setAcl(d111_uuid, acl_user2)
+            num_acls = db.getNumAcls(d111_uuid)
+            self.failUnlessEqual(num_acls, 2)
+             
+            # fetch and verify acls
+            acl = db.getAcl(d111_uuid, user1)
             self.failUnlessEqual(acl['userid'], user1)
             self.failUnlessEqual(acl['create'], 1)
+            self.failUnlessEqual(acl['read'], 1)
             self.failUnlessEqual(acl['update'], 1)
+            self.failUnlessEqual(acl['delete'], 1)
+            self.failUnlessEqual(acl['readACL'], 0)
+            self.failUnlessEqual(acl['updateACL'], 0)
+            
+            acl = db.getAcl(d111_uuid, user2)
+            self.failUnlessEqual(acl['userid'], user2)
+            self.failUnlessEqual(acl['create'], 0)
+            self.failUnlessEqual(acl['read'], 1)
+            self.failUnlessEqual(acl['update'], 0)
             self.failUnlessEqual(acl['delete'], 0)
+            self.failUnlessEqual(acl['readACL'], 0)
+            self.failUnlessEqual(acl['updateACL'], 0)
             
+            num_acls = db.getNumAcls(d111_uuid)
+            self.failUnlessEqual(num_acls, 2)
+            
+    def testRootAcl(self):
+        filepath = getFile('tall.h5', 'setacl.h5')
+        user1 = 123
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            root_uuid = db.getUUIDByPath('/')
+            d111_uuid = db.getUUIDByPath('/g1/g1.1/dset1.1.1')
+            num_acls = db.getNumAcls(d111_uuid)
+            self.failUnlessEqual(num_acls, 0)
+            
+            # add read/write acl for user1 at root
+            acl_root = db.getAcl(root_uuid, 0)
+            self.failUnlessEqual(acl_root['userid'], 0)
+            acl_root['create'] = 0
+            acl_root['read'] = 1
+            acl_root['update'] = 0
+            acl_root['delete'] = 0
+            acl_root['readACL'] = 0
+            acl_root['updateACL'] = 0
+            num_acls = db.getNumAcls(root_uuid)
+            self.failUnlessEqual(num_acls, 0)
              
+            db.setAcl(root_uuid, acl_root)
+            num_acls = db.getNumAcls(root_uuid)
+            self.failUnlessEqual(num_acls, 1)
             
-                    
-         
-            
-         
+            acl = db.getAcl(d111_uuid, user1)
+            num_acls = db.getNumAcls(d111_uuid)  # this will fetch the root acl
+            self.failUnlessEqual(num_acls, 0)
+            self.failUnlessEqual(acl['userid'], 0)
+            self.failUnlessEqual(acl['create'], 0)
+            self.failUnlessEqual(acl['read'], 1)
+            self.failUnlessEqual(acl['update'], 0)
+            self.failUnlessEqual(acl['delete'], 0)
+            self.failUnlessEqual(acl['readACL'], 0)
+            self.failUnlessEqual(acl['updateACL'], 0)
+                  
              
              
 if __name__ == '__main__':
