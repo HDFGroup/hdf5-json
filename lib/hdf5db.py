@@ -135,6 +135,11 @@ class Hdf5db:
             self.log = app_logger
         else:
             self.log = logging.getLogger()
+        if len(filePath) == 0 or not op.isfile(filePath):
+            raise IOError(errno.ENXIO, "file not found")
+        if not h5py.is_hdf5(filePath):
+            raise IOError(errno.EINVAL, "not an HDF5 file")
+        
         mode = 'r'
         if readonly:
             self.readonly = True

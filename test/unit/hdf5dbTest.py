@@ -74,7 +74,25 @@ class Hdf5dbTest(unittest.TestCase):
         if not os.path.exists('./out'):
             os.makedirs('./out')
     
-    
+    def testInvalidPath(self):       
+        filepath = "/tmp/thisisnotafile.h5"
+        try:
+            with Hdf5db(filepath, app_logger=self.log) as db:
+                self.assertTrue(False)  # shouldn't get here
+        except IOError as e:
+            self.failUnlessEqual(e.errno, errno.ENXIO)
+            self.failUnlessEqual(e.strerror, "file not found")
+            
+    def testInvalidFile(self):       
+        filepath = getFile('notahdf5file.h5', 'notahdf5file.h5')
+        try:
+            with Hdf5db(filepath, app_logger=self.log) as db:
+                self.assertTrue(False)  # shouldn't get here
+        except IOError as e:
+            self.failUnlessEqual(e.errno, errno.EINVAL)
+            self.failUnlessEqual(e.strerror, "not an HDF5 file")              
+             
+                
     def testGetUUIDByPath(self):
         # get test file
         g1Uuid = None
