@@ -257,13 +257,17 @@ class PyCode(object):
             return
         attrs_json = obj_json["attributes"]
 
-        self._p.append("# Creating attributes for {}\n".format(obj_name))
+        first_time = True
         for attr_json in attrs_json:
             if is_dimscale and attr_json['name'] in ('CLASS', 'REFERENCE_LIST',
                                                      'NAME'):
                     continue
             if is_dimension and attr_json['name'] == 'DIMENSION_LIST':
                 continue
+            if first_time:
+                self._p.append("# Creating attributes for {}\n"
+                               .format(obj_name))
+                first_time = False
             self.doAttribute(attr_json, parent_var)
 
     def doGroup(self, h5json, group_id, group_name, level):
