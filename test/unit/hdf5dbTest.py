@@ -755,12 +755,14 @@ class Hdf5dbTest(unittest.TestCase):
             
             # add read/write acl for user1
             acl_user1 = db.getAcl(d111_uuid, user1)
+            
             self.failUnlessEqual(acl_user1['userid'], 0)
             acl_user1['userid'] = user1
             acl_user1['readACL'] = 0
             acl_user1['updateACL'] = 0
             num_acls = db.getNumAcls(d111_uuid)       
             self.failUnlessEqual(num_acls, 0)
+             
             db.setAcl(d111_uuid, acl_user1)
             acl = db.getAcl(d111_uuid, user1)
             num_acls = db.getNumAcls(d111_uuid)       
@@ -801,10 +803,15 @@ class Hdf5dbTest(unittest.TestCase):
             self.failUnlessEqual(acl['updateACL'], 0)
             
             num_acls = db.getNumAcls(d111_uuid)
-            self.failUnlessEqual(num_acls, 2)
+            self.failUnlessEqual(num_acls, 2)  
+            
+            # get acl data_list
+            acls = db.getAcls(d111_uuid)
+            self.failUnlessEqual(len(acls), 2)
+             
             
     def testRootAcl(self):
-        filepath = getFile('tall.h5', 'setacl.h5')
+        filepath = getFile('tall.h5', 'rootacl.h5')
         user1 = 123
         with Hdf5db(filepath, app_logger=self.log) as db:
             root_uuid = db.getUUIDByPath('/')

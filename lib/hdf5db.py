@@ -371,7 +371,31 @@ class Hdf5db:
             return 0
         acls = acl_group[obj_uuid]
         return acls.shape[0]
-             
+        
+    """
+      convertAclNdArrayToDict - helper function - return acl item to dict
+    """
+    def convertAclNdArrayToDict(self, acl_ndarray):
+        fields = acl_ndarray.dtype.fields.keys()
+        acl = {}
+        for field in fields:
+            value = int(acl_ndarray[field])
+            acl[field] = value
+        return acl
+        
+    """
+      Get default acl - returns dict obj
+    """
+    def getDefaultAcl(self):
+        dt = self.getAclDtype()
+        acl = {}
+        for field in dt.fields.keys():
+            if field == 'userid':
+                acl[field] = 0
+            else:
+                acl[field] = 1  # default is allowed
+        return acl
+                  
     
     """
       getAcl - return ACL for given uuid and userid
@@ -414,10 +438,11 @@ class Hdf5db:
                     return acl
                 
         # create an ACL with default permissions
-        dt = self.getAclDtype()
-        acl = np.ones((), dtype=dt)
-        acl['userid'] = 0
+        acl = self.getDefaultAcl()
+        
         return acl
+        
+    
                    
     """
       get ACL for specific uuid and user
@@ -437,8 +462,30 @@ class Hdf5db:
                 item = acls[i]
                 if item['userid'] == userid:
                     acl = item
-                    
+        
+        if acl is not None:
+            acl = self.convertAclNdArrayToDict(acl)            
         return acl
+        
+    """
+      getAcls - get all acls for given uuid
+    """
+     
+    def getAcls(self, obj_uuid):
+        
+        acls = []
+        acl_dset = self.getAclDataset(obj_uuid)
+         
+        if acl_dset:           
+            # iterate through elements, looking for user_id
+            num_acls = acl_dset.shape[0]
+            
+            for i in range(num_acls):
+                item = acl_dset[i]
+                acl = self.convertAclNdArrayToDict(item)
+                acls.append(acl)
+                   
+        return acls
                         
         
     """
@@ -458,16 +505,25 @@ class Hdf5db:
         acls = acl_dset[...]
         num_acls = acl_dset.shape[0]
         
+        user_index = None
+        
         for i in range(num_acls):
             item = acls[i]
             if item['userid'] == userid:
                 # update this element
-                acl_dset[i] = acl
-                return
+                user_index = i
+                break
+                 
+        if user_index is None:
+            # userid not found - add row
+            acl_dset.resize(((num_acls+1),))
+            user_index = num_acls
         
-        # userid not found - add row
-        acl_dset.resize(((num_acls+1),))
-        acl_dset[num_acls] = acl  
+        # update the acl dataset
+        item = acl_dset[user_index]
+        for field in acl.keys():
+            item[field] = acl[field]
+        acl_dset[user_index] = item # save back to the file  
           
 
     def initFile(self):
