@@ -626,6 +626,28 @@ class Hdf5dbTest(unittest.TestCase):
             self.failUnlessEqual(item_type['class'], 'H5T_INTEGER') 
             self.failUnlessEqual(item_type['base'], 'H5T_STD_I16LE') 
              
+    def testReadCommittedType(self):
+        filepath = getFile('committed_type.h5', 'readcommitted_type.h5')  
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            root_uuid = db.getUUIDByPath('/')
+            type_uuid = db.getUUIDByPath('/Sensor_Type')
+            item = db.getCommittedTypeItemByUuid(type_uuid)
+            self.assertTrue('type' in item)
+            item_type = item['type']
+            self.assertTrue(item_type['class'], 'H5T_COMPOUND')
+            ds1_uuid = db.getUUIDByPath('/DS1')    
+            item = db.getDatasetItemByUuid(ds1_uuid)
+            shape = item['shape']
+            self.failUnlessEqual(shape['class'], 'H5S_SIMPLE')
+            dims = shape['dims']
+            self.failUnlessEqual(len(dims), 1)
+            self.failUnlessEqual(dims[0], 4)
+            item_type = item['type']
+            self.assertTrue('class' in item_type)
+            self.failUnlessEqual(item_type['class'], 'H5T_COMPOUND')
+            self.assertTrue('uuid' in item_type)
+            self.failUnlessEqual(item_type['uuid'], type_uuid)
+                 
             
     def testWriteCommittedType(self):
         filepath = getFile('empty.h5', 'writecommittedtype.h5')
