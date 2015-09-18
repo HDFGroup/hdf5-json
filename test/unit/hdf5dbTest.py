@@ -647,6 +647,15 @@ class Hdf5dbTest(unittest.TestCase):
             self.failUnlessEqual(item_type['class'], 'H5T_COMPOUND')
             self.assertTrue('uuid' in item_type)
             self.failUnlessEqual(item_type['uuid'], type_uuid)
+            
+            item = db.getAttributeItem("groups", root_uuid, "attr1")
+            shape = item['shape']
+            self.failUnlessEqual(shape['class'], 'H5S_SCALAR')
+            item_type = item['type']
+            self.assertTrue('class' in item_type)
+            self.failUnlessEqual(item_type['class'], 'H5T_COMPOUND')
+            self.assertTrue('uuid' in item_type)
+            self.failUnlessEqual(item_type['uuid'], type_uuid)
                  
             
     def testWriteCommittedType(self):
