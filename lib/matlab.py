@@ -124,6 +124,16 @@ class MCode(object):
         if shape['class'] == 'H5S_SCALAR':
             return "sid = H5S.create('H5S_SCALAR');\n"
         elif shape['class'] == 'H5S_SIMPLE':
+            nelems_limit = 2**48 - 1
+            nelems = 1
+            for d in shape['dims']:
+                if d != 'H5S_UNLIMITED':
+                    nelems *= d
+            if nelems > nelems_limit:
+                raise ValueError(
+                    'Number of elements too large (max. 2^48 - 1): {:d}'
+                    .format(nelems))
+
             rank = len(shape['dims'])
             if rank == 1:
                 tmplt = Template(
@@ -406,7 +416,11 @@ class MCode(object):
         :arg dict ds: Dataset information.
         :arg str locid: Varable name of the dataset's parent group.
         """
-        dataspace = self._dspace(ds['shape'])
+        try:
+            dataspace = self._dspace(ds['shape'])
+        except ValueError as e:
+            raise ValueError('{}: {}'.format(ds.get('alias', [name])[0],
+                                             str(e)))
         datatype = self._dtype(ds['type'])
 
         tmplt = Template(
