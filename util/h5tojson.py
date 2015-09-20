@@ -236,8 +236,7 @@ def main():
     
     filename = args.filename[0]
     if not op.isfile(filename):
-        print "Cannot find file:", filename
-        sys.exit(1)
+        sys.exit("Cannot find file: %s" % filename)
     
     log.info("h5tojson " + filename)
     
