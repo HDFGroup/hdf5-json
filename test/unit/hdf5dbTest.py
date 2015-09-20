@@ -400,6 +400,58 @@ class Hdf5dbTest(unittest.TestCase):
             self.failUnlessEqual(shape_item['dims'], (10,10))
             self.assertTrue('maxdims' in shape_item)
             self.failUnlessEqual(shape_item['maxdims'], [0, 10])
+            
+    def testCreateCommittedTypeDataset(self):
+        filepath = getFile('empty.h5', 'createcommittedtypedataset.h5')
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            root_uuid = db.getUUIDByPath('/')
+            
+            datatype = { 'charSet':   'H5T_CSET_ASCII', 
+                     'class':  'H5T_STRING', 
+                     'strPad': 'H5T_STR_NULLTERM', 
+                     'length': 15}
+            item = db.createCommittedType(datatype)
+            type_uuid = item['id']
+             
+            dims = ()  # if no space in body, default to scalar
+            rsp = db.createDataset(type_uuid, dims, max_shape=None, creation_props=None)
+            dset_uuid = rsp['id']
+            item = db.getDatasetItemByUuid(dset_uuid)
+            type_item = item['type']
+            self.assertTrue('uuid' in type_item)
+            self.failUnlessEqual(type_item['uuid'], type_uuid)
+            
+    def testCreateCommittedCompoundTypeDataset(self):
+        filepath = getFile('empty.h5', 'createcommittedcompoundtypedataset.h5')
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            root_uuid = db.getUUIDByPath('/')
+            
+            datatype = {'class': 'H5T_COMPOUND',
+                        'fields': [] }
+             
+            type_fields = []
+            type_fields.append({'name': 'field_1', 'type': 'H5T_STD_I64BE' })
+            type_fields.append({'name': 'field_2', 'type': 'H5T_IEEE_F64BE' })
+   
+            datatype['fields'] = type_fields
+            
+            creation_props = {    
+                "fillValue": [
+                    0, 
+                    0.0 ] 
+            }
+            
+            item = db.createCommittedType(datatype)
+            type_uuid = item['id']
+             
+            dims = ()  # if no space in body, default to scalar
+            rsp = db.createDataset(type_uuid, dims, max_shape=None, creation_props=creation_props)
+            dset_uuid = rsp['id']
+            item = db.getDatasetItemByUuid(dset_uuid)
+            type_item = item['type']
+            self.assertTrue('uuid' in type_item)
+            self.failUnlessEqual(type_item['uuid'], type_uuid)
+                  
                        
                 
     def testReadZeroDimDataset(self):
