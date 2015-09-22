@@ -1437,6 +1437,7 @@ class Hdf5db:
     """
     def createAttribute(self, col_name, obj_uuid, attr_name, shape, attr_type, value):
         self.log.info("createAttribute: [" + attr_name + "]")
+        #print "createAttribute, name:", attr_name
         #print "createAttribute, type:", attr_type
         #print "createAttribute, shape:", shape
         #print "obj_uuid:", obj_uuid
@@ -1742,6 +1743,7 @@ class Hdf5db:
        Convert list to json serializable values.
     """
     def toList(self, rank, typeItem, data):
+        # print "toList - rank:", rank, "typeItem:", typeItem, "data: ", data
         out = None
         typeClass = typeItem['class']
         if typeClass in ('H5T_INTEGER', 'H5T_FLOAT', 'H5T_STRING'):

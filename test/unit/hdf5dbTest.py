@@ -677,6 +677,97 @@ class Hdf5dbTest(unittest.TestCase):
             item_type = item['type']  
             self.failUnlessEqual(item_type['class'], 'H5T_INTEGER') 
             self.failUnlessEqual(item_type['base'], 'H5T_STD_I16LE') 
+            
+    def testCreateReferenceAttribute(self):
+        filepath = getFile('empty.h5', 'createreferencedataset.h5')
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            root_uuid = db.getUUIDByPath('/')
+            
+            dims = ()  # if no space in body, default to scalar
+            rsp = db.createDataset("H5T_STD_I64LE", dims, max_shape=None, creation_props=None)
+            dset_uuid = rsp['id']
+            db.linkObject(root_uuid, dset_uuid, 'DS1')
+            
+            dims = (1,)
+            datatype = { "class": "H5T_REFERENCE", "base": "H5T_STD_REF_OBJ"}
+            ds1_ref = "datasets/" + dset_uuid
+            value = [ds1_ref,]
+            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
+            item = db.getAttributeItem("groups", root_uuid, "A1")
+             
+            attr_type = item['type']
+            self.failUnlessEqual(attr_type["class"], "H5T_REFERENCE")
+            self.failUnlessEqual(attr_type["base"], "H5T_STD_REF_OBJ")
+            attr_value = item['value']
+            self.failUnlessEqual(len(attr_value), 1)
+            self.failUnlessEqual(attr_value[0], ds1_ref)
+            
+    def testCreateVlenReferenceAttribute(self):
+        filepath = getFile('empty.h5', 'createreferenceattribute.h5')
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            root_uuid = db.getUUIDByPath('/')
+            
+            dims = ()  # if no space in body, default to scalar
+            rsp = db.createDataset("H5T_STD_I64LE", dims, max_shape=None, creation_props=None)
+            dset_uuid = rsp['id']
+            db.linkObject(root_uuid, dset_uuid, 'DS1')
+            
+            dims = (1,)
+            datatype = {"class": "H5T_VLEN", 
+                "base": { "class": "H5T_REFERENCE", "base": "H5T_STD_REF_OBJ"} 
+            }
+            ds1_ref = "datasets/" + dset_uuid
+            value = [[ds1_ref,],]
+            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
+            item = db.getAttributeItem("groups", root_uuid, "A1")
+             
+            attr_type = item['type']
+            self.failUnlessEqual(attr_type["class"], "H5T_VLEN")
+            base_type = attr_type["base"]
+            # todo - this should be H5T_REFERENCE, not H5T_OPAQUE
+            # See h5py issue: https://github.com/h5py/h5py/issues/553
+            self.failUnlessEqual(base_type["class"], "H5T_OPAQUE")
+            
+    def testCreateReferenceListAttribute(self):
+        filepath = getFile('empty.h5', 'createreferencelistattribute.h5')
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            root_uuid = db.getUUIDByPath('/')
+            
+            dims = (10,)   
+            
+            rsp = db.createDataset("H5T_STD_I64LE", dims, max_shape=None, creation_props=None)
+            dset_uuid = rsp['id'] 
+            db.linkObject(root_uuid, dset_uuid, 'dset')
+            
+            rsp = db.createDataset("H5T_STD_I64LE", dims, max_shape=None, creation_props=None)
+            xscale_uuid = rsp['id']
+            nullterm_string_type =  {
+                        "charSet": "H5T_CSET_ASCII",
+                        "class": "H5T_STRING",
+                        "length": 16,
+                        "strPad": "H5T_STR_NULLTERM"
+            }
+            scalar_dims = ()
+            db.createAttribute("datasets", xscale_uuid, "CLASS", scalar_dims, nullterm_string_type, "DIMENSION_SCALE" )
+            db.linkObject(root_uuid, xscale_uuid, 'xscale')
+                
+            
+            ref_dims = (1,)
+            datatype = {"class": "H5T_VLEN", 
+                "base": { "class": "H5T_REFERENCE", "base": "H5T_STD_REF_OBJ"} 
+            }
+            xscale_ref = "datasets/" + xscale_uuid
+            value = [(xscale_ref,),]
+            db.createAttribute("datasets", dset_uuid, "DIMENSION_LIST", ref_dims, datatype, value)
+            item = db.getAttributeItem("datasets", dset_uuid, "DIMENSION_LIST")
+             
+            attr_type = item['type']
+            self.failUnlessEqual(attr_type["class"], "H5T_VLEN")
+            base_type = attr_type["base"]
+            # todo - this should be H5T_REFERENCE, not H5T_OPAQUE
+            self.failUnlessEqual(base_type["class"], "H5T_REFERENCE")
+             
+             
              
     def testReadCommittedType(self):
         filepath = getFile('committed_type.h5', 'readcommitted_type.h5')  
