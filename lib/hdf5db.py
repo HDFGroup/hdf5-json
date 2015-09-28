@@ -1027,7 +1027,7 @@ class Hdf5db:
                 msg = "Unable to create attribute, committed type with uuid of: " + attr_type + " not found"
                 self.log.info(msg)
                 raise IOError(errno.ENXIO, msg)
-            dt = tgt.dtype  # can use the object as the dt parameter
+            dt = tgt  # can use the object as the dt parameter
         else:
              
             try:
@@ -1438,6 +1438,7 @@ class Hdf5db:
     """
     def createAttribute(self, col_name, obj_uuid, attr_name, shape, attr_type, value):
         self.log.info("createAttribute: [" + attr_name + "]")
+        #print "createAttribute, name:", attr_name
         #print "createAttribute, type:", attr_type
         #print "createAttribute, shape:", shape
         #print "obj_uuid:", obj_uuid
@@ -1743,6 +1744,7 @@ class Hdf5db:
        Convert list to json serializable values.
     """
     def toList(self, rank, typeItem, data):
+        # print "toList - rank:", rank, "typeItem:", typeItem, "data: ", data
         out = None
         typeClass = typeItem['class']
         if typeClass in ('H5T_INTEGER', 'H5T_FLOAT', 'H5T_STRING'):
@@ -2315,12 +2317,18 @@ class Hdf5db:
                         else:
                             log.info("Unexpected filter name: " + filter_alias + " , ignoring")                   
             
-        dt = self.createTypeFromItem(datatype)
-        if dt is None:
+        dt_ref = self.createTypeFromItem(datatype)
+        if dt_ref is None:
             msg = 'Unexpected error, no type returned'
             self.log.error(msg)
             raise IOError(errno.EIO, msg)
-            
+        
+        dt = dt_ref    
+        if hasattr(dt_ref, 'dtype'):
+            # dt_ref is actualy a handle to a committed type
+            # get the dtype prop, but use dt_ref for the actual dataset creation
+            dt = dt_ref.dtype
+        
         if fillvalue and len(dt) > 1 and type(fillvalue) in (list, tuple):
             # for compound types, need to convert from list to dataset compatible element
              
@@ -2350,7 +2358,7 @@ class Hdf5db:
                 tmpGrp = self.dbGrp.create_group("{tmp}")
             else:
                 tmpGrp = self.dbGrp["{tmp}"]
-            tmpDataset = tmpGrp.create_dataset(obj_uuid, shape=(0,), dtype=dt)
+            tmpDataset = tmpGrp.create_dataset(obj_uuid, shape=(0,), dtype=dt_ref)
             tid = tmpDataset.id.get_type()
             sid = sid = h5py.h5s.create(h5py.h5s.NULL)
             # now create the permanent dataset
@@ -2364,7 +2372,7 @@ class Hdf5db:
             
             try:
                 newDataset = datasets.create_dataset(obj_uuid, shape=datashape, 
-                    maxshape=max_shape, dtype=dt, **kwargs)
+                    maxshape=max_shape, dtype=dt_ref, **kwargs)
             except ValueError as ve:
                 msg = "Unable to creation dataset: " + ve.message
                 self.log.info(msg)
