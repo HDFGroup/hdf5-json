@@ -462,6 +462,7 @@ class Hdf5db:
                 item = acls[i]
                 if item['userid'] == userid:
                     acl = item
+                    break
         
         if acl is not None:
             acl = self.convertAclNdArrayToDict(acl)            
