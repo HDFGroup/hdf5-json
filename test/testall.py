@@ -11,6 +11,7 @@
 ##############################################################################
 
 import os
+import sys
 
 unit_tests = ( 'hdf5dtypeTest', 'hdf5dbTest')
 integ_tests = ()
@@ -21,13 +22,17 @@ integ_tests = ()
 os.chdir('unit')
 for file_name in unit_tests:
     print file_name
-    os.system('python ' + file_name + '.py')
+    rc = os.system('python ' + file_name + '.py')
+    if rc != 0:
+        sys.exit("Failed")
   
 os.chdir('../integ')
 
 for file_name in integ_tests:
     print file_name
-    os.system('python ' + file_name + '.py')
+    rc = os.system('python ' + file_name + '.py')
+    if rc != 0:
+        sys.exit("failed")
 os.chdir('..') 
 print "Done!"
  

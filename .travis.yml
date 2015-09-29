@@ -1,0 +1,16 @@
+language: python
+
+notifications:
+  email: false
+
+python:
+  - "2.7"
+
+install:
+    - sudo apt-get update -qq
+    - pip install numpy
+    - pip install h5py
+
+script:
+    - cd test
+    - python testall.py
