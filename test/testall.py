@@ -13,8 +13,8 @@
 import os
 import sys
 
-unit_tests = ( 'hdf5dtypeTest', 'hdf5dbTest')
-integ_tests = ()
+unit_tests = ( 'hdf5dtypeTest', 'hdf5dbTest' )
+integ_tests = ( 'h5tojson_test', 'jsontoh5_test' )
 #
 # Run all hdf5-json tests
 # Run this script before running any integ tests
@@ -27,7 +27,7 @@ for file_name in unit_tests:
         sys.exit("Failed")
   
 os.chdir('../integ')
-
+os.system('pwd')
 for file_name in integ_tests:
     print file_name
     rc = os.system('python ' + file_name + '.py')
