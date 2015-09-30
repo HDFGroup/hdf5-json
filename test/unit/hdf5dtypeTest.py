@@ -97,6 +97,25 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.failUnlessEqual(baseItem['class'], 'H5T_INTEGER')
         self.failUnlessEqual(baseItem['base'], 'H5T_STD_I32LE')
         
+    def testCompoundArrayTypeItem(self):
+        dt = np.dtype([('a', '<i1'), ('b', 'S1', (10,))])
+        typeItem = hdf5dtype.getTypeItem(dt)
+        self.failUnlessEqual(typeItem['class'], 'H5T_COMPOUND')
+        fields = typeItem['fields']
+        field_a = fields[0]
+        self.failUnlessEqual(field_a['name'], 'a')
+        field_a_type = field_a['type']
+        self.failUnlessEqual(field_a_type['class'], 'H5T_INTEGER')
+        self.failUnlessEqual(field_a_type['base'], 'H5T_STD_I8LE')
+        field_b = fields[1]
+        self.failUnlessEqual(field_b['name'], 'b')
+        field_b_type = field_b['type']
+        self.failUnlessEqual(field_b_type['class'], 'H5T_ARRAY')
+        self.failUnlessEqual(field_b_type['dims'], (10,))
+        field_b_basetype = field_b_type['base']
+        self.failUnlessEqual(field_b_basetype['class'], 'H5T_STRING')
+        
+        
     def testOpaqueTypeItem(self):
         dt = np.dtype('V200')
         typeItem = hdf5dtype.getTypeItem(dt)
@@ -123,7 +142,7 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertTrue('type' in tempField)
         tempFieldType = tempField['type']
         self.assertEqual(tempFieldType['class'], 'H5T_FLOAT')
-        self.failUnlessEqual(tempFieldType['base'], 'H5T_IEEE_F32LE')   
+        self.assertEqual(tempFieldType['base'], 'H5T_IEEE_F32LE')   
         
         typeItem = hdf5dtype.getTypeResponse(typeItem) # non-verbose format  
         self.assertEqual(typeItem['class'], 'H5T_COMPOUND')
@@ -255,6 +274,41 @@ class Hdf5dtypeTest(unittest.TestCase):
         dt = hdf5dtype.createDataType(typeItem)
         self.assertEqual(dt.name, 'void960')
         self.assertEqual(dt.kind, 'V')
+        
+    def testCreateCompoundArrayType(self):
+        typeItem = {
+            "class": "H5T_COMPOUND",
+            "fields": [
+                {
+                    "type": {
+                        "base": "H5T_STD_I8LE",
+                        "class": "H5T_INTEGER"
+                    },
+                    "name": "a"
+                },
+                {
+                    "type": {
+                        "dims": [
+                            10
+                        ],
+                        "base": {
+                            "length": 1,
+                            "charSet": "H5T_CSET_ASCII",
+                            "class": "H5T_STRING",
+                            "strPad": "H5T_STR_NULLPAD"
+                        },
+                    "class": "H5T_ARRAY"
+                },
+                "name": "b"
+                }
+            ]
+        }
+        dt = hdf5dtype.createDataType(typeItem)
+        self.assertEqual(len(dt.fields), 2)
+        self.assertTrue('a' in dt.fields.keys())
+        self.assertTrue('b' in dt.fields.keys())
+         
+
         
 if __name__ == '__main__':
     #setup test files

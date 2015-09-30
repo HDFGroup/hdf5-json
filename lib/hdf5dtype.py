@@ -376,17 +376,14 @@ def createBaseDataType(typeItem):
         if 'base' not in typeItem:
             raise KeyError("'base' not provided") 
         arrayBaseType = typeItem['base']
-        
         if type(arrayBaseType) is dict:
-            arrayBaseType = arrayBaseType['base']
-        # baseType = createDataType(typeItem['base'])
-        baseType = getNumpyTypename(arrayBaseType)
-          
-        #baseType = getNumpyTypename(typeItem['base'])
-        if type(baseType) not in (str, unicode):
-            raise TypeError("Array type is only supported for predefined base types")
-        # should be one of the predefined types
-        dtRet = np.dtype(dims+baseType)
+            if "class" not in arrayBaseType:
+                raise KeyError("'class' not provided for array base type")
+            if arrayBaseType["class"] not in ('H5T_INTEGER', 'H5T_FLOAT', 'H5T_STRING'):
+                raise TypeError("Array Type base type must be integer, float, or string")
+                
+        baseType = createDataType(arrayBaseType)    
+        dtRet = np.dtype(dims+baseType.str)
         return dtRet  # return predefined type    
     elif typeClass == 'H5T_REFERENCE':
         if 'base' not in typeItem:

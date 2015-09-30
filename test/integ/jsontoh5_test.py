@@ -15,8 +15,6 @@ import stat
 from shutil import copyfile
 
 
-
-
 """
 main
 """
