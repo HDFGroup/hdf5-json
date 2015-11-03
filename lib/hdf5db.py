@@ -35,7 +35,7 @@ This class is used to manage UUID lookup tables for primary HDF objects (Groups,
         linked to by anywhere else).  Link name is the UUID
     attrs: dataset reference (or path for read-only files) to the dataset (for non-
         anonymous datasets).
-        
+
 "{dataset_props}:
     description contains dataset creation properties"
     members: sub-group with link name as UUID.  Sub-group attributes are the creation props
@@ -85,25 +85,25 @@ _HDF_FILTERS = { 1: {'class': 'H5Z_FILTER_DEFLATE', 'alias': 'gzip', 'options': 
                  5: {'class': 'H5Z_FILTER_NBIT'},
                  6: {'class': 'H5Z_FILTER_SCALEOFFSET', 'alias': 'scaleoffset', 'options': ['scaleType',]},
                  32000: {'class': 'H5Z_FILTER_LZF', 'alias': 'lzf'} }
-                
-_HDF_FILTER_OPTION_ENUMS = {'coding': {h5py.h5z.SZIP_EC_OPTION_MASK: 'H5_SZIP_EC_OPTION_MASK', 
+
+_HDF_FILTER_OPTION_ENUMS = {'coding': {h5py.h5z.SZIP_EC_OPTION_MASK: 'H5_SZIP_EC_OPTION_MASK',
                                        h5py.h5z.SZIP_NN_OPTION_MASK: 'H5_SZIP_NN_OPTION_MASK'},
-                            'scaleType': {h5py.h5z.SO_FLOAT_DSCALE: 'H5Z_SO_FLOAT_DSCALE', 
-                                           h5py.h5z.SO_FLOAT_ESCALE: 'H5Z_SO_FLOAT_ESCALE', 
+                            'scaleType': {h5py.h5z.SO_FLOAT_DSCALE: 'H5Z_SO_FLOAT_DSCALE',
+                                           h5py.h5z.SO_FLOAT_ESCALE: 'H5Z_SO_FLOAT_ESCALE',
                                            h5py.h5z.SO_INT: 'H5Z_SO_INT'}}
-                            
-                
-               
+
+
+
 # h5py supported filters
-_H5PY_FILTERS = {'gzip': 1, 
+_H5PY_FILTERS = {'gzip': 1,
                 'shuffle': 2,
                 'fletcher32': 3,
                 'szip': 4,
                 'scaleoffset': 6,
                 'lzf': 32000 }
-                
+
 _H5PY_COMPRESSION_FILTERS = ("gzip", "lzf", "szip")
-                 
+
 def visitObj(path, obj):
     hdf5db = _db[obj.file.filename]
     hdf5db.visit(path, obj)
@@ -139,7 +139,7 @@ class Hdf5db:
             raise IOError(errno.ENXIO, "file not found")
         if not h5py.is_hdf5(filePath):
             raise IOError(errno.EINVAL, "not an HDF5 file")
-        
+
         mode = 'r'
         if readonly:
             self.readonly = True
@@ -309,7 +309,7 @@ class Hdf5db:
                 root_uuid = self.dbGrp.attrs["rootUUID"]
                 timestamp = mtime_grp.attrs[root_uuid]
         return timestamp
-        
+
     """
       getAclGroup - return the db group "{acl}" if present,
         otherwise return None
@@ -323,7 +323,7 @@ class Hdf5db:
             return None
         self.dbGrp.create_group("{acl}")
         return self.dbGrp["{acl}"]
-        
+
     """
       getAclDtype - return detype for ACL
     """
@@ -338,31 +338,31 @@ class Hdf5db:
         fields.append(('updateACL', np.int8))
         dt = np.dtype(fields)
         return dt
-        
-    
+
+
     """
       getAclDataset - return ACL datset for given uuid
-    """        
+    """
     def getAclDataset(self, obj_uuid, create=False):
         acl_group = self.getAclGroup(create=create)
-        
+
         if acl_group is None:
             return None
-            
+
         if obj_uuid in acl_group:
             return acl_group[obj_uuid]
-            
-        if not create:         
+
+        if not create:
             return None
-             
+
         # create dataset
-        dt = self.getAclDtype()   
+        dt = self.getAclDtype()
         acl_group.create_dataset(obj_uuid, (0,), dtype=dt, maxshape=(None,))
         return acl_group[obj_uuid]
-        
+
     """
       getNumAcls - return number of acls associatted with given uuid
-    """        
+    """
     def getNumAcls(self, obj_uuid):
         acl_group = self.getAclGroup()
         if acl_group is None:
@@ -371,7 +371,7 @@ class Hdf5db:
             return 0
         acls = acl_group[obj_uuid]
         return acls.shape[0]
-        
+
     """
       convertAclNdArrayToDict - helper function - return acl item to dict
     """
@@ -382,7 +382,7 @@ class Hdf5db:
             value = int(acl_ndarray[field])
             acl[field] = value
         return acl
-        
+
     """
       Get default acl - returns dict obj
     """
@@ -395,65 +395,65 @@ class Hdf5db:
             else:
                 acl[field] = 1  # default is allowed
         return acl
-                  
-    
+
+
     """
       getAcl - return ACL for given uuid and userid
         returns ACL associated with the given uuid, or if none exists,
         the ACL associatted with the root group.
-        
+
         If an ACL is not present for a userid/obj and ACL will be returned
         via the following precedence:
-            
+
         1) obj_uuid, user_id
         2) root_uuid, user_id
-        3) obj_uuid, 0 
+        3) obj_uuid, 0
         4) root_uuid, 0
         5) 'all perm' ACL
-    """    
+    """
     def getAcl(self, obj_uuid, userid):
         acl_grp = self.getAclGroup()
-        
+
         if acl_grp is not None:
             acl = self.getAclByObjAndUser(obj_uuid, userid)
             if acl is not None:
                 return acl
-            
+
             if obj_uuid != self.root_uuid and userid != 0:
                 # get the root acl for this user
                 acl = self.getAclByObjAndUser(self.root_uuid, userid)
                 if acl is not None:
                     return acl
-                
+
             if userid != 0:
                 # get acl for default user
                 acl = self.getAclByObjAndUser(obj_uuid, 0)
                 if acl is not None:
                     return acl
-        
+
             if obj_uuid != self.root_uuid:
                 # get root acl for default user
                 acl = self.getAclByObjAndUser(self.root_uuid, 0)
                 if acl is not None:
                     return acl
-                
+
         # create an ACL with default permissions
         acl = self.getDefaultAcl()
-        
+
         return acl
-        
-    
-                   
+
+
+
     """
       get ACL for specific uuid and user
          return None if not found
-    """    
+    """
     def getAclByObjAndUser(self, obj_uuid, userid):
-        
+
         acl = None
         acl_dset = self.getAclDataset(obj_uuid)
-         
-        if acl_dset:           
+
+        if acl_dset:
             # iterate through elements, looking for user_id
             acls = acl_dset[...]
             num_acls = acl_dset.shape[0]
@@ -463,69 +463,68 @@ class Hdf5db:
                 if item['userid'] == userid:
                     acl = item
                     break
-        
+
         if acl is not None:
-            acl = self.convertAclNdArrayToDict(acl)            
+            acl = self.convertAclNdArrayToDict(acl)
         return acl
-        
+
     """
       getAcls - get all acls for given uuid
     """
-     
+
     def getAcls(self, obj_uuid):
-        
+
         acls = []
         acl_dset = self.getAclDataset(obj_uuid)
-         
-        if acl_dset:           
+
+        if acl_dset:
             # iterate through elements, looking for user_id
             num_acls = acl_dset.shape[0]
-            
+
             for i in range(num_acls):
                 item = acl_dset[i]
                 acl = self.convertAclNdArrayToDict(item)
                 acls.append(acl)
-                   
+
         return acls
-                        
-        
+
+
     """
       setAcl -  set the acl for given uuid.
-    """    
+    """
     def setAcl(self, obj_uuid, acl):
         acl_dset = self.getAclDataset(obj_uuid, create=True)
-        
+
         if acl_dset is None:
             msg = "Unexpected error acl not created for uuid:[" + obj_uuid + "]"
             self.log.error(msg)
             raise IOError(errno.EIO, msg)
-            
+
         userid = acl['userid']
-        
+
         # iterate through elements, looking for user_id
         acls = acl_dset[...]
         num_acls = acl_dset.shape[0]
-        
+
         user_index = None
-        
+
         for i in range(num_acls):
             item = acls[i]
             if item['userid'] == userid:
                 # update this element
                 user_index = i
                 break
-                 
+
         if user_index is None:
             # userid not found - add row
             acl_dset.resize(((num_acls+1),))
             user_index = num_acls
-        
+
         # update the acl dataset
         item = acl_dset[user_index]
         for field in acl.keys():
             item[field] = acl[field]
-        acl_dset[user_index] = item # save back to the file  
-          
+        acl_dset[user_index] = item  # save back to the file
 
     def initFile(self):
         # self.log.info("initFile")
@@ -541,7 +540,7 @@ class Hdf5db:
                 # file already initialized
                 self.dbGrp = self.f["__db__"]
                 self.root_uuid = self.dbGrp.attrs["rootUUID"]
-                return;  # already initialized
+                return  # already initialized
             self.dbGrp = self.f.create_group("__db__")
 
         self.log.info("initializing file")
@@ -590,19 +589,19 @@ class Hdf5db:
         addr = h5py.h5o.get_info(obj.id).addr
         # store reverse map as an attribute
         addrGrp.attrs[str(addr)] = id
-    
+
     #
     # Get Datset creation properties
-    #    
+    #
     def getDatasetCreationProps(self, dset_uuid):
         prop_list = {}
         if "{dataset_props}" not in self.dbGrp:
             # no, group, so no properties
-            return prop_list # return empty dict
+            return prop_list  # return empty dict
         dbPropsGrp = self.dbGrp["{dataset_props}"]
-        
+
         if dset_uuid not in dbPropsGrp.attrs:
-            return prop_list  # return empty dict 
+            return prop_list  # return empty dict
         prop_str = dbPropsGrp.attrs[dset_uuid]
         # expand json string
         try:
@@ -611,7 +610,7 @@ class Hdf5db:
             msg = "Unable to load creation properties for dataset:[" + dset_uuid + "]: " + ve.message
             self.log.error(msg)
             raise IOError(errno.EIO, msg)
-            
+
         # fill in Filter class values
         if 'filters' in prop_list:
             prop_filters = prop_list['filters']
@@ -623,12 +622,12 @@ class Hdf5db:
                         prop_filter['class'] = hdf_filter['class']
                     else:
                         prop_filter['class'] = 'H5Z_FILTER_USER'
-                        
+
         return prop_list
-    
+
     #
     # Set dataset creation property
-    #    
+    #
     def setDatasetCreationProps(self, dset_uuid, prop_dict):
         self.log.info('setDataProp([' + dset_uuid + ']')
         if not prop_dict:
@@ -644,8 +643,8 @@ class Hdf5db:
             raise IOError(errno.EIO, msg)
         prop_str = json.dumps(prop_dict)
         dbPropsGrp.attrs[dset_uuid] = prop_str
-        
-        
+
+
 
     def getUUIDByAddress(self, addr):
         if "{addr}" not in self.dbGrp:
@@ -854,18 +853,18 @@ class Hdf5db:
             else:
                 item['class'] = 'H5S_SCALAR'
         return item
-        
+
     #
     # Get dataset creation properties maintained by HDF5 library
     #
     def getHDF5DatasetCreationProperties(self, obj_uuid, type_class):
         dset = self.getDatasetObjByUuid(obj_uuid)
-        #     
+        #
         # Fill in creation properties
         #
         creationProps = {}
         plist = h5py.h5d.DatasetID.get_create_plist(dset.id)
-           
+
         # alloc time
         nAllocTime = plist.get_alloc_time()
         if nAllocTime == h5py.h5d.ALLOC_TIME_DEFAULT:
@@ -878,7 +877,7 @@ class Hdf5db:
             creationProps['allocTime'] = 'H5D_ALLOC_TIME_INCR'
         else:
             log.warn("Unknown alloc time value: " + str(nAllocTime))
-            
+
         # fill time
         nFillTime = plist.get_fill_time()
         if nFillTime == h5py.h5d.FILL_TIME_ALLOC:
@@ -889,15 +888,11 @@ class Hdf5db:
             creationProps['fillTime'] = 'H5D_FILL_TIME_IFSET'
         else:
             log.warn("unknown fill time value: " + str(nFillTime))
-            
+
         if type_class not in ('H5T_VLEN', 'H5T_OPAQUE'):
-            try:
-                if dset.fillvalue is not None:
-                    creationProps['fillValue']  = dset.fillvalue.tolist()
-            except RuntimeError:
-                # exception is thrown if fill value is not set
-                pass   # nop
-                       
+            if plist.fill_value_defined() == h5py.h5d.FILL_VALUE_USER_DEFINED:
+                creationProps['fillValue'] = dset.fillvalue.tolist()
+
         # layout
         nLayout = plist.get_layout()
         if nLayout == h5py.h5d.COMPACT:
@@ -908,7 +903,7 @@ class Hdf5db:
             creationProps['layout'] = {'class': 'H5D_CHUNKED', 'dims': dset.chunks }
         else:
             log.warn("Unknown layout value:" + str(nLayout))
-            
+
         num_filters = plist.get_nfilters()
         filter_props = []
         if num_filters:
@@ -939,7 +934,7 @@ class Hdf5db:
                             if opt_value_enum:
                                 filter_prop[option_name] = opt_value_enum
                             else:
-                                filter_prop[option_name] = opt_value                    
+                                filter_prop[option_name] = opt_value
                 else:
                     # custom filter
                     filter_prop['class'] = 'H5Z_FILTER_USER'
@@ -947,9 +942,9 @@ class Hdf5db:
                         filter_prop['parameters'] = opt_values
                 filter_props.append(filter_prop)
             creationProps['filters'] = filter_props
-            
+
         return creationProps
-                  
+
 
     #
     # Get dataset information - type, shape, num attributes, creation properties
@@ -993,11 +988,11 @@ class Hdf5db:
 
         # get shape
         item['shape'] = self.getShapeItemByDsetObj(dset)
-        
+
         if self.update_timestamps:
             item['ctime'] = self.getCreateTime(obj_uuid)
             item['mtime'] = self.getModifiedTime(obj_uuid)
-            
+
         creationProps = self.getDatasetCreationProps(obj_uuid)
         if creationProps:
             # if chunks is not in the db props, add it from the dataset prop
@@ -1007,10 +1002,10 @@ class Hdf5db:
         else:
             # no db-tracked creation properties, pull properties from library
             creationProps = self.getHDF5DatasetCreationProperties(obj_uuid, typeItem['class'])
-        
+
         if creationProps:
             item['creationProperties'] = creationProps
-         
+
 
         return item
 
@@ -1019,7 +1014,7 @@ class Hdf5db:
     """
     def createTypeFromItem(self, attr_type):
         dt = None
-        
+
         if type(attr_type) in (str, unicode) and len(attr_type) == UUID_LEN:
             # assume attr_type is a uuid of a named datatype
             tgt = self.getCommittedTypeObjByUuid(attr_type)
@@ -1029,7 +1024,7 @@ class Hdf5db:
                 raise IOError(errno.ENXIO, msg)
             dt = tgt  # can use the object as the dt parameter
         else:
-             
+
             try:
                 dt = hdf5dtype.createDataType(attr_type)
             except KeyError as ke:
@@ -1062,7 +1057,7 @@ class Hdf5db:
             obj_uuid = str(uuid.uuid1())
         dt = self.createTypeFromItem(datatype)
 
-        datatypes[obj_uuid] = dt 
+        datatypes[obj_uuid] = dt
 
         if obj_uuid not in datatypes:
             msg = "Unexpected failure to create committed datatype"
@@ -1115,7 +1110,7 @@ class Hdf5db:
         self.initFile()
         datatype = self.getCommittedTypeObjByUuid(obj_uuid)
 
-        if datatype == None:
+        if datatype is None:
             if self.getModifiedTime(obj_uuid, useRoot=False):
                 msg = "Datatype with uuid: " + obj_uuid + " has been previously deleted"
                 self.log.info(msg)
@@ -1260,7 +1255,7 @@ class Hdf5db:
             item['mtime'] = self.getModifiedTime(obj_uuid, objType="attribute", name=name)
 
         return item
-        
+
     """
     isDimensionList - return True if this attribute json looks like a dimension list
     """
@@ -1275,7 +1270,7 @@ class Hdf5db:
         if base_type['class'] != 'H5T_REFERENCE':
             return False
         return True
-        
+
     """
     isReferenceList - return True if this attribute json looks like a reference list
     """
@@ -1286,17 +1281,17 @@ class Hdf5db:
             return False
         if attr_type['class'] != "H5T_COMPOUND":
             return False
-         
+
         return True
 
-    
-    
+
+
     """
      makeDimensionList - work-around for h5py problems saving dimension list -
         types which are vlen's of references are not working directly, so use dim_scale api
         Note: this is a work-around for h5py issue:
          https://github.com/h5py/h5py/issues/553
-    """    
+    """
     def makeDimensionList(self, obj, shape, value):
         dset_refs = self.listToRef(value)
         for i in range(len(dset_refs)):
@@ -1316,30 +1311,30 @@ class Hdf5db:
                 if scale_obj.attrs["CLASS"] != "DIMENSION_SCALE":
                     self.log.warn("dimension list, invalid class for scale obj")
                     continue
-                 
+
                 try:
                     h5py.h5ds.attach_scale(obj.id, scale_obj.id, i)
                 except RuntimeError as rte:
                     self.log.error("got runtime error attaching scale")
-                    
-        
+
+
     """
     writeNdArrayToAttribute - create an attribute given numpy array
     """
     def writeNdArrayToAttribute(self, attrs, attr_name, npdata, shape, dt):
-        attrs.create(attr_name, npdata, shape=shape, dtype=dt)   
-        
+        attrs.create(attr_name, npdata, shape=shape, dtype=dt)
+
     """
     create a scalar string attribute using nullterm padding
     """
     def makeNullTermStringAttribute(self, obj, attr_name, strLength, value):
-        self.log.info("make nullterm, length: " +str(strLength) + " value:" + value) 
+        self.log.info("make nullterm, length: " +str(strLength) + " value:" + value)
         if type(value) == unicode:
             value = str(value)
-        if strLength < len(value): 
+        if strLength < len(value):
             self.log.warn("makeNullTermStringAttribute: value string longer than length")
             #value = value[:strLength]  # truncate to length
-             
+
         # create the attribute
         tid = h5py.h5t.TypeID.copy(h5py.h5t.C_S1)
         tid.set_size(strLength)
@@ -1350,13 +1345,13 @@ class Hdf5db:
         dtype_code = 'S' + str(strLength)
         ndarr = np.array(value, dtype=np.dtype(dtype_code))
         ret = aid.write(ndarr)
-        
-         
-        
+
+
+
     """
     makeAttribute - create an attribute (except for dimension list attribute)
-    """    
-        
+    """
+
     def makeAttribute(self, obj, attr_name, shape, attr_type, value):
         is_committed_type = False
         if type(attr_type) in (str, unicode) and len(attr_type) == UUID_LEN:
@@ -1364,8 +1359,8 @@ class Hdf5db:
             is_committed_type = True
 
         dt = self.createTypeFromItem(attr_type)
-        
-        if shape == None:
+
+        if shape is None:
             self.log.info("shape is null - will create null space attribute")
             # create null space attribute
             # null space datasets/attributes not supported in h5py yet:
@@ -1412,26 +1407,26 @@ class Hdf5db:
                 strLength = 0
                 if type(attr_type) == dict and attr_type['class'] == 'H5T_STRING' and "strPad" in attr_type:
                     strPad = attr_type["strPad"]
-                    strLength = attr_type['length']                
-                    
+                    strLength = attr_type['length']
+
                 if rank == 0 and type(strLength) == int and strPad == "H5T_STR_NULLTERM":
                     self.makeNullTermStringAttribute(obj, attr_name, strLength, value)
-                else: 
+                else:
                     typeItem = hdf5dtype.getTypeItem(dt)
                     #print "typeItem:", typeItem
                     value = self.toRef(rank, typeItem, value)
-                             
+
                     # create numpy array
                     npdata = np.zeros(shape,dtype=dt)
-                               
+
                     if rank == 0:
                         npdata[()] = self.toNumPyValue(attr_type, value, npdata[()])
                     else:
                         self.toNumPyArray(rank, attr_type, value, npdata)
-                    
+
                     self.writeNdArrayToAttribute(obj.attrs, attr_name, npdata, shape, dt)
-                 
-                 
+
+
 
     """
     createAttribute - create an attribute
@@ -1455,14 +1450,14 @@ class Hdf5db:
             msg = "Object with uuid: " + obj_uuid + " not found"
             self.log.info(msg)
             raise IOError(errno.ENXIO, msg)
-        
+
         if self.isDimensionList(attr_name, attr_type):
             self.makeDimensionList(obj, shape, value)
         elif self.isReferenceList(attr_name, attr_type):
             pass  # Skip since reference list will be created by attach scale
-        else:  
+        else:
             self.makeAttribute(obj, attr_name, shape, attr_type, value)
-              
+
         now = time.time()
         self.setCreateTime(obj_uuid, objType="attribute", name=attr_name, timestamp=now)
         self.setModifiedTime(obj_uuid, objType="attribute", name=attr_name, timestamp=now)
@@ -1626,13 +1621,13 @@ class Hdf5db:
         if type(out) == list:
             out = tuple(out) # convert to tuple
         return out
-        
-        
+
+
     """
       Return a numpy value based on json representation
     """
     def toNumPyValue(self, typeItem, src, des):
-       
+
         typeClass = 'H5T_INTEGER'  # default to int type
         if type(typeItem) is dict:
             typeClass = typeItem['class']
@@ -1643,12 +1638,12 @@ class Hdf5db:
                 self.log.error(msg)
                 raise IOError(errno.EIO, msg)
             nFields = len(fields)
-      
+
             for i in range(nFields):
                 field = fields[i]
                 field_name = field['name']
                 des[field_name] = src[i]
-            
+
         elif typeClass == 'H5T_VLEN':
             if type(src) not in (list, tuple):
                 msg = "Unexpected type for vlen value"
@@ -1656,16 +1651,16 @@ class Hdf5db:
                 raise IOError(errno.EIO, msg)
 
             baseType = typeItem['base']
-            
-           
+
+
             nElements = len(src)
-           
+
             dt = self.createTypeFromItem(baseType)
-            des = np.array(src, dtype=dt)      
-            
+            des = np.array(src, dtype=dt)
+
         elif typeClass == 'H5T_REFERENCE':
             des = src  #self.listToRef(src)
-            
+
         elif typeClass == 'H5T_OPAQUE':
             des = "???"  # todo
         elif typeClass == 'H5T_ARRAY':
@@ -1688,39 +1683,39 @@ class Hdf5db:
        copy src data to numpy array
     """
     def toNumPyArray(self, rank, typeItem, src, des):
-         
+
         if rank == 0:
             msg = "unexpected rank value"
             log.error(msg)
             raise IOError(errno.EIO, msg)  # shouldn't be called with rank 0
-         
+
         for i in range(len(des)):
             des_sec = des[i]  # numpy slab
-             
-            
+
+
             src_sec = src[i]
-             
+
             if rank > 1:
                 self.toNumPyArray(rank - 1, typeItem, src_sec, des_sec)
-            else:        
+            else:
                 rv = self.toNumPyValue(typeItem, src_sec, des_sec)
                 # if the numpy object is writeable, des_sec will be
                 # already updated.  Otherwise, update the des by assignment
                 if not hasattr(des_sec, 'flags') or not des_sec.flags['WRITEABLE']:
                     des[i] = rv
-                            
-        
+
+
     """
        Convert json list to h5py compatible values
     """
     def toRef(self, rank, typeItem, data):
         out = None
-         
+
         if type(typeItem) in (str, unicode):
             # commited type - get json representation
             committed_type_item = self.getCommittedTypeItemByUuid(typeItem)
             typeItem = committed_type_item['type']
-        
+
         typeClass = typeItem['class']
         if typeClass in ('H5T_INTEGER', 'H5T_FLOAT'):
             out = data   # just use as is
@@ -2119,7 +2114,7 @@ class Hdf5db:
     """
     def setDatasetValuesByUuid(self, obj_uuid, data, slices=None):
         dset = self.getDatasetObjByUuid(obj_uuid)
-        
+
         if dset == None:
             msg = "Dataset: " + obj_uuid + " not found"
             self.log.info(msg)
@@ -2152,18 +2147,18 @@ class Hdf5db:
                 self.log.error("setDatasetValuesByUuid: number of dims in selection not same as rank")
                 return False
             else:
-               
+
                 npoints = 1
                 for i in range(rank):
                     s = slices[i]
                     count = (s.stop - s.start) // s.step
                     npoints *= count
                 if count <= 0:
-                    self.log.error("invalid slice specification")  
+                    self.log.error("invalid slice specification")
                 if count == 1 and len(dset.dtype) > 1:
                     # convert to tuple for compound singleton writes
                     data = tuple(data)
-                
+
                 if rank == 1:
                     slice = slices[0]
                     dset[slice] = data
@@ -2228,15 +2223,15 @@ class Hdf5db:
             obj_uuid = str(uuid.uuid1())
         dt = None
         item = {}
-        
+
         # h5py.createdataset fields
         kwargs = {}  # key word arguments for h5py dataset creation
-       
-        fillvalue = None       
-        
+
+        fillvalue = None
+
         if creation_props is None:
-            creation_props = {} # create empty list for convience 
-            
+            creation_props = {} # create empty list for convience
+
         if creation_props:
             if "fillValue" in creation_props:
                 fillvalue = creation_props["fillValue"]
@@ -2257,14 +2252,14 @@ class Hdf5db:
                     if filter_id not in _HDF_FILTERS:
                         self.log.info("unknown filter id: " + str(filter_id) + " ignoring")
                         continue
-                    
+
                     hdf_filter = _HDF_FILTERS[filter_id]
-            
+
                     self.log.info("got filter: " + str(filter_id))
                     if "alias" not in hdf_filter:
                         self.log.info("unsupported filter id: " + str(filter_id) + " ignoring")
                         continue
-    
+
                     filter_alias = hdf_filter["alias"]
                     if not h5py.h5z.filter_avail(filter_id):
                         self.log.info("compression filter not available, filter: " + filter_alias + " will be ignored")
@@ -2273,7 +2268,7 @@ class Hdf5db:
                         if kwargs.get('compression'):
                             self.log.info("compression filter already set, filter: " + filter_alias + " will be ignored")
                             continue
-                        
+
                         kwargs['compression'] = filter_alias
                         self.log.info("setting compression filter to: " + kwargs['compression'])
                         if filter_alias == "gzip":
@@ -2283,7 +2278,7 @@ class Hdf5db:
                         elif filter_alias == "szip":
                             bitsPerPixel = None
                             coding = 'nn'
-                            
+
                             if "bitsPerPixel" in filter_prop:
                                 bitsPerPixel = filter_prop["bitsPerPixel"]
                             if "coding" in filter_prop:
@@ -2302,7 +2297,7 @@ class Hdf5db:
                             if "pixelsPerScanline" in filter_props:
                                 self.log.info("ignoring szip option: 'pixelsPerScanline'")
                             if bitsPerPixel:
-                                kwargs['compression_opts'] = (coding, bitsPerPixel)                                 
+                                kwargs['compression_opts'] = (coding, bitsPerPixel)
                     else:
                         if filter_alias == "shuffle":
                             kwargs['shuffle'] = True
@@ -2315,23 +2310,23 @@ class Hdf5db:
                                 raise IOError(errno.EINVAL, msg)
                             kwargs['scaleoffset'] = filter_prop["scaleOffset"]
                         else:
-                            log.info("Unexpected filter name: " + filter_alias + " , ignoring")                   
-            
+                            log.info("Unexpected filter name: " + filter_alias + " , ignoring")
+
         dt_ref = self.createTypeFromItem(datatype)
         if dt_ref is None:
             msg = 'Unexpected error, no type returned'
             self.log.error(msg)
             raise IOError(errno.EIO, msg)
-        
-        dt = dt_ref    
+
+        dt = dt_ref
         if hasattr(dt_ref, 'dtype'):
             # dt_ref is actualy a handle to a committed type
             # get the dtype prop, but use dt_ref for the actual dataset creation
             dt = dt_ref.dtype
-        
+
         if fillvalue and len(dt) > 1 and type(fillvalue) in (list, tuple):
             # for compound types, need to convert from list to dataset compatible element
-             
+
             converted_data = []
             if len(dt) != len(fillvalue):
                 msg = 'fillvalue has incorrect number of elements'
@@ -2342,10 +2337,10 @@ class Hdf5db:
                 field = dt.names[i]
                 ndscalar[field] = self.toTuple(fillvalue[i])
             fillvalue = ndscalar
-       
+
         if fillvalue:
             kwargs['fillvalue'] = fillvalue
-            
+
         dataset_id = None
         if datashape == None:
             # create null space dataset
@@ -2367,17 +2362,17 @@ class Hdf5db:
             # delete the temp dataset
             del tmpGrp[obj_uuid]
         else:
-           
+
             # create the dataset
-            
+
             try:
-                newDataset = datasets.create_dataset(obj_uuid, shape=datashape, 
+                newDataset = datasets.create_dataset(obj_uuid, shape=datashape,
                     maxshape=max_shape, dtype=dt_ref, **kwargs)
             except ValueError as ve:
                 msg = "Unable to creation dataset: " + ve.message
                 self.log.info(msg)
                 raise IOError(errno.EINVAL, msg) # assume this is due to invalid params
-                       
+
             if newDataset:
                 dataset_id = newDataset.id
 
@@ -2389,7 +2384,7 @@ class Hdf5db:
         addr = h5py.h5o.get_info(dataset_id).addr
         addrGrp = self.dbGrp["{addr}"]
         addrGrp.attrs[str(addr)] = obj_uuid
-        
+
         # save creation props if any
         if creation_props:
             self.setDatasetCreationProps(obj_uuid, creation_props)
@@ -2582,7 +2577,7 @@ class Hdf5db:
         return: item dictionary with link attributes, or None if not found
     """
     def getLinkItemByObj(self, parent, link_name):
-        if not link_name in parent:
+        if link_name not in parent:
             return None
 
         if link_name == "__db__":
