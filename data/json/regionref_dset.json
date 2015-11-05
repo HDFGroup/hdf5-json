@@ -1,7 +1,7 @@
 {
     "apiVersion": "1.0.0", 
     "datasets": {
-        "7abf8742-4a9d-11e5-ac9f-3c15c2da029e": {
+        "a2b14a4c-83f8-11e5-82af-3c15c2da029e": {
             "alias": [
                 "/DS1"
             ], 
@@ -24,7 +24,7 @@
             }, 
             "value": [
                 {
-                    "id": "7abf9d23-4a9d-11e5-8c90-3c15c2da029e", 
+                    "id": "a2b16111-83f8-11e5-9500-3c15c2da029e", 
                     "select_type": "H5S_SEL_POINTS", 
                     "selection": [
                         [
@@ -46,7 +46,7 @@
                     ]
                 }, 
                 {
-                    "id": "7abf9d23-4a9d-11e5-8c90-3c15c2da029e", 
+                    "id": "a2b16111-83f8-11e5-9500-3c15c2da029e", 
                     "select_type": "H5S_SEL_HYPERSLABS", 
                     "selection": [
                         [
@@ -93,14 +93,13 @@
                 }
             ]
         }, 
-        "7abf9d23-4a9d-11e5-8c90-3c15c2da029e": {
+        "a2b16111-83f8-11e5-9500-3c15c2da029e": {
             "alias": [
                 "/DS2"
             ], 
             "creationProperties": {
                 "allocTime": "H5D_ALLOC_TIME_LATE", 
                 "fillTime": "H5D_FILL_TIME_IFSET", 
-                "fillValue": 0, 
                 "layout": {
                     "class": "H5D_CONTIGUOUS"
                 }
@@ -175,7 +174,7 @@
         }
     }, 
     "groups": {
-        "7abe7a00-4a9d-11e5-aec9-3c15c2da029e": {
+        "a2b01eb3-83f8-11e5-9199-3c15c2da029e": {
             "alias": [
                 "/"
             ], 
@@ -183,17 +182,17 @@
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "7abf8742-4a9d-11e5-ac9f-3c15c2da029e", 
+                    "id": "a2b14a4c-83f8-11e5-82af-3c15c2da029e", 
                     "title": "DS1"
                 }, 
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "7abf9d23-4a9d-11e5-8c90-3c15c2da029e", 
+                    "id": "a2b16111-83f8-11e5-9500-3c15c2da029e", 
                     "title": "DS2"
                 }
             ]
         }
     }, 
-    "root": "7abe7a00-4a9d-11e5-aec9-3c15c2da029e"
+    "root": "a2b01eb3-83f8-11e5-9199-3c15c2da029e"
 }

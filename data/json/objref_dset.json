@@ -1,7 +1,7 @@
 {
     "apiVersion": "1.0.0", 
     "datasets": {
-        "7a59a375-4a9d-11e5-8504-3c15c2da029e": {
+        "a2474bbd-83f8-11e5-8950-3c15c2da029e": {
             "alias": [
                 "/DS1"
             ], 
@@ -23,18 +23,17 @@
                 "class": "H5T_REFERENCE"
             }, 
             "value": [
-                "groups/7a59cc17-4a9d-11e5-aaa9-3c15c2da029e", 
-                "datasets/7a59ba17-4a9d-11e5-9c81-3c15c2da029e"
+                "groups/a2477f4a-83f8-11e5-bf2f-3c15c2da029e", 
+                "datasets/a24764ba-83f8-11e5-a8c1-3c15c2da029e"
             ]
         }, 
-        "7a59ba17-4a9d-11e5-9c81-3c15c2da029e": {
+        "a24764ba-83f8-11e5-a8c1-3c15c2da029e": {
             "alias": [
                 "/DS2"
             ], 
             "creationProperties": {
                 "allocTime": "H5D_ALLOC_TIME_LATE", 
                 "fillTime": "H5D_FILL_TIME_IFSET", 
-                "fillValue": 0, 
                 "layout": {
                     "class": "H5D_CONTIGUOUS"
                 }
@@ -50,7 +49,7 @@
         }
     }, 
     "groups": {
-        "7a58889c-4a9d-11e5-86cb-3c15c2da029e": {
+        "a2462d5c-83f8-11e5-8074-3c15c2da029e": {
             "alias": [
                 "/"
             ], 
@@ -58,28 +57,28 @@
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "7a59a375-4a9d-11e5-8504-3c15c2da029e", 
+                    "id": "a2474bbd-83f8-11e5-8950-3c15c2da029e", 
                     "title": "DS1"
                 }, 
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "7a59ba17-4a9d-11e5-9c81-3c15c2da029e", 
+                    "id": "a24764ba-83f8-11e5-a8c1-3c15c2da029e", 
                     "title": "DS2"
                 }, 
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "groups", 
-                    "id": "7a59cc17-4a9d-11e5-aaa9-3c15c2da029e", 
+                    "id": "a2477f4a-83f8-11e5-bf2f-3c15c2da029e", 
                     "title": "G1"
                 }
             ]
         }, 
-        "7a59cc17-4a9d-11e5-aaa9-3c15c2da029e": {
+        "a2477f4a-83f8-11e5-bf2f-3c15c2da029e": {
             "alias": [
                 "/G1"
             ]
         }
     }, 
-    "root": "7a58889c-4a9d-11e5-86cb-3c15c2da029e"
+    "root": "a2462d5c-83f8-11e5-8074-3c15c2da029e"
 }

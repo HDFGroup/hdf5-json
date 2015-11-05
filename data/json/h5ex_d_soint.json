@@ -1,14 +1,13 @@
 {
     "apiVersion": "1.0.0", 
     "datasets": {
-        "792adc9c-4a9d-11e5-b45b-3c15c2da029e": {
+        "a13c90b0-83f8-11e5-9ace-3c15c2da029e": {
             "alias": [
                 "/DS1"
             ], 
             "creationProperties": {
                 "allocTime": "H5D_ALLOC_TIME_INCR", 
                 "fillTime": "H5D_FILL_TIME_IFSET", 
-                "fillValue": 0, 
                 "filters": [
                     {
                         "class": "H5Z_FILTER_SCALEOFFSET", 
@@ -2153,7 +2152,7 @@
         }
     }, 
     "groups": {
-        "7929d002-4a9d-11e5-90db-3c15c2da029e": {
+        "a13b7f35-83f8-11e5-a111-3c15c2da029e": {
             "alias": [
                 "/"
             ], 
@@ -2161,11 +2160,11 @@
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "792adc9c-4a9d-11e5-b45b-3c15c2da029e", 
+                    "id": "a13c90b0-83f8-11e5-9ace-3c15c2da029e", 
                     "title": "DS1"
                 }
             ]
         }
     }, 
-    "root": "7929d002-4a9d-11e5-90db-3c15c2da029e"
+    "root": "a13b7f35-83f8-11e5-a111-3c15c2da029e"
 }

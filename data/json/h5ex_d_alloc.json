@@ -1,14 +1,13 @@
 {
     "apiVersion": "1.0.0", 
     "datasets": {
-        "77ffa578-4a9d-11e5-9dd9-3c15c2da029e": {
+        "a014c797-83f8-11e5-9d30-3c15c2da029e": {
             "alias": [
                 "/DS1"
             ], 
             "creationProperties": {
                 "allocTime": "H5D_ALLOC_TIME_LATE", 
                 "fillTime": "H5D_FILL_TIME_IFSET", 
-                "fillValue": 0, 
                 "layout": {
                     "class": "H5D_CONTIGUOUS"
                 }
@@ -63,14 +62,13 @@
                 ]
             ]
         }, 
-        "77ffbbb3-4a9d-11e5-a650-3c15c2da029e": {
+        "a014ddab-83f8-11e5-aaa4-3c15c2da029e": {
             "alias": [
                 "/DS2"
             ], 
             "creationProperties": {
                 "allocTime": "H5D_ALLOC_TIME_EARLY", 
                 "fillTime": "H5D_FILL_TIME_IFSET", 
-                "fillValue": 0, 
                 "layout": {
                     "class": "H5D_CONTIGUOUS"
                 }
@@ -127,7 +125,7 @@
         }
     }, 
     "groups": {
-        "77fe93c2-4a9d-11e5-8562-3c15c2da029e": {
+        "a013b466-83f8-11e5-8acd-3c15c2da029e": {
             "alias": [
                 "/"
             ], 
@@ -135,17 +133,17 @@
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "77ffa578-4a9d-11e5-9dd9-3c15c2da029e", 
+                    "id": "a014c797-83f8-11e5-9d30-3c15c2da029e", 
                     "title": "DS1"
                 }, 
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "77ffbbb3-4a9d-11e5-a650-3c15c2da029e", 
+                    "id": "a014ddab-83f8-11e5-aaa4-3c15c2da029e", 
                     "title": "DS2"
                 }
             ]
         }
     }, 
-    "root": "77fe93c2-4a9d-11e5-8562-3c15c2da029e"
+    "root": "a013b466-83f8-11e5-8acd-3c15c2da029e"
 }
