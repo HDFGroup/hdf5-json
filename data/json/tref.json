@@ -1,9 +1,17 @@
 {
+    "apiVersion": "1.0.0", 
     "datasets": {
-        "b88c1fb3-cd15-11e4-9037-3c15c2da029e": {
+        "a378699e-83f8-11e5-9c1f-3c15c2da029e": {
             "alias": [
                 "/Group1/Dataset1"
             ], 
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_LATE", 
+                "fillTime": "H5D_FILL_TIME_IFSET", 
+                "layout": {
+                    "class": "H5D_CONTIGUOUS"
+                }
+            }, 
             "shape": {
                 "class": "H5S_SIMPLE", 
                 "dims": [
@@ -21,10 +29,17 @@
                 9
             ]
         }, 
-        "b88c2f4a-cd15-11e4-b9d4-3c15c2da029e": {
+        "a3787da6-83f8-11e5-aa6c-3c15c2da029e": {
             "alias": [
                 "/Group1/Dataset2"
             ], 
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_LATE", 
+                "fillTime": "H5D_FILL_TIME_IFSET", 
+                "layout": {
+                    "class": "H5D_CONTIGUOUS"
+                }
+            }, 
             "shape": {
                 "class": "H5S_SIMPLE", 
                 "dims": [
@@ -42,10 +57,17 @@
                 0
             ]
         }, 
-        "b88c3e51-cd15-11e4-90dd-3c15c2da029e": {
+        "a378909c-83f8-11e5-99c4-3c15c2da029e": {
             "alias": [
                 "/ZZZDataset3"
             ], 
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_LATE", 
+                "fillTime": "H5D_FILL_TIME_IFSET", 
+                "layout": {
+                    "class": "H5D_CONTIGUOUS"
+                }
+            }, 
             "shape": {
                 "class": "H5S_SIMPLE", 
                 "dims": [
@@ -57,14 +79,14 @@
                 "class": "H5T_REFERENCE"
             }, 
             "value": [
-                "datasets/b88c1fb3-cd15-11e4-9037-3c15c2da029e", 
-                "datasets/b88c2f4a-cd15-11e4-b9d4-3c15c2da029e", 
-                "groups/b88c0c19-cd15-11e4-88df-3c15c2da029e"
+                "datasets/a378699e-83f8-11e5-9c1f-3c15c2da029e", 
+                "datasets/a3787da6-83f8-11e5-aa6c-3c15c2da029e", 
+                "groups/a37850bd-83f8-11e5-9150-3c15c2da029e"
             ]
         }
     }, 
     "groups": {
-        "b88b0700-cd15-11e4-971f-3c15c2da029e": {
+        "a3774742-83f8-11e5-be97-3c15c2da029e": {
             "alias": [
                 "/"
             ], 
@@ -72,18 +94,18 @@
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "groups", 
-                    "id": "b88c0c19-cd15-11e4-88df-3c15c2da029e", 
+                    "id": "a37850bd-83f8-11e5-9150-3c15c2da029e", 
                     "title": "Group1"
                 }, 
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "b88c3e51-cd15-11e4-90dd-3c15c2da029e", 
+                    "id": "a378909c-83f8-11e5-99c4-3c15c2da029e", 
                     "title": "ZZZDataset3"
                 }
             ]
         }, 
-        "b88c0c19-cd15-11e4-88df-3c15c2da029e": {
+        "a37850bd-83f8-11e5-9150-3c15c2da029e": {
             "alias": [
                 "/Group1"
             ], 
@@ -91,17 +113,17 @@
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "b88c1fb3-cd15-11e4-9037-3c15c2da029e", 
+                    "id": "a378699e-83f8-11e5-9c1f-3c15c2da029e", 
                     "title": "Dataset1"
                 }, 
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "b88c2f4a-cd15-11e4-b9d4-3c15c2da029e", 
+                    "id": "a3787da6-83f8-11e5-aa6c-3c15c2da029e", 
                     "title": "Dataset2"
                 }
             ]
         }
     }, 
-    "root": "b88b0700-cd15-11e4-971f-3c15c2da029e"
+    "root": "a3774742-83f8-11e5-be97-3c15c2da029e"
 }

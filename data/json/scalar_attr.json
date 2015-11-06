@@ -1,7 +1,7 @@
 {
     "apiVersion": "1.0.0", 
     "datasets": {
-        "bcd929ba-4dc7-11e5-b465-3c15c2da029e": {
+        "a30574fa-83f8-11e5-ab46-3c15c2da029e": {
             "alias": [
                 "/DS1"
             ], 
@@ -18,25 +18,11 @@
                         "strPad": "H5T_STR_NULLPAD"
                     }, 
                     "value": "12345"
-                },
-                {
-                    "name": "A2",
-                    "shape": {
-                        "class": "H5S_SCALAR"
-                    },
-                    "type": {
-                        "charSet": "H5T_CSET_ASCII",
-                        "class": "H5T_STRING",
-                        "length": 5,
-                        "strPad": "H5T_STR_NULLTERM"
-                    },
-                    "value": "12345"
                 }
             ], 
             "creationProperties": {
                 "allocTime": "H5D_ALLOC_TIME_LATE", 
                 "fillTime": "H5D_FILL_TIME_IFSET", 
-                "fillValue": 0, 
                 "layout": {
                     "class": "H5D_CONTIGUOUS"
                 }
@@ -52,7 +38,7 @@
         }
     }, 
     "groups": {
-        "bcd7ab3a-4dc7-11e5-8589-3c15c2da029e": {
+        "a304684f-83f8-11e5-8c0a-3c15c2da029e": {
             "alias": [
                 "/"
             ], 
@@ -60,11 +46,11 @@
                 {
                     "class": "H5L_TYPE_HARD", 
                     "collection": "datasets", 
-                    "id": "bcd929ba-4dc7-11e5-b465-3c15c2da029e", 
+                    "id": "a30574fa-83f8-11e5-ab46-3c15c2da029e", 
                     "title": "DS1"
                 }
             ]
         }
     }, 
-    "root": "bcd7ab3a-4dc7-11e5-8589-3c15c2da029e"
+    "root": "a304684f-83f8-11e5-8c0a-3c15c2da029e"
 }
