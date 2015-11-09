@@ -221,27 +221,29 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertEqual(check_dtype(vlen=dt), unicode)
 
     def testCreateVLenDataType(self):
-        typeItem = { 'class': 'H5T_VLEN', 'base': 'H5T_STD_I32BE' }
+        typeItem = {'class': 'H5T_VLEN', 'base': 'H5T_STD_I32BE'}
         dt = hdf5dtype.createDataType(typeItem)
         self.assertEqual(dt.name, 'object')
         self.assertEqual(dt.kind, 'O')
 
     def testCreateOpaqueType(self):
-        typeItem = { 'class': 'H5T_OPAQUE', 'size': 200 }
+        typeItem = {'class': 'H5T_OPAQUE', 'size': 200}
         dt = hdf5dtype.createDataType(typeItem)
         self.assertEqual(dt.name, 'void1600')
         self.assertEqual(dt.kind, 'V')
 
     def testCreateCompoundType(self):
-        typeItem = {'class': 'H5T_COMPOUND', 'fields':
+        typeItem = {
+            'class': 'H5T_COMPOUND', 'fields':
                 [{'name': 'temp',     'type': 'H5T_IEEE_F32LE'},
                  {'name': 'pressure', 'type': 'H5T_IEEE_F32LE'},
                  {'name': 'location', 'type': {
                      'length': 'H5T_VARIABLE',
                      'charSet': 'H5T_CSET_ASCII',
                      'class': 'H5T_STRING',
-                     'strPad': 'H5T_STR_NULLTERM' } },
-                 {'name': 'wind',     'type': 'H5T_STD_I16LE'} ] }
+                     'strPad': 'H5T_STR_NULLTERM'}},
+                 {'name': 'wind',     'type': 'H5T_STD_I16LE'}]
+        }
 
         dt = hdf5dtype.createDataType(typeItem)
         self.assertEqual(dt.name, 'void144')
@@ -253,12 +255,14 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertEqual(check_dtype(vlen=dtLocation), str)
 
     def testCreateCompoundTypeUnicodeFields(self):
-        typeItem = {'class': 'H5T_COMPOUND', 'fields':
+        typeItem = {
+            'class': 'H5T_COMPOUND', 'fields':
                 [{'name': u'temp',     'type': 'H5T_IEEE_F32LE'},
                  {'name': u'pressure', 'type': 'H5T_IEEE_F32LE'},
-                 {'name': u'wind',     'type': 'H5T_STD_I16LE'} ] }
+                 {'name': u'wind',     'type': 'H5T_STD_I16LE'}]
+        }
 
-        dt = hdf5dtype.createDataType(typeItem)
+        dt = hdf5dtype.createDataType(typeItem)  # FIXME: fails on Py3
         self.assertEqual(dt.name, 'void80')
         self.assertEqual(dt.kind, 'V')
         self.assertEqual(len(dt.fields), 3)
@@ -307,7 +311,7 @@ class Hdf5dtypeTest(unittest.TestCase):
                 }
             ]
         }
-        dt = hdf5dtype.createDataType(typeItem)
+        dt = hdf5dtype.createDataType(typeItem)  # FIXME: fails on Py3
         self.assertEqual(len(dt.fields), 2)
         self.assertTrue('a' in dt.fields.keys())
         self.assertTrue('b' in dt.fields.keys())

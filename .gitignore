@@ -39,6 +39,7 @@ htmlcov/
 nosetests.xml
 coverage.xml
 test/unit/out
+test/integ/*_out
 
 # Translations
 *.mo

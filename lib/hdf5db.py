@@ -1023,7 +1023,7 @@ class Hdf5db:
                 self.log.info(msg)
                 raise IOError(errno.EINVAL, msg)
             except TypeError as te:
-                msg = "Unable to create type: " + te.message
+                msg = "Unable to create type: " + str(te)
                 self.log.info(msg)
                 raise IOError(errno.EINVAL, msg)
             if dt is None:
