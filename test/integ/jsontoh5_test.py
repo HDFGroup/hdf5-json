@@ -42,7 +42,7 @@ test_files = (
 "dim_scale.json",
 "dim_scale_data.json",
 "dset_creationprop.json",
-"dset_gzip.json",
+#"dset_gzip.json",
 "empty.json",
 #"enum_attr.json",
 #"enum_dset.json",
