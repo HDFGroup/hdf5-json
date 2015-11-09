@@ -1,0 +1,513 @@
+{
+    "apiVersion": "1.0.0", 
+    "groups": {
+        "a392756e-83f8-11e5-a4f0-3c15c2da029e": {
+            "alias": [
+                "/"
+            ], 
+            "attributes": [
+                {
+                    "name": "H5T_STD_I64BE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_STD_I64BE", 
+                        "class": "H5T_INTEGER"
+                    }, 
+                    "value": [
+                        0, 
+                        1, 
+                        2, 
+                        3, 
+                        4, 
+                        5, 
+                        6, 
+                        7, 
+                        8, 
+                        9
+                    ]
+                }, 
+                {
+                    "name": "H5T_STD_I64LE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_STD_I64LE", 
+                        "class": "H5T_INTEGER"
+                    }, 
+                    "value": [
+                        0, 
+                        1, 
+                        2, 
+                        3, 
+                        4, 
+                        5, 
+                        6, 
+                        7, 
+                        8, 
+                        9
+                    ]
+                }, 
+                {
+                    "name": "H5T_IEEE_F64BE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_IEEE_F64BE", 
+                        "class": "H5T_FLOAT"
+                    }, 
+                    "value": [
+                        0.0, 
+                        1.0, 
+                        2.0, 
+                        3.0, 
+                        4.0, 
+                        5.0, 
+                        6.0, 
+                        7.0, 
+                        8.0, 
+                        9.0
+                    ]
+                }, 
+                {
+                    "name": "H5T_IEEE_F64LE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_IEEE_F64LE", 
+                        "class": "H5T_FLOAT"
+                    }, 
+                    "value": [
+                        0.0, 
+                        1.0, 
+                        2.0, 
+                        3.0, 
+                        4.0, 
+                        5.0, 
+                        6.0, 
+                        7.0, 
+                        8.0, 
+                        9.0
+                    ]
+                }, 
+                {
+                    "name": "H5T_IEEE_F32BE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_IEEE_F32BE", 
+                        "class": "H5T_FLOAT"
+                    }, 
+                    "value": [
+                        0.0, 
+                        1.0, 
+                        2.0, 
+                        3.0, 
+                        4.0, 
+                        5.0, 
+                        6.0, 
+                        7.0, 
+                        8.0, 
+                        9.0
+                    ]
+                }, 
+                {
+                    "name": "H5T_IEEE_F32LE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_IEEE_F32LE", 
+                        "class": "H5T_FLOAT"
+                    }, 
+                    "value": [
+                        0.0, 
+                        1.0, 
+                        2.0, 
+                        3.0, 
+                        4.0, 
+                        5.0, 
+                        6.0, 
+                        7.0, 
+                        8.0, 
+                        9.0
+                    ]
+                }, 
+                {
+                    "name": "H5T_STD_U64BE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_STD_U64BE", 
+                        "class": "H5T_INTEGER"
+                    }, 
+                    "value": [
+                        0, 
+                        1, 
+                        2, 
+                        3, 
+                        4, 
+                        5, 
+                        6, 
+                        7, 
+                        8, 
+                        9
+                    ]
+                }, 
+                {
+                    "name": "H5T_STD_U64LE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_STD_U64LE", 
+                        "class": "H5T_INTEGER"
+                    }, 
+                    "value": [
+                        0, 
+                        1, 
+                        2, 
+                        3, 
+                        4, 
+                        5, 
+                        6, 
+                        7, 
+                        8, 
+                        9
+                    ]
+                }, 
+                {
+                    "name": "H5T_STD_I8BE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_STD_I8LE", 
+                        "class": "H5T_INTEGER"
+                    }, 
+                    "value": [
+                        0, 
+                        1, 
+                        2, 
+                        3, 
+                        4, 
+                        5, 
+                        6, 
+                        7, 
+                        8, 
+                        9
+                    ]
+                }, 
+                {
+                    "name": "H5T_STD_I8LE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_STD_I8LE", 
+                        "class": "H5T_INTEGER"
+                    }, 
+                    "value": [
+                        0, 
+                        1, 
+                        2, 
+                        3, 
+                        4, 
+                        5, 
+                        6, 
+                        7, 
+                        8, 
+                        9
+                    ]
+                }, 
+                {
+                    "name": "H5T_STD_U32BE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_STD_U32BE", 
+                        "class": "H5T_INTEGER"
+                    }, 
+                    "value": [
+                        0, 
+                        1, 
+                        2, 
+                        3, 
+                        4, 
+                        5, 
+                        6, 
+                        7, 
+                        8, 
+                        9
+                    ]
+                }, 
+                {
+                    "name": "H5T_STD_U32LE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_STD_U32LE", 
+                        "class": "H5T_INTEGER"
+                    }, 
+                    "value": [
+                        0, 
+                        1, 
+                        2, 
+                        3, 
+                        4, 
+                        5, 
+                        6, 
+                        7, 
+                        8, 
+                        9
+                    ]
+                }, 
+                {
+                    "name": "H5T_STD_I16BE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_STD_I16BE", 
+                        "class": "H5T_INTEGER"
+                    }, 
+                    "value": [
+                        0, 
+                        1, 
+                        2, 
+                        3, 
+                        4, 
+                        5, 
+                        6, 
+                        7, 
+                        8, 
+                        9
+                    ]
+                }, 
+                {
+                    "name": "H5T_STD_I16LE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_STD_I16LE", 
+                        "class": "H5T_INTEGER"
+                    }, 
+                    "value": [
+                        0, 
+                        1, 
+                        2, 
+                        3, 
+                        4, 
+                        5, 
+                        6, 
+                        7, 
+                        8, 
+                        9
+                    ]
+                }, 
+                {
+                    "name": "H5T_STD_U8BE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_STD_U8LE", 
+                        "class": "H5T_INTEGER"
+                    }, 
+                    "value": [
+                        0, 
+                        1, 
+                        2, 
+                        3, 
+                        4, 
+                        5, 
+                        6, 
+                        7, 
+                        8, 
+                        9
+                    ]
+                }, 
+                {
+                    "name": "H5T_STD_U8LE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_STD_U8LE", 
+                        "class": "H5T_INTEGER"
+                    }, 
+                    "value": [
+                        0, 
+                        1, 
+                        2, 
+                        3, 
+                        4, 
+                        5, 
+                        6, 
+                        7, 
+                        8, 
+                        9
+                    ]
+                }, 
+                {
+                    "name": "H5T_STD_I32BE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_STD_I32BE", 
+                        "class": "H5T_INTEGER"
+                    }, 
+                    "value": [
+                        0, 
+                        1, 
+                        2, 
+                        3, 
+                        4, 
+                        5, 
+                        6, 
+                        7, 
+                        8, 
+                        9
+                    ]
+                }, 
+                {
+                    "name": "H5T_STD_I32LE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_STD_I32LE", 
+                        "class": "H5T_INTEGER"
+                    }, 
+                    "value": [
+                        0, 
+                        1, 
+                        2, 
+                        3, 
+                        4, 
+                        5, 
+                        6, 
+                        7, 
+                        8, 
+                        9
+                    ]
+                }, 
+                {
+                    "name": "H5T_STD_U16BE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_STD_U16BE", 
+                        "class": "H5T_INTEGER"
+                    }, 
+                    "value": [
+                        0, 
+                        1, 
+                        2, 
+                        3, 
+                        4, 
+                        5, 
+                        6, 
+                        7, 
+                        8, 
+                        9
+                    ]
+                }, 
+                {
+                    "name": "H5T_STD_U16LE", 
+                    "shape": {
+                        "class": "H5S_SIMPLE", 
+                        "dims": [
+                            10
+                        ]
+                    }, 
+                    "type": {
+                        "base": "H5T_STD_U16LE", 
+                        "class": "H5T_INTEGER"
+                    }, 
+                    "value": [
+                        0, 
+                        1, 
+                        2, 
+                        3, 
+                        4, 
+                        5, 
+                        6, 
+                        7, 
+                        8, 
+                        9
+                    ]
+                }
+            ]
+        }
+    }, 
+    "root": "a392756e-83f8-11e5-a4f0-3c15c2da029e"
+}
