@@ -1,6 +1,10 @@
 import json
 import posixpath as pp
 from fast_strconcat import StringStore
+import six
+
+if six.PY3:
+    unicode = str
 
 
 class PyCode(object):

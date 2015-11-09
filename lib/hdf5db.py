@@ -10,6 +10,11 @@
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
 
+import six
+
+if six.PY3:
+    unicode = str
+
 """
 This class is used to manage UUID lookup tables for primary HDF objects (Groups, Datasets,
  and Datatypes).  For HDF5 files that are read/write, this information is managed within
@@ -864,7 +869,7 @@ class Hdf5db:
         elif nAllocTime == h5py.h5d.ALLOC_TIME_INCR:
             creationProps['allocTime'] = 'H5D_ALLOC_TIME_INCR'
         else:
-            log.warn("Unknown alloc time value: " + str(nAllocTime))
+            self.log.warning("Unknown alloc time value: " + str(nAllocTime))
 
         # fill time
         nFillTime = plist.get_fill_time()
@@ -875,7 +880,7 @@ class Hdf5db:
         elif nFillTime == h5py.h5d.FILL_TIME_IFSET:
             creationProps['fillTime'] = 'H5D_FILL_TIME_IFSET'
         else:
-            log.warn("unknown fill time value: " + str(nFillTime))
+            self.log.warning("unknown fill time value: " + str(nFillTime))
 
         if type_class not in ('H5T_VLEN', 'H5T_OPAQUE'):
             if plist.fill_value_defined() == h5py.h5d.FILL_VALUE_USER_DEFINED:
@@ -890,12 +895,11 @@ class Hdf5db:
         elif nLayout == h5py.h5d.CHUNKED:
             creationProps['layout'] = {'class': 'H5D_CHUNKED', 'dims': dset.chunks }
         else:
-            log.warn("Unknown layout value:" + str(nLayout))
+            self.log.warning("Unknown layout value:" + str(nLayout))
 
         num_filters = plist.get_nfilters()
         filter_props = []
         if num_filters:
-            filter_list = []
             for n in range(num_filters):
                 filter_info = plist.get_filter(n)
                 opt_values = filter_info[2]
@@ -1002,7 +1006,7 @@ class Hdf5db:
     def createTypeFromItem(self, attr_type):
         dt = None
 
-        if type(attr_type) in (str, unicode) and len(attr_type) == UUID_LEN:
+        if type(attr_type) in (six.text_type, six.binary_type) and len(attr_type) == UUID_LEN:
             # assume attr_type is a uuid of a named datatype
             tgt = self.getCommittedTypeObjByUuid(attr_type)
             if tgt is None:
@@ -1298,7 +1302,7 @@ class Hdf5db:
 
                 try:
                     h5py.h5ds.attach_scale(obj.id, scale_obj.id, i)
-                except RuntimeError as rte:
+                except RuntimeError:
                     self.log.error("got runtime error attaching scale")
 
     """
@@ -1324,11 +1328,10 @@ class Hdf5db:
         tid.set_size(strLength)
         tid.set_strpad(h5py.h5t.STR_NULLTERM)
         sid = h5py.h5s.create(h5py.h5s.SCALAR)
-        aid = h5py.h5a.create(obj.id, attr_name, tid, sid)
+        h5py.h5a.create(obj.id, attr_name, tid, sid)
         # write the value
         dtype_code = 'S' + str(strLength)
         ndarr = np.array(value, dtype=np.dtype(dtype_code))
-        ret = aid.write(ndarr)
 
     def makeAttribute(self, obj, attr_name, shape, attr_type, value):
         """
@@ -1378,7 +1381,6 @@ class Hdf5db:
                 value = list(value)
             if type(shape) is list:
                 shape = tuple(shape)
-            #print "value to list:", value
             if not is_committed_type:
                 # apparently committed types can not be used as reference types
                 # todo - verify why that is
@@ -1395,7 +1397,6 @@ class Hdf5db:
                     self.makeNullTermStringAttribute(obj, attr_name, strLength, value)
                 else:
                     typeItem = hdf5dtype.getTypeItem(dt)
-                    #print "typeItem:", typeItem
                     value = self.toRef(rank, typeItem, value)
 
                     # create numpy array
@@ -1413,12 +1414,6 @@ class Hdf5db:
     """
     def createAttribute(self, col_name, obj_uuid, attr_name, shape, attr_type, value):
         self.log.info("createAttribute: [" + attr_name + "]")
-        #print "createAttribute, name:", attr_name
-        #print "createAttribute, type:", attr_type
-        #print "createAttribute, shape:", shape
-        #print "obj_uuid:", obj_uuid
-        #print "createAttribute, value:", value
-        #attr_type_orig = None
 
         self.initFile()
         if self.readonly:
@@ -1548,7 +1543,6 @@ class Hdf5db:
       Return a numpy value based on json representation
     """
     def getRefValue(self, typeItem, value):
-        # print "getRefValue:", value
         out = None
         typeClass = typeItem['class']
         if typeClass == 'H5T_COMPOUND':
@@ -1633,8 +1627,6 @@ class Hdf5db:
 
             baseType = typeItem['base']
 
-            nElements = len(src)
-
             dt = self.createTypeFromItem(baseType)
             des = np.array(src, dtype=dt)
 
@@ -1665,7 +1657,7 @@ class Hdf5db:
 
         if rank == 0:
             msg = "unexpected rank value"
-            log.error(msg)
+            self.log.error(msg)
             raise IOError(errno.EIO, msg)  # shouldn't be called with rank 0
 
         for i in range(len(des)):
@@ -1716,7 +1708,6 @@ class Hdf5db:
        Convert list to json serializable values.
     """
     def toList(self, rank, typeItem, data):
-        # print "toList - rank:", rank, "typeItem:", typeItem, "data: ", data
         out = None
         typeClass = typeItem['class']
         if typeClass in ('H5T_INTEGER', 'H5T_FLOAT', 'H5T_STRING'):
@@ -1843,7 +1834,7 @@ class Hdf5db:
         if objid:
             item['id'] = self.getUUIDByAddress(h5py.h5o.get_info(objid).addr)
         else:
-                log.info("region reference unable to find item with objid: " + objid)
+                self.log.info("region reference unable to find item with objid: " + objid)
                 return item
 
         sel = h5py.h5r.get_region(regionRef, objid)
@@ -2284,7 +2275,7 @@ class Hdf5db:
                                 raise IOError(errno.EINVAL, msg)
                             kwargs['scaleoffset'] = filter_prop["scaleOffset"]
                         else:
-                            log.info("Unexpected filter name: " + filter_alias + " , ignoring")
+                            self.log.info("Unexpected filter name: " + filter_alias + " , ignoring")
 
         dt_ref = self.createTypeFromItem(datatype)
         if dt_ref is None:
@@ -2301,7 +2292,6 @@ class Hdf5db:
         if fillvalue and len(dt) > 1 and type(fillvalue) in (list, tuple):
             # for compound types, need to convert from list to dataset compatible element
 
-            converted_data = []
             if len(dt) != len(fillvalue):
                 msg = 'fillvalue has incorrect number of elements'
                 self.log.info(msg)

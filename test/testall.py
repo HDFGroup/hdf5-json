@@ -21,23 +21,17 @@ integ_tests = ( 'h5tojson_test', 'jsontoh5_test' )
 #
 os.chdir('unit')
 for file_name in unit_tests:
-    print file_name
+    print(file_name)
     rc = os.system('python ' + file_name + '.py')
     if rc != 0:
         sys.exit("Failed")
-  
+
 os.chdir('../integ')
 os.system('pwd')
 for file_name in integ_tests:
-    print file_name
+    print(file_name)
     rc = os.system('python ' + file_name + '.py')
     if rc != 0:
         sys.exit("failed")
-os.chdir('..') 
-print "Done!"
- 
-
-
-
-
-
+os.chdir('..')
+print("Done!")
