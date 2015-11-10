@@ -109,12 +109,12 @@ def getTypeElement(dt):
         h5t_check = check_dtype(vlen=dt)
         if h5t_check is not None:
 
-            if h5t_check == str:
+            if h5t_check == six.binary_type:
                 type_info['class'] = 'H5T_STRING'
                 type_info['length'] = 'H5T_VARIABLE'
                 type_info['charSet'] = 'H5T_CSET_ASCII'
                 type_info['strPad'] = 'H5T_STR_NULLTERM'
-            elif h5t_check == unicode:
+            elif h5t_check == six.text_type:
                 type_info['class'] = 'H5T_STRING'
                 type_info['length'] = 'H5T_VARIABLE'
                 type_info['charSet'] = 'H5T_CSET_UTF8'
@@ -407,7 +407,7 @@ def createBaseDataType(typeItem):
 
 def createDataType(typeItem):
     dtRet = None
-    if type(typeItem) == str or type(typeItem) == unicode:
+    if type(typeItem) in [six.string_types, six.text_type, six.binary_type]:
         # should be one of the predefined types
         dtName = getNumpyTypename(typeItem)
         dtRet = np.dtype(dtName)
@@ -441,8 +441,9 @@ def createDataType(typeItem):
             field_name = field['name']
             if type(field_name) == unicode:
                 # convert to ascii
-                ascii_name = field_name.encode('ascii')
-                if ascii_name != field_name:
+                try:
+                    ascii_name = field_name.encode('ascii')
+                except UnicodeDecodeError:
                     raise TypeError("non-ascii field name not allowed")
                 field['name'] = ascii_name
 

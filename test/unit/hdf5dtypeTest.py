@@ -20,9 +20,6 @@ import six
 sys.path.append('../../lib')
 import hdf5dtype
 
-if six.PY3:
-    unicode = str
-
 
 class Hdf5dtypeTest(unittest.TestCase):
     def __init__(self, *args, **kwargs):
@@ -67,7 +64,7 @@ class Hdf5dtypeTest(unittest.TestCase):
             pass # expected
 
     def testBaseVLenAsciiTypeItem(self):
-        dt = special_dtype(vlen=str)
+        dt = special_dtype(vlen=six.binary_type)
         typeItem = hdf5dtype.getTypeItem(dt)
         self.failUnlessEqual(typeItem['class'], 'H5T_STRING')
         self.failUnlessEqual(typeItem['length'], 'H5T_VARIABLE')
@@ -75,7 +72,7 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.failUnlessEqual(typeItem['charSet'], 'H5T_CSET_ASCII')
 
     def testBaseVLenUnicodeTypeItem(self):
-        dt = special_dtype(vlen=unicode)
+        dt = special_dtype(vlen=six.text_type)
         typeItem = hdf5dtype.getTypeItem(dt)
         self.failUnlessEqual(typeItem['class'], 'H5T_STRING')
         self.failUnlessEqual(typeItem['length'], 'H5T_VARIABLE')
@@ -218,7 +215,7 @@ class Hdf5dtypeTest(unittest.TestCase):
         dt = hdf5dtype.createDataType(typeItem)
         self.assertEqual(dt.name, 'object')
         self.assertEqual(dt.kind, 'O')
-        self.assertEqual(check_dtype(vlen=dt), unicode)
+        self.assertEqual(check_dtype(vlen=dt), six.text_type)
 
     def testCreateVLenDataType(self):
         typeItem = {'class': 'H5T_VLEN', 'base': 'H5T_STD_I32BE'}
