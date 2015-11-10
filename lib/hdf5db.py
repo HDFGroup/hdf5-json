@@ -1328,10 +1328,11 @@ class Hdf5db:
         tid.set_size(strLength)
         tid.set_strpad(h5py.h5t.STR_NULLTERM)
         sid = h5py.h5s.create(h5py.h5s.SCALAR)
-        h5py.h5a.create(obj.id, attr_name, tid, sid)
+        aid = h5py.h5a.create(obj.id, attr_name, tid, sid)
         # write the value
         dtype_code = 'S' + str(strLength)
         ndarr = np.array(value, dtype=np.dtype(dtype_code))
+        aid.write(ndarr)
 
     def makeAttribute(self, obj, attr_name, shape, attr_type, value):
         """
