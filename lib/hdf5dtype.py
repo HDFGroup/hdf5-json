@@ -11,22 +11,26 @@
 ##############################################################################
 
 """
-This class is used to map between HDF5 type representations and numpy types   
- 
+This class is used to map between HDF5 type representations and numpy types
+
 """
 import numpy as np
-from h5py.h5t import special_dtype 
+from h5py.h5t import special_dtype
 from h5py.h5t import check_dtype
 from h5py.h5r import Reference
 from h5py.h5r import RegionReference
+import six
+
+if six.PY3:
+    unicode = str
 
 
 """
-Convert the given type item  to a predefined type string for 
+Convert the given type item  to a predefined type string for
 predefined integer and floating point types ("H5T_STD_I64LE", et. al).
 For compound types, recursively iterate through the typeItem and do same
 conversion for fields of the compound type.
-"""    
+"""
 def getTypeResponse(typeItem):
     response = None
     if 'uuid' in typeItem:
@@ -66,8 +70,8 @@ def getTypeResponse(typeItem):
             elif k not in ('size', 'base_size'):
                 response[k] = typeItem[k]
     return response
-    
-            
+
+
 """
     Return type info.
           For primitive types, return string with typename
@@ -83,34 +87,34 @@ def getTypeItem(dt):
         fields = []
         for name in names:
             field = { 'name': name }
-            field['type'] = getTypeElement(dt[name])  
+            field['type'] = getTypeElement(dt[name])
             fields.append(field)
             type_info['fields'] = fields
     return type_info
-             
+
 """
     Get element type info - either a complete type or element of a compound type
     Returns dictionary
     Note: only getTypeItem should call this!
 """
-            
+
 def getTypeElement(dt):
     if len(dt) > 1:
         raise Exception("unexpected numpy type passed to getTypeElement")
-    
+
     type_info = {}
-         
+
     if dt.kind == 'O':
         # numpy object type - assume this is a h5py variable length extension
         h5t_check = check_dtype(vlen=dt)
         if h5t_check is not None:
-            
-            if h5t_check == str:
+
+            if h5t_check == six.binary_type:
                 type_info['class'] = 'H5T_STRING'
                 type_info['length'] = 'H5T_VARIABLE'
                 type_info['charSet'] = 'H5T_CSET_ASCII'
                 type_info['strPad'] = 'H5T_STR_NULLTERM'
-            elif h5t_check == unicode:
+            elif h5t_check == six.text_type:
                 type_info['class'] = 'H5T_STRING'
                 type_info['length'] = 'H5T_VARIABLE'
                 type_info['charSet'] = 'H5T_CSET_UTF8'
@@ -119,7 +123,7 @@ def getTypeElement(dt):
                 # vlen data
                 type_info['class'] = 'H5T_VLEN'
                 type_info['size'] = 'H5T_VARIABLE'
-                type_info['base'] = getBaseType(h5t_check)  
+                type_info['base'] = getBaseType(h5t_check)
             else:
                 #unknown vlen type
                 raise TypeError("Unknown h5py vlen type: " + h5t_check)
@@ -128,14 +132,14 @@ def getTypeElement(dt):
             h5t_check = check_dtype(ref=dt)
             if h5t_check is not None:
                 type_info['class'] = 'H5T_REFERENCE'
-              
+
                 if h5t_check is Reference:
                     type_info['base'] = 'H5T_STD_REF_OBJ'  # objref
                 elif h5t_check is RegionReference:
                     type_info['base'] = 'H5T_STD_REF_DSETREG'  # region ref
                 else:
                     raise TypeError("unexpected reference type")
-            else:     
+            else:
                 raise TypeError("unknown object type")
     elif dt.kind == 'V':
         baseType = getBaseType(dt)
@@ -160,10 +164,10 @@ def getTypeElement(dt):
     elif dt.kind == 'i' or dt.kind == 'u':
         # integer type
         baseType = getBaseType(dt)
-        # numpy integer type - but check to see if this is the hypy 
+        # numpy integer type - but check to see if this is the hypy
         # enum extension
-        mapping = check_dtype(enum=dt)  
-            
+        mapping = check_dtype(enum=dt)
+
         if mapping:
             # yes, this is an enum!
             type_info['class'] = 'H5T_ENUM'
@@ -171,7 +175,7 @@ def getTypeElement(dt):
             type_info['base'] = baseType
         else:
             type_info = baseType  # just use base type
-    
+
     elif dt.kind == 'f':
         # floating point type
         baseType = getBaseType(dt)
@@ -179,16 +183,16 @@ def getTypeElement(dt):
     else:
         # unexpected kind
         raise TypeError("unexpected dtype kind: " + dt.kind)
-        
+
     return type_info
-        
+
 """
 Get Base type info for given type element.
-"""    
+"""
 def getBaseType(dt):
     if len(dt) > 1:
         raise TypeError("unexpected numpy type passed to getTypeElement")
-             
+
     predefined_int_types = {
         'int8':    'H5T_STD_I8',
         'uint8':   'H5T_STD_U8',
@@ -204,28 +208,28 @@ def getBaseType(dt):
         'float64': 'H5T_IEEE_F64'
     }
     type_info = {}
-    
+
     #type_info['base_size'] = dt.base.itemsize
-         
+
     # primitive type
     if dt.base.kind == 'S':
         # Fixed length string type
-        type_info['class'] = 'H5T_STRING' 
+        type_info['class'] = 'H5T_STRING'
         type_info['charSet'] = 'H5T_CSET_ASCII'
         type_info['length'] = dt.base.itemsize
-        type_info['strPad'] = 'H5T_STR_NULLPAD'    
+        type_info['strPad'] = 'H5T_STR_NULLPAD'
     elif dt.base.kind == 'V':
             type_info['class'] = 'H5T_OPAQUE'
             type_info['size'] = dt.itemsize
             type_info['tag'] = ''  # todo - determine tag
-    elif dt.base.kind == 'i' or dt.base.kind == 'u':    
+    elif dt.base.kind == 'i' or dt.base.kind == 'u':
         type_info['class'] = 'H5T_INTEGER'
         byteorder = 'LE'
         if dt.base.byteorder == '>':
             byteorder = 'BE'
         if dt.base.name in predefined_int_types:
             #maps to one of the HDF5 predefined types
-            type_info['base'] = predefined_int_types[dt.base.name] + byteorder  
+            type_info['base'] = predefined_int_types[dt.base.name] + byteorder
     elif dt.base.kind == 'f':
         type_info['class'] = 'H5T_FLOAT'
         byteorder = 'LE'
@@ -233,43 +237,43 @@ def getBaseType(dt):
             byteorder = 'BE'
         if dt.base.name in predefined_float_types:
             #maps to one of the HDF5 predefined types
-            type_info['base'] = predefined_float_types[dt.base.name] + byteorder 
+            type_info['base'] = predefined_float_types[dt.base.name] + byteorder
     elif dt.base.kind == 'O':
         # check for reference type
         h5t_check = check_dtype(ref=dt)
         if h5t_check is not None:
-            type_info['class'] = 'H5T_REFERENCE' 
+            type_info['class'] = 'H5T_REFERENCE'
             if h5t_check is Reference:
                 type_info['base'] = 'H5T_STD_REF_OBJ'  # objref
             elif h5t_check is RegionReference:
                 type_info['base'] = 'H5T_STD_REF_DSETREG'  # region ref
             else:
                 raise TypeError("unexpected reference type")
-        else:     
+        else:
             raise TypeError("unknown object type")
     else:
         # unexpected kind
         raise TypeError("unexpected dtype base kind: " + dt.base.kind)
-    
+
     return type_info
- 
+
 
 def getNumpyTypename(hdf5TypeName, typeClass=None):
     predefined_int_types = {
-          'H5T_STD_I8':  'i1', 
+          'H5T_STD_I8':  'i1',
           'H5T_STD_U8':  'u1',
-          'H5T_STD_I16': 'i2', 
+          'H5T_STD_I16': 'i2',
           'H5T_STD_U16': 'u2',
-          'H5T_STD_I32': 'i4', 
+          'H5T_STD_I32': 'i4',
           'H5T_STD_U32': 'u4',
           'H5T_STD_I64': 'i8',
-          'H5T_STD_U64': 'u8' 
+          'H5T_STD_U64': 'u8'
     }
     predefined_float_types = {
           'H5T_IEEE_F32': 'f4',
           'H5T_IEEE_F64': 'f8'
     }
-    
+
     if len(hdf5TypeName) < 3:
         raise Exception("Type Error: invalid typename: ")
     endian = '<'  # default endian
@@ -279,16 +283,16 @@ def getNumpyTypename(hdf5TypeName, typeClass=None):
     elif hdf5TypeName.endswith('BE'):
         key = hdf5TypeName[:-2]
         endian = '>'
-        
-    if key in predefined_int_types and (typeClass == None or 
+
+    if key in predefined_int_types and (typeClass == None or
             typeClass == 'H5T_INTEGER'):
         return endian + predefined_int_types[key]
-    if key in predefined_float_types and (typeClass == None or 
+    if key in predefined_float_types and (typeClass == None or
             typeClass == 'H5T_FLOAT'):
         return endian + predefined_float_types[key]
     raise TypeError("Type Error: invalid type")
-    
-    
+
+
 def createBaseDataType(typeItem):
 
     dtRet = None
@@ -297,18 +301,18 @@ def createBaseDataType(typeItem):
         dtName = getNumpyTypename(typeItem)
         dtRet = np.dtype(dtName)
         return dtRet  # return predefined type
-        
+
     if type(typeItem) != dict:
         raise TypeError("Type Error: invalid type")
-        
-        
+
+
     if 'class' not in typeItem:
         raise KeyError("'class' not provided")
     typeClass = typeItem['class']
-    
+
     dims = ''
-    if 'dims' in typeItem:  
-        dims = None      
+    if 'dims' in typeItem:
+        dims = None
         if type(typeItem['dims']) == int:
             dims = (typeItem['dims'])  # make into a tuple
         elif type(typeItem['dims']) not in (list, tuple):
@@ -316,10 +320,10 @@ def createBaseDataType(typeItem):
         else:
             dims = typeItem['dims']
         dims = str(tuple(dims))
-        
+
     if typeClass == 'H5T_INTEGER':
         if 'base' not in typeItem:
-            raise KeyError("'base' not provided")      
+            raise KeyError("'base' not provided")
         baseType = getNumpyTypename(typeItem['base'], typeClass='H5T_INTEGER')
         dtRet = np.dtype(dims + baseType)
     elif typeClass == 'H5T_FLOAT':
@@ -331,8 +335,8 @@ def createBaseDataType(typeItem):
         if 'length' not in typeItem:
             raise KeyError("'length' not provided")
         if 'charSet' not in typeItem:
-            raise KeyError("'charSet' not provided")          
-            
+            raise KeyError("'charSet' not provided")
+
         if typeItem['length'] == 'H5T_VARIABLE':
             if dims:
                 raise TypeError("ArrayType is not supported for variable len types")
@@ -358,7 +362,7 @@ def createBaseDataType(typeItem):
         if dims:
             raise TypeError("ArrayType is not supported for variable len types")
         if 'base' not in typeItem:
-            raise KeyError("'base' not provided") 
+            raise KeyError("'base' not provided")
         baseType = createBaseDataType(typeItem['base'])
         dtRet = special_dtype(vlen=np.dtype(baseType))
     elif typeClass == 'H5T_OPAQUE':
@@ -374,49 +378,49 @@ def createBaseDataType(typeItem):
         if not dims:
             raise KeyError("'dims' must be provided for array types")
         if 'base' not in typeItem:
-            raise KeyError("'base' not provided") 
+            raise KeyError("'base' not provided")
         arrayBaseType = typeItem['base']
         if type(arrayBaseType) is dict:
             if "class" not in arrayBaseType:
                 raise KeyError("'class' not provided for array base type")
             if arrayBaseType["class"] not in ('H5T_INTEGER', 'H5T_FLOAT', 'H5T_STRING'):
                 raise TypeError("Array Type base type must be integer, float, or string")
-                
-        baseType = createDataType(arrayBaseType)    
+
+        baseType = createDataType(arrayBaseType)
         dtRet = np.dtype(dims+baseType.str)
-        return dtRet  # return predefined type    
+        return dtRet  # return predefined type
     elif typeClass == 'H5T_REFERENCE':
         if 'base' not in typeItem:
-            raise KeyError("'base' not provided") 
+            raise KeyError("'base' not provided")
         if typeItem['base'] == 'H5T_STD_REF_OBJ':
         	dtRet = special_dtype(ref=Reference)
         elif typeItem['base'] == 'H5T_STD_REF_DSETREG':
         	dtRet = special_dtype(ref=RegionReference)
         else:
             raise TypeError("Invalid base type for reference type")
-        
+
     else:
         raise TypeError("Invalid type class")
-        
-      
-    return dtRet  
-    
+
+
+    return dtRet
+
 def createDataType(typeItem):
     dtRet = None
-    if type(typeItem) == str or type(typeItem) == unicode:
+    if type(typeItem) in [six.string_types, six.text_type, six.binary_type]:
         # should be one of the predefined types
         dtName = getNumpyTypename(typeItem)
         dtRet = np.dtype(dtName)
         return dtRet  # return predefined type
-        
+
     if type(typeItem) != dict:
         raise TypeError("invalid type")
-        
-        
+
+
     if 'class' not in typeItem:
         raise KeyError("'class' not provided")
     typeClass = typeItem['class']
-    
+
     if typeClass == 'H5T_COMPOUND':
         if 'fields' not in typeItem:
             raise KeyError("'fields' not provided for compound type")
@@ -427,7 +431,7 @@ def createDataType(typeItem):
             raise KeyError("no 'field' elements provided")
         subtypes = []
         for field in fields:
-             
+
             if type(field) != dict:
                 raise TypeError("Expected dictionary type for field")
             if 'name' not in field:
@@ -437,11 +441,12 @@ def createDataType(typeItem):
             field_name = field['name']
             if type(field_name) == unicode:
                 # convert to ascii
-                ascii_name = field_name.encode('ascii')
-                if ascii_name != field_name:
+                try:
+                    ascii_name = field_name.encode('ascii')
+                except UnicodeDecodeError:
                     raise TypeError("non-ascii field name not allowed")
                 field['name'] = ascii_name
-                
+
             dt = createDataType(field['type'])  # recursive call
             if dt is None:
                 raise Exception("unexpected error")
@@ -450,9 +455,3 @@ def createDataType(typeItem):
     else:
         dtRet = createBaseDataType(typeItem)  # create non-compound dt
     return dtRet
-        
-                
-    
-        
-            
-   

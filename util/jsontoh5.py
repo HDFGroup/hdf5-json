@@ -12,14 +12,12 @@
 import sys
 import json
 import argparse
-import numpy as np
 import h5py
 import logging
 import logging.handlers
 
 sys.path.append('../lib')
 from hdf5db import Hdf5db
-import hdf5dtype
 
 
 """
@@ -52,7 +50,7 @@ class Writeh5:
             link_file = link_obj["file"]
             self.db.createExternalLink(parent_uuid, link_file, h5path, title)
         else:
-            print "Unable to create link with class:", link_class
+            print("Unable to create link with class:", link_class)
 
     #
     # Create HDF5 dataset object and write data values
@@ -100,7 +98,6 @@ class Writeh5:
 
     def createAttribute(self, attr_json, col_name, uuid):
         attr_name = attr_json["name"]
-        # print "creating Attribute:", attr_name, " in uuid:", uuid
         datatype = attr_json["type"]
         if type(datatype) in (str, unicode) and datatype.startswith("datatypes/"):
             #committed datatype, just pass in the UUID part
@@ -134,7 +131,6 @@ class Writeh5:
     # Create HDF5 group object  (links and attributes will be added later)
     #
     def createGroup(self, uuid, body):
-        # print "creating group:", uuid
         if uuid != self.root_uuid:
             self.db.createGroup(obj_uuid=uuid)
 
@@ -274,10 +270,7 @@ def main():
         del f["__db__"]
     f.close()
 
-    print "done!"
+    print("done!")
 
 
 main()
-
-
-

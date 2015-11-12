@@ -1,6 +1,7 @@
 from string import Template
 import posixpath as pp
 from fast_strconcat import StringStore
+import six
 
 
 class IdlCode(object):
@@ -173,7 +174,7 @@ class IdlCode(object):
         """
         tcls = t['class']
         if tcls == 'H5T_STRING':
-            if isinstance(t['length'], basestring):
+            if isinstance(t['length'], six.string_types):
                 raise NotImplementedError('Variable length string datatype '
                                           'not supported yet.')
             else:

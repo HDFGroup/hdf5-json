@@ -13,7 +13,6 @@ import sys
 import json
 import argparse
 import os.path as op
-import os
 import tempfile
 
 import logging
@@ -21,7 +20,7 @@ import logging.handlers
 
 sys.path.append('../lib')
 from hdf5db import Hdf5db
-import hdf5dtype 
+import hdf5dtype
 
 
 """
@@ -35,10 +34,9 @@ class DumpJson:
         if app_logger:
             self.log = app_logger
         else:
-            # print "default logger"
             self.log = logging.getLogger()
         self.json = {}
-        
+
     def dumpAttribute(self, col_name, uuid, attr_name):
         self.log.info("dumpAttribute: [" + attr_name + "]")
         item = self.db.getAttributeItem(col_name, uuid, attr_name)
@@ -52,8 +50,8 @@ class DumpJson:
             else:
                 response['value'] = item['value']   # dump values unless header -D was passed
         return response
-     
-        
+
+
     def dumpAttributes(self, col_name, uuid):
         attr_list = self.db.getAttributeItems(col_name, uuid)
         self.log.info("dumpAttributes: " + uuid)
@@ -61,17 +59,17 @@ class DumpJson:
         for attr in attr_list:
             item = self.dumpAttribute(col_name, uuid, attr['name'])
             items.append(item)
-                   
-        return items    
-        
+
+        return items
+
     def dumpLink(self, uuid, name):
         item = self.db.getLinkItemByUuid(uuid, name)
         for key in ('ctime', 'mtime', 'href'):
             if key in item:
                 del item[key]
         return item
-        
-    
+
+
     def dumpLinks(self, uuid):
         link_list = self.db.getLinkItems(uuid)
         items = []
@@ -79,8 +77,8 @@ class DumpJson:
             item = self.dumpLink(uuid, link['title'])
             items.append(item)
         return items
-       
-        
+
+
     def dumpGroup(self, uuid):
         item = self.db.getGroupItemByUuid(uuid)
         if 'alias' in item:
@@ -97,20 +95,20 @@ class DumpJson:
         if links:
             item['links'] = links
         return item
-        
-        
+
+
     def dumpGroups(self):
         groups = {}
         item = self.dumpGroup(self.root_uuid)
         groups[self.root_uuid] = item
-        uuids = self.db.getCollection("groups") 
+        uuids = self.db.getCollection("groups")
         for uuid in uuids:
             item = self.dumpGroup(uuid)
             groups[uuid] = item
-        
+
         self.json['groups'] = groups
-        
-        
+
+
     def dumpDataset(self, uuid):
         response = { }
         self.log.info("dumpDataset: " + uuid)
@@ -120,7 +118,7 @@ class DumpJson:
             if alias:
                 self.log.info("dumpDataset alias: [" + alias[0] + "]")
             response['alias'] = item['alias']
-        
+
         typeItem = item['type']
         response['type'] = hdf5dtype.getTypeResponse(typeItem)
         shapeItem = item['shape']
@@ -140,15 +138,15 @@ class DumpJson:
                     maxdims.append(dim)
             shape_rsp['maxdims'] = maxdims
         response['shape'] = shape_rsp
-       
+
         if 'creationProperties' in item:
             response['creationProperties'] = item['creationProperties']
-            
+
         attributes = self.dumpAttributes('datasets', uuid)
         if attributes:
             response['attributes'] = attributes
-        
-        
+
+
         if not (self.options.D or self.options.d):
             if num_elements > 0:
                 value = self.db.getDatasetValuesByUuid(uuid)
@@ -156,17 +154,17 @@ class DumpJson:
             else:
                 response['value'] = []  # empty list
         return response
-        
+
     def dumpDatasets(self):
-        uuids = self.db.getCollection("datasets") 
+        uuids = self.db.getCollection("datasets")
         if uuids:
             datasets = {}
             for uuid in uuids:
                 item = self.dumpDataset(uuid)
                 datasets[uuid] = item
-        
+
             self.json['datasets'] = datasets
-        
+
     def dumpDatatype(self, uuid):
         response = { }
         item = self.db.getCommittedTypeItemByUuid(uuid)
@@ -177,39 +175,39 @@ class DumpJson:
         if attributes:
             response['attributes'] = attributes
         return response
-         
-        
-    def dumpDatatypes(self):    
-        uuids = self.db.getCollection("datatypes") 
+
+
+    def dumpDatatypes(self):
+        uuids = self.db.getCollection("datatypes")
         if uuids:
             datatypes = {}
             for uuid in uuids:
                 item = self.dumpDatatype(uuid)
                 datatypes[uuid] = item
-        
+
             self.json['datatypes'] = datatypes
-        
+
     def dumpFile(self):
-        
+
         self.root_uuid = self.db.getUUIDByPath('/')
-        
+
         db_version_info = self.db.getVersionInfo()
-          
+
         self.json['apiVersion'] = db_version_info['hdf5-json-version']
         self.json['root'] = self.root_uuid
-        
+
         self.dumpGroups()
-        
+
         self.dumpDatasets()
-            
+
         self.dumpDatatypes()
-            
-        print json.dumps(self.json, sort_keys=True, indent=4)
+
+        print(json.dumps(self.json, sort_keys=True, indent=4))
 
 """
   Generate a temporary filename to avoid problems with trying to create a dbfile
   in a read-only directory.  (See: https://github.com/HDFGroup/h5serv/issues/37)
-"""        
+"""
 def getTempFileName():
     f = tempfile.NamedTemporaryFile(delete=False)
     f.close()
@@ -223,31 +221,28 @@ def main():
         ' datasets (but not attribute values)')
     parser.add_argument('filename', nargs='+', help='HDF5 to be converted to json')
     args = parser.parse_args()
-    
+
     # create logger
     log = logging.getLogger("h5serv")
     # log.setLevel(logging.WARN)
     log.setLevel(logging.INFO)
     # add log handler
     handler = logging.FileHandler('./h5tojson.log')
-    
+
     # add handler to logger
     log.addHandler(handler)
-    
+
     filename = args.filename[0]
     if not op.isfile(filename):
         sys.exit("Cannot find file: %s" % filename)
-    
+
     log.info("h5tojson " + filename)
-    
+
     dbFilename = getTempFileName()
     log.info("Using dbFile: " + dbFilename)
     with Hdf5db(filename, dbFilePath=dbFilename, readonly=True, app_logger=log) as db:
         dumper = DumpJson(db, app_logger=log, options=args)
-        dumper.dumpFile()    
-    
+        dumper.dumpFile()
+
 
 main()
-
-    
-	

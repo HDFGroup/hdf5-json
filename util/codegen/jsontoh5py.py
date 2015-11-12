@@ -13,6 +13,10 @@ import json
 import argparse
 from sets import Set
 import posixpath as pp
+import six
+
+if six.PY3:
+    unicode = str
 
 """
 jsontoh5py - output Python code that generates HDF5 file based on given
@@ -182,7 +186,7 @@ def valueToString(attr_json):
 
 
 def doAttribute(attr_json, parent_var):
-    print (parent_var + ".attrs['" + attr_json['name'] + "'] = "
+    print(parent_var + ".attrs['" + attr_json['name'] + "'] = "
            + valueToString(attr_json))
 
 
@@ -203,7 +207,7 @@ def doAttributes(obj_json, parent_var, is_dimscale=False, is_dimension=False):
         return
     attrs_json = obj_json["attributes"]
 
-    print "# creating attributes for '" + getObjectName(obj_json) + "'"
+    print("# creating attributes for '" + getObjectName(obj_json) + "'")
     for attr_json in attrs_json:
         if is_dimscale and attr_json['name'] in ('CLASS', 'REFERENCE_LIST',
                                                  'NAME'):
@@ -240,11 +244,10 @@ def getObjectVariableName(title):
 def doGroup(h5json, group_id, group_name, parent_var):
     groups = h5json["groups"]
     group_json = groups[group_id]
-    print "\n\n# group -- ", group_json['alias'][0]
+    print("\n\n# group -- ", group_json['alias'][0])
     group_var = getObjectVariableName(group_name)
-    print "{0} = {1}.create_group('{2}')".format(group_var, parent_var,
-                                                 group_name)
-    # print "group_json:", group_json
+    print("{0} = {1}.create_group('{2}')".format(
+        group_var, parent_var, group_name))
     doAttributes(group_json, group_var)
     doLinks(h5json, group_json, group_var)
 
@@ -267,10 +270,10 @@ def _dims2str(dims, kwd=''):
 def doDataset(h5json, dset_id, dset_name, parent_var):
     datasets = h5json["datasets"]
     dset_json = datasets[dset_id]
-    print "\n# make dataset: ", dset_json['alias'][0]
+    print("\n# make dataset: ", dset_json['alias'][0])
     dset_var = getObjectVariableName(dset_name)
     dtLine = getBaseDataType(dset_json["type"])  # "dt = ..."
-    print dtLine
+    print(dtLine)
 
     shape = ''
     maxshape = ''
@@ -315,8 +318,8 @@ def doDataset(h5json, dset_id, dset_name, parent_var):
     code_line = ("{} = {}.create_dataset('{}'{}{}{}{}{}"
                  ", dtype=dt)").format(dset_var, parent_var, dset_name, shape,
                                        maxshape, chunks, fv, flt)
-    print code_line
-    print "# initialize dataset values here"
+    print(code_line)
+    print("# initialize dataset values here")
 
     dscale = _is_dimscale(dset_json.get('attributes', []))
     if dscale:
@@ -337,11 +340,10 @@ def doDataset(h5json, dset_id, dset_name, parent_var):
 
 def doLink(h5json, link_json, parent_var):
     if link_json["class"] == "H5L_TYPE_EXTERNAL":
-        print "{0}['{1}'] = h5py.ExternalLink('{2}', '{3}')".format(parent_var, link_json["title"], link_json["file"], link_json["h5path"])
+        print("{0}['{1}'] = h5py.ExternalLink('{2}', '{3}')".format(parent_var, link_json["title"], link_json["file"], link_json["h5path"]))
     elif link_json["class"] == "H5L_TYPE_SOFT":
-        print "{0}['{1}'] = h5py.SoftLink('{2}')".format(parent_var,
-                                                         link_json["title"],
-                                                         link_json["h5path"])
+        print("{0}['{1}'] = h5py.SoftLink('{2}')".format(
+            parent_var, link_json["title"], link_json["h5path"]))
     elif link_json["class"] == "H5L_TYPE_HARD":
         if link_json["collection"] == "groups":
             doGroup(h5json, link_json["id"], link_json["title"], parent_var)
@@ -353,7 +355,7 @@ def doLink(h5json, link_json, parent_var):
             raise Exception("unexpected collection name: "
                             + link_json["collection"])
     elif link_json["class"] == "H5L_TYPE_UDLINK":
-        print "# ignoring user defined link: '{0}'".format(link_json["title"])
+        print("# ignoring user defined link: '{0}'".format(link_json["title"]))
     else:
         raise Exception("unexpected link type: " + link_json["class"])
 
@@ -434,25 +436,25 @@ def doDimensions(h5json, dimensions, dimscales, parent_var):
     # Generate HDF5 paths for all datasets...
     dset_path = _dset_paths(h5json)
 
-    print ('\n\n'
-           '#\n'
-           '# Adding dimensions\n'
-           '#\n'
-           '\n')
+    print('\n\n'
+          '#\n'
+          '# Adding dimensions\n'
+          '#\n'
+          '\n')
 
-    print '# Creating dimension scales'
+    print('# Creating dimension scales')
     for dsid, name in dimscales.iteritems():
         if dimscales[dsid]:
             name = ", '{}'". format(dimscales[dsid])
         else:
             name = ''
-        print "h5py.h5ds.set_scale({}['{}'].id{})".format(
-            parent_var, dset_path[dsid], name)
+        print("h5py.h5ds.set_scale({}['{}'].id{})".format(
+            parent_var, dset_path[dsid], name))
 
-    print '\n# Attaching dimension scales to their datasets'
+    print('\n# Attaching dimension scales to their datasets')
     for dsid in dimensions:
         dsid_path = dset_path[dsid]
-        print "\n# Dataset: {}".format(dsid_path)
+        print("\n# Dataset: {}".format(dsid_path))
         for attr in h5json['datasets'][dsid].get('attributes', []):
             if attr['name'] == 'DIMENSION_LIST':
                 dim_list = attr['value']
@@ -465,8 +467,8 @@ def doDimensions(h5json, dimensions, dimscales, parent_var):
             for d in ds:
                 did = pp.split(d)[-1]
                 did_path = dset_path[did]
-                print "{}['{}'].dims[{:d}].attach_scale({}['{}'])".format(
-                    parent_var, dsid_path, idx, parent_var, did_path)
+                print("{}['{}'].dims[{:d}].attach_scale({}['{}'])".format(
+                    parent_var, dsid_path, idx, parent_var, did_path))
 
 
 def main():
@@ -490,12 +492,12 @@ def main():
     filename = args.out_filename[0]
     file_variable = 'f'
 
-    print "import h5py"
-    print "import numpy as np"
-    print " "
-    print "print 'creating file: {0}'".format(filename)
-    print "{0} = h5py.File('{1}', 'w')".format(file_variable, filename)
-    print " "
+    print("import h5py")
+    print("import numpy as np")
+    print(" ")
+    print("print 'creating file: {0}'".format(filename))
+    print("{0} = h5py.File('{1}', 'w')".format(file_variable, filename))
+    print(" ")
 
     group_json = h5json["groups"]
     root_json = group_json[root_uuid]
@@ -503,6 +505,6 @@ def main():
     doLinks(h5json, root_json, file_variable)
     doDimensions(h5json, dimensions, dimscales, file_variable)
 
-    print "\n\nprint 'done!'"
+    print("\n\nprint('done!')")
 
 main()

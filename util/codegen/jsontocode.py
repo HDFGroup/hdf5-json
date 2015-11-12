@@ -32,4 +32,4 @@ elif args.lang == 'matlab':
 elif args.lang == 'idl':
     codegen = IdlCode(h5json, args.h5_file)
 
-print codegen.get_code()
+print(codegen.get_code())

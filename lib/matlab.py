@@ -1,6 +1,7 @@
 from string import Template
 import posixpath as pp
 from fast_strconcat import StringStore
+import six
 
 
 class MCode(object):
@@ -180,13 +181,13 @@ class MCode(object):
 
             # Create the compound datatype...
             tmplt += "tid = H5T.create('H5T_COMPOUND', sum(field_size));\n"
-            for n in xrange(num_fields):
+            for n in range(num_fields):
                 tmplt += ("H5T.insert(tid, '%s', field_offset(%d), "
                           "field_tid(%d));\n") % (t['fields'][n]['name'],
                                                   n + 1, n + 1)
 
             # Close field datatypes...
-            for n in xrange(num_fields):
+            for n in range(num_fields):
                 tmplt += "H5T.close(field_tid(%d));\n" % (n + 1)
 
             return tmplt
@@ -233,7 +234,7 @@ class MCode(object):
                 "H5T.set_strpad($var,'$strpad');\n"
                 "H5T.set_cset($var, H5ML.get_constant_value('$cset'));\n"
             )
-            if isinstance(t['length'], basestring):
+            if isinstance(t['length'], six.string_types):
                 length = "'%s'" % t['length']
             else:
                 length = t['length']
@@ -317,7 +318,7 @@ class MCode(object):
                 if attr['shape']['class'] == 'H5S_SCALAR':
                     val_str = "sprintf({}, {})".format(fmt, value)
                 else:
-                    for i in xrange(len(value)):
+                    for i in range(len(value)):
                         value[i] = "sprintf({}, {})".format(fmt, value[i])
                     val_str = (
                         '[' + '; '.join(value)
