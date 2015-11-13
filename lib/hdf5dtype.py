@@ -341,7 +341,7 @@ def createBaseDataType(typeItem):
             if dims:
                 raise TypeError("ArrayType is not supported for variable len types")
             if typeItem['charSet'] == 'H5T_CSET_ASCII':
-                dtRet = special_dtype(vlen=str)
+                dtRet = special_dtype(vlen=bytes)
             elif typeItem['charSet'] == 'H5T_CSET_UTF8':
                 dtRet = special_dtype(vlen=unicode)
             else:
@@ -440,17 +440,19 @@ def createDataType(typeItem):
                 raise KeyError("'type' missing from field")
             field_name = field['name']
             if type(field_name) == unicode:
-                # convert to ascii
+                # verify the field name is ascii
                 try:
                     ascii_name = field_name.encode('ascii')
                 except UnicodeDecodeError:
                     raise TypeError("non-ascii field name not allowed")
-                field['name'] = ascii_name
+                if not six.PY3:
+                    field['name'] = ascii_name
 
             dt = createDataType(field['type'])  # recursive call
             if dt is None:
                 raise Exception("unexpected error")
             subtypes.append((field['name'], dt))  # append tuple
+            
         dtRet = np.dtype(subtypes)
     else:
         dtRet = createBaseDataType(typeItem)  # create non-compound dt

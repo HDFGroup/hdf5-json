@@ -240,7 +240,7 @@ class Hdf5db:
         if timestamp is None:
             timestamp = time.time()
         if ts_name in ctime_grp.attrs:
-            self.log.warn("modifying create time for object: " + ts_name)
+            self.log.warning("modifying create time for object: " + ts_name)
         ctime_grp.attrs.create(ts_name, timestamp, dtype='int64')
 
     """
@@ -1135,7 +1135,7 @@ class Hdf5db:
             return None
 
         # get the attribute!
-        attrObj = h5py.h5a.open(obj.id, name)
+        attrObj = h5py.h5a.open(obj.id, np.string_(name))
         attr = None
 
         item = { 'name': name }
@@ -1291,13 +1291,13 @@ class Hdf5db:
             for j in range(len(refs)):
                 scale_obj = self.f[refs[j]]
                 if scale_obj is None:
-                    self.log.warn("dimension list, missing obj reference: " + value[i])
+                    self.log.warning("dimension list, missing obj reference: " + value[i])
                     continue
                 if "CLASS" not in scale_obj.attrs:
-                    self.log.warn("dimension list, no scale obj")
+                    self.log.warning("dimension list, no scale obj")
                     continue
-                if scale_obj.attrs["CLASS"] != "DIMENSION_SCALE":
-                    self.log.warn("dimension list, invalid class for scale obj")
+                if scale_obj.attrs["CLASS"] != b"DIMENSION_SCALE":
+                    self.log.warning("dimension list, invalid class for scale obj")
                     continue
 
                 try:
@@ -1316,12 +1316,19 @@ class Hdf5db:
     """
     def makeNullTermStringAttribute(self, obj, attr_name, strLength, value):
         self.log.info(
-            "make nullterm, length: " + str(strLength) + " value:" + value)
+            "make nullterm, length: " + str(strLength) + " value:" + str(value))
         if type(value) == unicode:
             value = str(value)
         if strLength < len(value):
-            self.log.warn("makeNullTermStringAttribute: value string longer than length")
+            self.log.warning("makeNullTermStringAttribute: value string longer than length")
             #value = value[:strLength]  # truncate to length
+        
+        
+        if six.PY3 and type(attr_name) is str:    
+            try:
+                attr_name = attr_name.encode('ascii')
+            except UnicodeDecodeError:
+                raise TypeError("non-ascii attribute name not allowed")
 
         # create the attribute
         tid = h5py.h5t.TypeID.copy(h5py.h5t.C_S1)
@@ -1402,7 +1409,7 @@ class Hdf5db:
 
                     # create numpy array
                     npdata = np.zeros(shape, dtype=dt)
-
+                    
                     if rank == 0:
                         npdata[()] = self.toNumPyValue(attr_type, value, npdata[()])
                     else:
@@ -1644,7 +1651,13 @@ class Hdf5db:
             if typeItem['charSet'] == 'H5T_CSET_UTF8':
                 des = src  # src.encode('utf-8')
             else:
-                des = src.encode()
+                if type(src) is str:
+                    try:
+                        ascii_value = src.encode('ascii')
+                    except UnicodeDecodeError:
+                        raise TypeError("non-ascii value not allowed with H5T_CSET_ASCII")         
+                des = src
+             
         else:
             msg = "Unexpected type class: " + typeClass
             self.log.info(msg)
@@ -1999,6 +2012,7 @@ class Hdf5db:
         values = None
         dt = dset.dtype
         rank = len(dset.shape)
+       
         if rank == 0:
             # check for null dataspace
             try:
@@ -2018,7 +2032,7 @@ class Hdf5db:
             msg = "Unexpected error: getDatasetValuesByUuid: number of dims in selection not same as rank"
             self.log.error(msg)
             raise IOError(errno.EIO, msg)
-
+       
         if dt.kind == 'O':
             # numpy object type - could be a vlen string or generic vlen
             h5t_check = h5py.h5t.check_dtype(vlen=dt)
@@ -2729,10 +2743,10 @@ class Hdf5db:
                 continue
             uuids.append(obj_uuid)
             count += 1
-            if limit > 0 and count == limit:
+            if limit is not None and limit > 0 and count == limit:
                 break
 
-        if limit == 0 or count < limit:
+        if limit == 0 or (limit is not None and count < limit):
             # grab any anonymous obj ids next
             for obj_uuid in col:
                 if marker:
@@ -2741,7 +2755,7 @@ class Hdf5db:
                     continue
                 uuids.append(obj_uuid)
                 count += 1
-                if limit > 0 and count == limit:
+                if limit is not None and limit > 0 and count == limit:
                     break
 
         return uuids
