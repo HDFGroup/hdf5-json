@@ -266,7 +266,7 @@ class Hdf5dtypeTest(unittest.TestCase):
                  {'name': u'wind',     'type': 'H5T_STD_I16LE'}]
         }
 
-        dt = hdf5dtype.createDataType(typeItem)  # FIXME: fails on Py3
+        dt = hdf5dtype.createDataType(typeItem)   
         self.assertEqual(dt.name, 'void80')
         self.assertEqual(dt.kind, 'V')
         self.assertEqual(len(dt.fields), 3)
@@ -315,7 +315,7 @@ class Hdf5dtypeTest(unittest.TestCase):
                 }
             ]
         }
-        dt = hdf5dtype.createDataType(typeItem)  # FIXME: fails on Py3
+        dt = hdf5dtype.createDataType(typeItem)   
         self.assertEqual(len(dt.fields), 2)
         self.assertTrue('a' in dt.fields.keys())
         self.assertTrue('b' in dt.fields.keys())

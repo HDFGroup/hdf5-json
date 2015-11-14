@@ -9,6 +9,11 @@
 # distribution tree.  If you do not have access to this file, you may        #
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
+import six
+
+if six.PY3:
+    unicode = str
+    
 import sys
 import json
 import argparse

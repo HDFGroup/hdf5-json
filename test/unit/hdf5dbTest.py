@@ -340,6 +340,40 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(len(d112_values), 20)
             for i in range(20):
                 self.assertEqual(d112_values[i], i)
+                
+    def testReadCompoundDataset(self):
+         filepath = getFile('compound.h5', 'readcompound.h5')
+         with Hdf5db(filepath, app_logger=self.log) as db:
+            dset_uuid = db.getUUIDByPath('/dset')
+            self.assertEqual(len(dset_uuid), UUID_LEN)
+            dset_values = db.getDatasetValuesByUuid(dset_uuid)
+
+            self.assertEqual(len(dset_values), 72)
+            elem = dset_values[0]
+            self.assertEqual(elem[0], 24)
+            self.assertEqual(elem[1], "13:53")
+            self.assertEqual(elem[2], 63)
+            self.assertEqual(elem[3], 29.88)
+            self.assertEqual(elem[4], "SE 10")
+            
+    def testReadDatasetCreationProp(self):
+         filepath = getFile('compound.h5', 'readdatasetcreationprop.h5')
+         with Hdf5db(filepath, app_logger=self.log) as db:
+            dset_uuid = db.getUUIDByPath('/dset')
+            self.assertEqual(len(dset_uuid), UUID_LEN)
+            dset_item = db.getDatasetItemByUuid(dset_uuid)
+            self.assertTrue('creationProperties' in dset_item)
+            creationProp = dset_item['creationProperties']
+            self.assertTrue('fillValue' in creationProp)
+            fillValue = creationProp['fillValue']
+            
+            self.assertEqual(fillValue[0], 999)
+            self.assertEqual(fillValue[1], "99:90")
+            self.assertEqual(fillValue[2], 999)
+            self.assertEqual(fillValue[3], 999.0)
+            self.assertEqual(fillValue[4], "N")
+
+                       
 
     def testCreateScalarDataset(self):
         creation_props = {
@@ -441,7 +475,7 @@ class Hdf5dbTest(unittest.TestCase):
                     0.0 ]
             }
 
-            item = db.createCommittedType(datatype)  # FIXME: fails on Py3
+            item = db.createCommittedType(datatype)   
             type_uuid = item['id']
 
             dims = ()  # if no space in body, default to scalar
@@ -471,7 +505,7 @@ class Hdf5dbTest(unittest.TestCase):
         with Hdf5db(filepath, app_logger=self.log) as db:
             rootUuid = db.getUUIDByPath('/')
             self.assertEqual(len(rootUuid), UUID_LEN)
-            item = db.getAttributeItem("groups", rootUuid, "attr1")  # FIXME: fails on Py3
+            item = db.getAttributeItem("groups", rootUuid, "attr1")   
 
     def testWriteScalarAttribute(self):
         # getAttributeItemByUuid
@@ -483,7 +517,7 @@ class Hdf5dbTest(unittest.TestCase):
             datatype = "H5T_STD_I32LE"
             value = 42
             db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
-            item = db.getAttributeItem("groups", root_uuid, "A1")  # FIXME: fails on Py3
+            item = db.getAttributeItem("groups", root_uuid, "A1")  
             self.assertEqual(item['name'], "A1")
             self.assertEqual(item['value'], 42)
             now = int(time.time())
@@ -510,10 +544,10 @@ class Hdf5dbTest(unittest.TestCase):
                      'strPad': 'H5T_STR_NULLPAD',
                      'length': 13}
             value = "Hello, world!"
-            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)  # FIXME: fails on Py3
+            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)   
             item = db.getAttributeItem("groups", root_uuid, "A1")
             self.assertEqual(item['name'], "A1")
-            self.assertEqual(item['value'], b"Hello, world!")
+            self.assertEqual(item['value'], "Hello, world!")
             now = int(time.time())
             self.assertTrue(item['ctime'] > now - 5)
             self.assertTrue(item['mtime'] > now - 5)
@@ -540,7 +574,7 @@ class Hdf5dbTest(unittest.TestCase):
             value = b"Hello, world!"
 
             # write the attribute
-            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)  # FIXME: fails on Py3
+            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)   
             # read it back
             item = db.getAttributeItem("groups", root_uuid, "A1")
 
@@ -574,10 +608,10 @@ class Hdf5dbTest(unittest.TestCase):
         
             #value = np.string_("Hello, world!")
             value = "Hello, world!"
-            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)  # FIXME: fails on Py3
+            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)   
             item = db.getAttributeItem("groups", root_uuid, "A1")
             self.assertEqual(item['name'], "A1")
-            self.assertEqual(item['value'], b"Hello, world!")
+            self.assertEqual(item['value'], "Hello, world!")
             now = int(time.time())
             self.assertTrue(item['ctime'] > now - 5)
             self.assertTrue(item['mtime'] > now - 5)
@@ -594,7 +628,7 @@ class Hdf5dbTest(unittest.TestCase):
         filepath = getFile('vlen_string_dset.h5', 'vlen_string_dset.h5')
         with Hdf5db(filepath, app_logger=self.log) as db:
             dset_uuid = db.getUUIDByPath('/DS1')
-            item = db.getDatasetItemByUuid(dset_uuid)  # FIXME: fails on Py3
+            item = db.getDatasetItemByUuid(dset_uuid)   
             shape = item['shape']
             self.assertEqual(shape['class'], 'H5S_SIMPLE')
             dims = shape['dims']
@@ -607,14 +641,14 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(item_type['charSet'], 'H5T_CSET_ASCII')
             self.assertEqual(item_type['length'], 'H5T_VARIABLE')
             row = db.getDatasetValuesByUuid(dset_uuid, (slice(0, 1),))
-            self.assertEqual(row, [b'Parting'])
+            self.assertEqual(row, ['Parting'])
 
     def testReadVlenStringDataset_utc(self):
         item = None
         filepath = getFile('vlen_string_dset_utc.h5', 'vlen_string_dset_utc.h5')
         with Hdf5db(filepath, app_logger=self.log) as db:
             dset_uuid = db.getUUIDByPath('/ds1')
-            item = db.getDatasetItemByUuid(dset_uuid)  # FIXME: fails on Py3
+            item = db.getDatasetItemByUuid(dset_uuid)   
             shape = item['shape']
             self.assertEqual(shape['class'], 'H5S_SIMPLE')
             dims = shape['dims']
@@ -627,6 +661,25 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(item_type['length'], 'H5T_VARIABLE')
             # next line throws conversion error - see issue #19
             #row = db.getDatasetValuesByUuid(dset_uuid, (slice(0, 1),))
+            
+    def testReadFixedStringDataset(self):
+        item = None
+        filepath = getFile('fixed_string_dset.h5', 'fixed_string_dset.h5')
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            dset_uuid = db.getUUIDByPath('/DS1')
+            item = db.getDatasetItemByUuid(dset_uuid)   
+            shape = item['shape']
+            self.assertEqual(shape['class'], 'H5S_SIMPLE')
+            dims = shape['dims']
+            self.assertEqual(len(dims), 1)
+            self.assertEqual(dims[0], 4)
+            item_type = item['type']
+            self.assertEqual(item_type['class'], 'H5T_STRING')
+            self.assertEqual(item_type['strPad'], 'H5T_STR_NULLPAD')
+            self.assertEqual(item_type['charSet'], 'H5T_CSET_ASCII')
+            self.assertEqual(item_type['length'], 7)
+            row = db.getDatasetValuesByUuid(dset_uuid, (slice(0, 1),))
+            self.assertEqual(row, ['Parting'])
 
 
     def testWriteVlenUnicodeAttribute(self):
@@ -642,7 +695,7 @@ class Hdf5dbTest(unittest.TestCase):
                      'length': 'H5T_VARIABLE' }
             value =  u'\u6b22\u8fce\u63d0\u4ea4\u5fae\u535a\u641c\u7d22\u4f7f\u7528\u53cd\u9988\uff0c\u8bf7\u76f4\u63a5'
             db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
-            item = db.getAttributeItem("groups", root_uuid, "A1")  # FIXME: fails on Py3
+            item = db.getAttributeItem("groups", root_uuid, "A1")   
 
             self.assertEqual(item['name'], "A1")
             self.assertEqual(item['value'], value)
@@ -668,7 +721,7 @@ class Hdf5dbTest(unittest.TestCase):
             datatype = "H5T_STD_I16LE"
             value = [2, 3, 5, 7, 11]
             db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
-            item = db.getAttributeItem("groups", root_uuid, "A1")  # FIXME: fails on Py3
+            item = db.getAttributeItem("groups", root_uuid, "A1")  
             self.assertEqual(item['name'], "A1")
             self.assertEqual(item['value'], [2, 3, 5, 7, 11])
             now = int(time.time())
@@ -695,7 +748,7 @@ class Hdf5dbTest(unittest.TestCase):
             ds1_ref = "datasets/" + dset_uuid
             value = [ds1_ref,]
             db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
-            item = db.getAttributeItem("groups", root_uuid, "A1")  # FIXME: fails on Py3
+            item = db.getAttributeItem("groups", root_uuid, "A1")   
 
             attr_type = item['type']
             self.assertEqual(attr_type["class"], "H5T_REFERENCE")
@@ -721,7 +774,7 @@ class Hdf5dbTest(unittest.TestCase):
             ds1_ref = "datasets/" + dset_uuid
             value = [[ds1_ref,],]
             db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
-            item = db.getAttributeItem("groups", root_uuid, "A1")  # FIXME: fails on Py3
+            item = db.getAttributeItem("groups", root_uuid, "A1")   
 
             attr_type = item['type']
             self.assertEqual(attr_type["class"], "H5T_VLEN")
@@ -752,7 +805,7 @@ class Hdf5dbTest(unittest.TestCase):
             scalar_dims = ()
             db.createAttribute(
                 "datasets", xscale_uuid, "CLASS", scalar_dims,
-                nullterm_string_type, "DIMENSION_SCALE")  # FIXME: fails on Py3
+                nullterm_string_type, "DIMENSION_SCALE")  
             db.linkObject(root_uuid, xscale_uuid, 'xscale')
 
 
@@ -795,7 +848,7 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertTrue('uuid' in item_type)
             self.assertEqual(item_type['uuid'], type_uuid)
 
-            item = db.getAttributeItem("groups", root_uuid, "attr1")  # FIXME: fails on Py3
+            item = db.getAttributeItem("groups", root_uuid, "attr1")   
             shape = item['shape']
             self.assertEqual(shape['class'], 'H5S_SCALAR')
             item_type = item['type']
@@ -907,6 +960,40 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(db.toTuple( [(1,2),(3,4)] ), ((1,2),(3,4))  )
             self.assertEqual(db.toTuple( [[[1,2],[3,4]], [[5,6],[7,8]]] ),
                 (((1,2),(3,4)), ((5,6),(7,8)))  )
+    
+               
+    def testBytesArrayToList(self):
+        filepath = getFile('empty.h5', 'bytestostring.h5')
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            
+            val = db.bytesArrayToList(b'Hello')
+            self.assertTrue(type(val) is str)
+            val = db.bytesArrayToList([b'Hello',])
+            self.assertTrue(type(val[0]) is str)
+            
+            import numpy as np
+            
+            data = np.array([b'Hello'])
+            val = db.bytesArrayToList(data)
+            self.assertTrue(type(val[0]) is str)
+    
+            
+    def testGetDataValue(self):
+        # typeItem, value, dimension=0, dims=None):
+        filepath = getFile('empty.h5', 'bytestostring.h5')
+        string_type = { 'charSet':   'H5T_CSET_ASCII',
+                     'class':  'H5T_STRING',
+                     'strPad': 'H5T_STR_NULLTERM',
+                     'length': 'H5T_VARIABLE' }
+        
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            
+            import numpy as np
+            
+            data = np.array([b'Hello'])
+            val = db.getDataValue(string_type, data, dimension=1,dims=(1,))
+            self.assertTrue(type(val[0]) is str)
+                 
 
     def testGetAclDataset(self):
         filepath = getFile('tall.h5', 'getacldataset.h5')

@@ -884,7 +884,7 @@ class Hdf5db:
 
         if type_class not in ('H5T_VLEN', 'H5T_OPAQUE'):
             if plist.fill_value_defined() == h5py.h5d.FILL_VALUE_USER_DEFINED:
-                creationProps['fillValue'] = dset.fillvalue.tolist()
+                creationProps['fillValue'] =  self.bytesArrayToList(dset.fillvalue)
 
         # layout
         nLayout = plist.get_layout()
@@ -907,7 +907,7 @@ class Hdf5db:
                 filter_id = filter_info[0]
                 filter_prop['id'] = filter_id
                 if filter_info[3]:
-                    filter_prop['name'] = filter_info[3]
+                    filter_prop['name'] = self.bytesArrayToList(filter_info[3])
                 if filter_id in _HDF_FILTERS:
                     hdf_filter = _HDF_FILTERS[filter_id]
                     filter_prop['class'] = hdf_filter['class']
@@ -1171,13 +1171,15 @@ class Hdf5db:
 
         if includeData and attr is not None:
             if shape_json['class'] == 'H5S_SCALAR':
-                item['value'] = self.getDataValue(typeItem, attr)
+                data = self.getDataValue(typeItem, attr)
             else:
                 dims = shape_json["dims"]
                 rank = len(dims)
                 # convert numpy object to python list
                 # values = self.toList(typeItem, attr)
-                item['value'] = self.toList(rank, typeItem, attr)
+                data = self.toList(rank, typeItem, attr)
+            #data = self.bytesToString(data)
+            item['value'] = data
         # timestamps will be added by getAttributeItem()
         return item
 
@@ -1366,7 +1368,11 @@ class Hdf5db:
             else:
                 tmpGrp = self.dbGrp["{tmp}"]
             tmpGrp.attrs.create(attr_name, 0, shape=(), dtype=dt)
-            tmpAttr = h5py.h5a.open(tmpGrp.id, name=attr_name)
+            if six.PY3:
+                b_attr_name = attr_name.encode('utf-8')
+                tmpAttr = h5py.h5a.open(tmpGrp.id, name=b_attr_name)
+            else:
+                tmpAttr = h5py.h5a.open(tmpGrp.id, name=attr_name)
             if not tmpAttr:
                 msg = "Unexpected error creating datatype for nullspace attribute"
                 self.log.error(msg)
@@ -1377,7 +1383,10 @@ class Hdf5db:
             if attr_name in obj.attrs:
                 self.log.info("deleting attribute: " + attr_name)
                 del obj.attrs[attr_name]
-            attr_id = h5py.h5a.create(obj.id, attr_name, tid, sid)
+            if six.PY3:
+                attr_id = h5py.h5a.create(obj.id, b_attr_name, tid, sid)
+            else:
+                attr_id = h5py.h5a.create(obj.id, attr_name, tid, sid)
             # delete the temp attribute
             del tmpGrp.attrs[attr_name]
             if not attr_id:
@@ -1540,7 +1549,18 @@ class Hdf5db:
         elif typeClass in ('H5T_INTEGER', 'H5T_FLOAT', 'H5T_ENUM'):
             out = value  # just copy value
         elif typeClass == 'H5T_STRING':
-            out = value
+            if six.PY3:
+                if "charSet" in typeItem:
+                    charSet = typeItem["charSet"]
+                else:
+                    charSet =  "H5T_CSET_ASCII"
+                if charSet == "H5T_CSET_ASCII":
+                    out = value.decode("utf-8")
+                else:
+                    out = value
+            else:
+                # things are simpler in PY2
+                out = value
         else:
             msg = "Unexpected type class: " + typeClass
             self.log.info(msg)
@@ -1724,7 +1744,7 @@ class Hdf5db:
     def toList(self, rank, typeItem, data):
         out = None
         typeClass = typeItem['class']
-        if typeClass in ('H5T_INTEGER', 'H5T_FLOAT', 'H5T_STRING'):
+        if typeClass in ('H5T_INTEGER', 'H5T_FLOAT'):
             out = data.tolist()  # just use as is
 
         elif rank == 0:
@@ -1748,16 +1768,19 @@ class Hdf5db:
     def vlenToList(self, data):
         # todo - verify that data is a numpy.ndarray
         out = None
-        try:
-            if data.dtype.kind != 'O':
-                out = data.tolist()
-            else:
-                out = []
-                for item in data:
-                    out.append(self.vlenToList(item))  # recursive call
-        except AttributeError:
-            # looks like this is not a numpy ndarray, just return the value
-            out = data
+        if len(data.shape) == 0:
+            out = []
+        else:
+            try:
+                if data.dtype.kind != 'O':
+                    out = data.tolist()
+                else:
+                    out = []
+                    for item in data:
+                        out.append(self.vlenToList(item))  # recursive call
+            except AttributeError:
+                # looks like this is not a numpy ndarray, just return the value
+                out = data
         return out
 
     """
@@ -1799,7 +1822,7 @@ class Hdf5db:
         if not data:
             # null reference
             out = self.getNullReference()
-        elif type(data) in (str, unicode):
+        elif type(data) in (bytes, str, unicode):
             obj_ref = None
             # object reference should be in the form: <collection_name>/<uuid>
             for prefix in ("datasets", "groups", "datatypes"):
@@ -1833,7 +1856,42 @@ class Hdf5db:
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
         return out
-
+        
+    """
+       Convert list that may contain bytes type elements to list of string elements  
+    """
+    def bytesArrayToList(self, data):
+        if type(data) in (bytes, str, unicode):
+            is_list = False
+        elif isinstance(data, (np.ndarray, np.generic)):
+            if len(data.shape) == 0:
+                is_list = False
+                data = data.tolist()  # tolist will return a scalar in this case
+                if type(data) in (list, tuple):
+                    is_list = True
+                else:
+                    is_list = False
+            else:
+                is_list = True        
+        elif type(data) in (list, tuple):
+            is_list = True
+        else:
+            is_list = False
+                
+        if is_list:
+            out = []
+            for item in data:
+                out.append(self.bytesArrayToList(item)) # recursive call  
+        elif type(data) is bytes:
+            if six.PY3:
+                out = data.decode("utf-8")
+            else:
+                out = data
+        else:
+            out = data
+                   
+        return out
+    
     """
       Get item description of region reference value
     """
@@ -1986,7 +2044,12 @@ class Hdf5db:
                     h5py.h5s.SpaceID.select_hyperslab(space_id, start, count, op=h5py.h5s.SELECT_OR)
 
         # now that we've selected the desired region in the space, return a region reference
-        region_ref = h5py.h5r.create(self.f.id, dset.name, h5py.h5r.DATASET_REGION, space_id)
+        
+        if six.PY3:
+            dset_name = dset.name.encode('utf-8')
+        else:
+            dset_name = dset.name
+        region_ref = h5py.h5r.create(self.f.id, dset_name, h5py.h5r.DATASET_REGION, space_id)
 
         return region_ref
 
@@ -2012,7 +2075,7 @@ class Hdf5db:
         values = None
         dt = dset.dtype
         rank = len(dset.shape)
-       
+         
         if rank == 0:
             # check for null dataspace
             try:
@@ -2038,6 +2101,8 @@ class Hdf5db:
             h5t_check = h5py.h5t.check_dtype(vlen=dt)
             if h5t_check == str or h5t_check == unicode:
                 values = dset[slices].tolist()  # just dump to list
+            elif six.PY3 and h5t_check == bytes:
+                values = self.bytesArrayToList(dset[slices])
             elif h5t_check is not None:
                 # other vlen data
                 values = self.vlenToList(dset[slices])
@@ -2055,9 +2120,17 @@ class Hdf5db:
             # opaque type - skip for now
             self.log.warning("unable to print opaque type values")
             values = "????"
+        elif dt.kind == 'S' and six.PY3:
+            # For Python3 fixed string values will be returned as bytes,
+            # so finese them into strings
+            values = self.bytesArrayToList(dset[slices])
+        elif len(dt) > 1:
+            values = self.bytesArrayToList(dset[slices])
+            
         else:
             # just use tolist to dump
             values = dset[slices].tolist()
+            
         return values
 
     """
@@ -2338,7 +2411,11 @@ class Hdf5db:
             sid = sid = h5py.h5s.create(h5py.h5s.NULL)
             # now create the permanent dataset
             gid = datasets.id
-            dataset_id = h5py.h5d.create(gid, obj_uuid, tid, sid)
+            if six.PY3:
+                b_obj_uuid = obj_uuid.encode('utf-8')
+                dataset_id = h5py.h5d.create(gid, b_obj_uuid, tid, sid)
+            else:
+                dataset_id = h5py.h5d.create(gid, obj_uuid, tid, sid)
             # delete the temp dataset
             del tmpGrp[obj_uuid]
         else:
