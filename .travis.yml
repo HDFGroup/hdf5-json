@@ -16,5 +16,4 @@ install:
     - pip install h5py
 
 script:
-    - cd test
     - python testall.py

@@ -19,7 +19,7 @@ integ_tests = ( 'h5tojson_test', 'jsontoh5_test' )
 # Run all hdf5-json tests
 # Run this script before running any integ tests
 #
-os.chdir('unit')
+os.chdir('test/unit')
 for file_name in unit_tests:
     print(file_name)
     rc = os.system('python ' + file_name + '.py')
