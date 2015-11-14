@@ -1673,7 +1673,7 @@ class Hdf5db:
             else:
                 if type(src) is str:
                     try:
-                        ascii_value = src.encode('ascii')
+                        src.encode('ascii')
                     except UnicodeDecodeError:
                         raise TypeError("non-ascii value not allowed with H5T_CSET_ASCII")         
                 des = src
