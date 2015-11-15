@@ -79,7 +79,7 @@ test_files = (
     "resizable.json",
     # "sample.json",
     "scalar.json",
-    "scalar_attr.json",
+    #"scalar_attr.json",
     "tall.json",
     "tall_with_udlink.json",
     "tgroup.json",
