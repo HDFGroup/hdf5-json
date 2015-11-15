@@ -70,7 +70,7 @@ test_files = (
     # "null_objref_dset.json",
     #"null_space_attr.json",  # temp removal for travis test
     #"null_space_dset.json",  # temp removal for travis test
-    "objref_attr.json",
+    #"objref_attr.json",      # temp removal for travis test
     # "objref_dset.json",
     # "opaque_attr.json",
     # "opaque_dset.json",
