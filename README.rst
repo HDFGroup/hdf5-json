@@ -1,6 +1,8 @@
 hdf5-json
 =========
 
+[![Build Status](https://travis-ci.org/HDFGroup/hdf5-json.svg?branch=develop)](https://travis-ci.org/HDFGroup/hdf5-json)
+
 Specification and tools for representing HDF5 in JSON
 
 
