@@ -22,8 +22,8 @@ hdf5_version = h5py.version.hdf5_version_tuple
 print("hdf5_version:", hdf5_version)
 if hdf5_version[1] < 8:
     sys.exit("Need hdf5 lib 1.8 or later")
-if hdf5_version[1] == 8 and hdf5_version[2] < 11:
-    sys.exit("Need hdf5 lib 1.8.11 or later")
+if hdf5_version[1] == 8 and hdf5_version[2] < 4:
+    sys.exit("Need hdf5 lib 1.8.4 or later")
 # verify we have a recent version of h5py
 print("h5py_version:", h5py_version)
 h5py_version = h5py.version.version_tuple
