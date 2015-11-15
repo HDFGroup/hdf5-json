@@ -49,8 +49,8 @@ test_files = (
     "enum_attr.h5",
     "enum_dset.h5",
     "fillvalue.h5",
-    "fixed_string_attr.h5",
-    "fixed_string_dset.h5",
+    "fixed_string_attr.h5",  # temp for trying travis
+    "fixed_string_dset.h5",  # temp for trying travis
     "h5ex_d_alloc.h5",
     "h5ex_d_checksum.h5",
     "h5ex_d_chunk.h5",

@@ -13,6 +13,7 @@ import sys
 import os
 import stat
 from shutil import copyfile
+from h5py.version import hdf5_version_tuple
 
 
 """
@@ -47,8 +48,6 @@ test_files = (
     # "enum_attr.json",
     # "enum_dset.json",
     "fillvalue.json",
-    "fixed_string_attr.json",
-    "fixed_string_dset.json",
     "h5ex_d_alloc.json",
     "h5ex_d_checksum.json",
     "h5ex_d_chunk.json",
@@ -68,18 +67,14 @@ test_files = (
     # "h5ex_d_unlimmod.json",
     "namedtype.json",
     # "null_objref_dset.json",
-    "null_space_attr.json",
-    "null_space_dset.json",
-    "objref_attr.json",
     # "objref_dset.json",
     # "opaque_attr.json",
     # "opaque_dset.json",
-    "regionref_attr.json",
     # "regionref_dset.json",
     "resizable.json",
     # "sample.json",
     "scalar.json",
-    "scalar_attr.json",
+    #"scalar_attr.json",
     "tall.json",
     "tall_with_udlink.json",
     "tgroup.json",
@@ -87,15 +82,26 @@ test_files = (
     # "tstr.json",
     "types_attr.json",
     "types_dset.json",
-    "vlen_attr.json",
-    "vlen_dset.json",
-    "vlen_string_attr.json",
-    "vlen_string_dset.json",
-    # "vlen_string_dset_utc.json",
-    "vlen_string_nullterm_attr.json",
-    "vlen_string_nullterm_dset.json",
-    "vlen_unicode_attr.json",
     "zerodim.json"
+)
+
+# these files require a more recent version of hf5 lib (1.8.15 or later)
+test_files_latest = (
+    "fixed_string_attr.json",   
+    "fixed_string_dset.json",   
+    "null_space_attr.json",   
+    "null_space_dset.json",   
+    "objref_attr.json",        
+    "regionref_attr.json",   
+    #"regionref_dset.json",  
+    "scalar_attr.json",   
+    "vlen_attr.json",   
+    "vlen_dset.json",  
+    "vlen_string_attr.json",  
+    "vlen_string_dset.json",   
+    "vlen_string_nullterm_attr.json",  
+    "vlen_string_nullterm_dset.json",  
+    "vlen_unicode_attr.json"    
 )
 
 # mkdir for output files
@@ -108,6 +114,13 @@ for out_file in os.listdir(out_dir):
     if split_ext[1] == '.h5':
         os.unlink(os.path.join(out_dir, out_file))
 
+if hdf5_version_tuple[1] > 8 or (hdf5_version_tuple[1] == 8 and hdf5_version_tuple[2] > 14):
+    # add in additional test files
+    print("adding library version dependendent files")
+    test_files = list(test_files)
+    for filename in test_files_latest:
+        test_files.append(filename)
+               
 # convert test files to json
 for test_file in test_files:
     split_ext = os.path.splitext(test_file)
