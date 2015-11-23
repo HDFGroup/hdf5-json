@@ -201,7 +201,7 @@ class DumpJson:
         self.dumpDatasets()
 
         self.dumpDatatypes()
-        print(self.json)
+      
         print(json.dumps(self.json, sort_keys=True, indent=4))
 
 """

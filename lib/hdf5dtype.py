@@ -175,7 +175,12 @@ def getTypeElement(dt):
             type_info['base'] = baseType
         else:
             type_info = baseType  # just use base type
-
+    elif dt.kind == 'b':
+        # boolean type - h5py stores as enum
+        baseType = getBaseType(dt)
+        type_info['class'] = 'H5T_ENUM'
+        type_info['mapping'] = {"false": 0, "true": 1}
+        type_info['base'] = baseType
     elif dt.kind == 'f':
         # floating point type
         baseType = getBaseType(dt)
@@ -230,6 +235,12 @@ def getBaseType(dt):
         if dt.base.name in predefined_int_types:
             #maps to one of the HDF5 predefined types
             type_info['base'] = predefined_int_types[dt.base.name] + byteorder
+    elif dt.base.kind == 'b':
+        type_info['class'] = 'H5T_INTEGER'
+        byteorder = 'LE'
+        if dt.base.byteorder == '>':
+            byteorder = 'BE'
+        type_info['base'] = 'H5T_STD_I8' + byteorder
     elif dt.base.kind == 'f':
         type_info['class'] = 'H5T_FLOAT'
         byteorder = 'LE'
