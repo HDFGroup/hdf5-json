@@ -44,7 +44,6 @@ for file_name in unit_tests:
         sys.exit("Failed")
 
 os.chdir('../integ')
-os.system('pwd')
 for file_name in integ_tests:
     print(file_name)
     rc = os.system('python ' + file_name + '.py')
