@@ -19,13 +19,13 @@ from h5py.version import hdf5_version_tuple
 """
 main
 """
-top_dir = os.path.abspath("../..")
+top_dir = os.path.abspath(os.path.join("..",".."))
 
-data_dir = os.path.join(top_dir, "data/json")
+data_dir = os.path.join(top_dir, "data","json")
 
 util_dir = os.path.join(top_dir, "util")
 
-out_dir = os.path.join(top_dir, "test/integ/h5_out")
+out_dir = os.path.join(top_dir, "test","integ","h5_out")
 
 test_files = (
     # "array_dset.json",
@@ -122,6 +122,7 @@ if hdf5_version_tuple[1] > 8 or (hdf5_version_tuple[1] == 8 and hdf5_version_tup
         test_files.append(filename)
                
 # convert test files to json
+os.chdir(util_dir)
 for test_file in test_files:
     split_ext = os.path.splitext(test_file)
     file_path = os.path.join(data_dir, test_file)
@@ -130,6 +131,6 @@ for test_file in test_files:
         sys.exit("file: " + file_path + " not found")
     cmd = "python jsontoh5.py " + file_path + " " + out_file
     print("cmd:", cmd)
-    rc = os.system("cd " + util_dir + "; " + cmd  )
+    rc = os.system(cmd)
     if rc != 0:
         sys.exit("jsontoh5 failed converting: " + test_file)
