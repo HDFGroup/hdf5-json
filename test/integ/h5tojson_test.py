@@ -20,13 +20,13 @@ from shutil import copyfile
 """
 main
 """
-top_dir = os.path.abspath("../..")
+top_dir = os.path.abspath(os.path.join("..",".."))
 
-data_dir = os.path.join(top_dir, "data/hdf5")
+data_dir = os.path.join(top_dir, "data","hdf5")
 
 util_dir = os.path.join(top_dir, "util")
 
-out_dir = os.path.join(top_dir, "test/integ/json_out")
+out_dir = os.path.join(top_dir, "test","integ","json_out")
 
 test_files = (
     "array_dset.h5",
@@ -113,6 +113,7 @@ for out_file in os.listdir(out_dir):
 
 
 # convert test files to json
+os.chdir(util_dir)
 for test_file in test_files:
     split_ext = os.path.splitext(test_file)
     file_path = os.path.join(data_dir, test_file)
@@ -121,6 +122,6 @@ for test_file in test_files:
         sys.exit("file: " + file_path + " not found")
     cmd = "python h5tojson.py " + file_path + " >" + out_file
     print("cmd:", cmd)
-    rc = os.system("cd " + util_dir + "; " + cmd  )
+    rc = os.system(cmd)
     if rc != 0:
         sys.exit("h5tojson failed converting: " + test_file)
