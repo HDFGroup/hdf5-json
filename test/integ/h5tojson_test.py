@@ -20,13 +20,13 @@ from shutil import copyfile
 """
 main
 """
-top_dir = os.path.abspath("../..")
+top_dir = os.path.abspath(os.path.join("..",".."))
 
-data_dir = os.path.join(top_dir, "data/hdf5")
+data_dir = os.path.join(top_dir, "data","hdf5")
 
 util_dir = os.path.join(top_dir, "util")
 
-out_dir = os.path.join(top_dir, "test/integ/json_out")
+out_dir = os.path.join(top_dir, "test","integ","json_out")
 
 test_files = (
     "array_dset.h5",
