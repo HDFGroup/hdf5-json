@@ -17,7 +17,7 @@ from h5py import special_dtype
 from h5py import check_dtype
 import six
 
-sys.path.append('../../lib')
+sys.path.append('../../h5json')
 import hdf5dtype
 
 

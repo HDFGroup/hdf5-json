@@ -32,6 +32,7 @@ For compound types, recursively iterate through the typeItem and do same
 conversion for fields of the compound type.
 """
 def getTypeResponse(typeItem):
+
     response = None
     if 'uuid' in typeItem:
         # committed type, just return uuid

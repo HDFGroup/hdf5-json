@@ -16,4 +16,5 @@ install:
     - pip install h5py
 
 script:
+    - python setup.py install
     - python testall.py

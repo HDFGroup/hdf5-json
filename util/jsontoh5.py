@@ -21,8 +21,7 @@ import h5py
 import logging
 import logging.handlers
 
-sys.path.append('../lib')
-from hdf5db import Hdf5db
+from h5json import Hdf5db
 
 
 """
