@@ -20,7 +20,7 @@ import logging
 import shutil
 
 sys.path.append('../../h5json')
-from hdf5db import Hdf5db
+from h5json import Hdf5db
 
 UUID_LEN = 36  # length for uuid strings
 

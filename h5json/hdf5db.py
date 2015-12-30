@@ -71,7 +71,7 @@ import os
 import json
 import logging
 
-import hdf5dtype 
+from .hdf5dtype import getTypeItem, createDataType 
 import version
 
 
@@ -764,7 +764,7 @@ class Hdf5db:
     def getDatasetTypeItemByUuid(self, obj_uuid):
         dset = self.getDatasetObjByUuid(obj_uuid)  # throws exception if not found
         item = { 'id': obj_uuid }
-        item['type'] = hdf5dtype.getTypeItem(dset.dtype)
+        item['type'] = getTypeItem(dset.dtype)
         if self.update_timestamps:
             item['ctime'] = self.getCreateTime(obj_uuid)
             item['mtime'] = self.getModifiedTime(obj_uuid)
@@ -973,7 +973,7 @@ class Hdf5db:
             typeItem = committedType['type']
             typeItem['uuid'] = type_uuid
         else:
-            typeItem = hdf5dtype.getTypeItem(dset.dtype)
+            typeItem = getTypeItem(dset.dtype)
 
         item['type'] = typeItem
 
@@ -1017,7 +1017,7 @@ class Hdf5db:
         else:
 
             try:
-                dt = hdf5dtype.createDataType(attr_type)
+                dt = createDataType(attr_type)
             except KeyError as ke:
                 msg = "Unable to create type: " + ke.message
                 self.log.info(msg)
@@ -1117,7 +1117,7 @@ class Hdf5db:
             alias.append(datatype.name)   # just use the default h5py path for now
         item['alias'] = alias
         item['attributeCount'] = len(datatype.attrs)
-        item['type'] = hdf5dtype.getTypeItem(datatype.dtype)
+        item['type'] = getTypeItem(datatype.dtype)
         if self.update_timestamps:
             item['ctime'] = self.getCreateTime(obj_uuid)
             item['mtime'] = self.getModifiedTime(obj_uuid)
@@ -1151,7 +1151,7 @@ class Hdf5db:
             typeItem = committedType['type']
             typeItem['uuid'] = type_uuid
         else:
-            typeItem = hdf5dtype.getTypeItem(attrObj.dtype)
+            typeItem = getTypeItem(attrObj.dtype)
         item['type'] = typeItem
         # todo - don't include data for OPAQUE until JSON serialization
         # issues are addressed
@@ -1413,7 +1413,7 @@ class Hdf5db:
                 if rank == 0 and type(strLength) == int and strPad == "H5T_STR_NULLTERM":
                     self.makeNullTermStringAttribute(obj, attr_name, strLength, value)
                 else:
-                    typeItem = hdf5dtype.getTypeItem(dt)
+                    typeItem = getTypeItem(dt)
                     value = self.toRef(rank, typeItem, value)
 
                     # create numpy array
