@@ -72,8 +72,7 @@ import json
 import logging
 
 from .hdf5dtype import getTypeItem, createDataType 
-import version
-
+from .version import version
 
 # global dictionary to direct back to the Hdf5db instance by filename
 # (needed for visititems callback)
@@ -129,7 +128,7 @@ class Hdf5db:
     @staticmethod
     def getVersionInfo():
         versionInfo = {}
-        versionInfo['hdf5-json-version'] = version.version
+        versionInfo['hdf5-json-version'] = version
         versionInfo['h5py_version'] = h5py.version.version
         versionInfo['hdf5_version'] = h5py.version.hdf5_version
         return versionInfo

@@ -17,3 +17,4 @@
 from .hdf5dtype import getTypeItem
 from .hdf5dtype import getTypeResponse
 from .hdf5db import Hdf5db 
+from .version import version
