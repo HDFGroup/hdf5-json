@@ -12,7 +12,7 @@ A computer running a 64-bit version of Windows, Mac OS X, or Linux.
 
 You will also need the following Python packages:
 
-* Python 2.7
+* Python 2.7, 3.3, 3.4, or 3.5
 * NumPy 1.9.2 or later
 * h5py 2.5 or later
 
@@ -55,6 +55,10 @@ If you downloaded the ZIP file, in Windows Explorer, right-click on the file and
 
 Next, in the command window, cd to the folder you extracted the source files to.
 
+Run:
+``python setup.py install``
+to install the package.
+
 Installing on Linux/Mac OS X
 -----------------------------
 
@@ -81,6 +85,10 @@ the destination directory of your choice.
 
 Next, cd to the folder you extracted the source files to.
 
+Run:
+``python setup.py install``
+to install the package.
+
  
 Verification
 -------------
@@ -99,5 +107,9 @@ In this shell, run the following commands:
 
 At this point the file tall.json should contain a JSON description of the original file and
 the file tall.h5 should be an HDF5 equivalent to the original file.
+
+Running:
+``python testall.py``
+will run the complete set of unit and integration tests.
 
  
