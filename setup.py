@@ -60,7 +60,7 @@ else:
     package_data = {'h5json': []}
 
 setup(
-  name = 'hdf5json',
+  name = 'h5json',
   version = VERSION,
   description = short_desc,
   long_description = long_desc,
