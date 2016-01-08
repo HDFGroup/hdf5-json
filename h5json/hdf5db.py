@@ -10,10 +10,14 @@
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
 
+from __future__ import absolute_import
+
 import six
 
 if six.PY3:
     unicode = str
+    
+
 
 """
 This class is used to manage UUID lookup tables for primary HDF objects (Groups, Datasets,
@@ -72,7 +76,6 @@ import json
 import logging
 
 from .hdf5dtype import getTypeItem, createDataType 
-from .version import version
 
 # global dictionary to direct back to the Hdf5db instance by filename
 # (needed for visititems callback)
@@ -128,7 +131,7 @@ class Hdf5db:
     @staticmethod
     def getVersionInfo():
         versionInfo = {}
-        versionInfo['hdf5-json-version'] = version
+        versionInfo['hdf5-json-version'] = "1.0.0" # todo - have this auto-synch with package version
         versionInfo['h5py_version'] = h5py.version.version
         versionInfo['hdf5_version'] = h5py.version.hdf5_version
         return versionInfo

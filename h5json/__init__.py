@@ -14,7 +14,8 @@
 """
     This is the h5json package, a mapping between HDF5 objects and JSON 
 """
+from __future__ import absolute_import
+
 from .hdf5dtype import getTypeItem
 from .hdf5dtype import getTypeResponse
 from .hdf5db import Hdf5db 
-from .version import version

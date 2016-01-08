@@ -233,6 +233,7 @@ class Writeh5:
         self.createLinks()      # link it all together
 
 def main():
+    
     parser = argparse.ArgumentParser(usage='%(prog)s [-h] <json_file> <h5_file>')
     parser.add_argument('in_filename', nargs='+', help='JSon file to be converted to h5')
     parser.add_argument('out_filename', nargs='+', help='name of HDF5 output file')
@@ -249,8 +250,7 @@ def main():
     log.addHandler(handler)
 
     text = open(args.in_filename[0]).read()
-
-
+     
     # parse the json file
     h5json = json.loads(text)
 
@@ -259,9 +259,9 @@ def main():
     root_uuid = h5json["root"]
 
     filename = args.out_filename[0]
-
+     
     # create the file, will raise IOError if there's a problem
-    Hdf5db.createHDF5File(filename)
+    Hdf5db.createHDF5File(filename) 
 
     with Hdf5db(filename, root_uuid=root_uuid, update_timestamps=False, app_logger=log) as db:
         h5writer = Writeh5(db, h5json)
