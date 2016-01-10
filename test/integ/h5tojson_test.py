@@ -24,8 +24,6 @@ top_dir = os.path.abspath(os.path.join("..",".."))
 
 data_dir = os.path.join(top_dir, "data","hdf5")
 
-util_dir = os.path.join(top_dir, "util")
-
 out_dir = os.path.join(top_dir, "test","integ","json_out")
 
 test_files = (
@@ -113,7 +111,6 @@ for out_file in os.listdir(out_dir):
 
 
 # convert test files to json
-os.chdir(util_dir)
 for test_file in test_files:
     split_ext = os.path.splitext(test_file)
     file_path = os.path.join(data_dir, test_file)

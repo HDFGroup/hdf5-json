@@ -111,5 +111,5 @@ setup(
     #        'h5tojson=h5tojson:h5tojson', 'jsontoh5=jsontoh5:jsontoh5',
     #    ],
     #},
-    scripts=['util/h5tojson.py', 'util/jsontoh5.py'],
+    scripts=['h5tojson/h5tojson.py', 'jsontoh5/jsontoh5.py'],
 )

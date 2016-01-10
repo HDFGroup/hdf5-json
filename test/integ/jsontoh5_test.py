@@ -23,8 +23,6 @@ top_dir = os.path.abspath(os.path.join("..",".."))
 
 data_dir = os.path.join(top_dir, "data","json")
 
-util_dir = os.path.join(top_dir, "util")
-
 out_dir = os.path.join(top_dir, "test","integ","h5_out")
 
 test_files = (
@@ -122,7 +120,6 @@ if hdf5_version_tuple[1] > 8 or (hdf5_version_tuple[1] == 8 and hdf5_version_tup
         test_files.append(filename)
                
 # convert test files to json
-os.chdir(util_dir)
 for test_file in test_files:
     split_ext = os.path.splitext(test_file)
     file_path = os.path.join(data_dir, test_file)
