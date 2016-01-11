@@ -37,7 +37,7 @@ Here's what happens when you submit a pull request:
   contributions.
 - Pull requests that have been reviewed and approved will be signed off and merged into a
   development branch and the associated issue will be resolved with an expected
-  fixVersion.
+  fix version.
 
 
 Style Guide
@@ -63,5 +63,5 @@ Contributor Agreement
 ---------------------
 
 A patch will only be considered for merging into the upstream codebase after you have signed the
-`contributor agreement`_.  Send an email to info@hdfgroup.org requesting a copy of the aggreement.
+`contributor agreement`_.  Send an email to info@hdfgroup.org requesting a copy of the agreement.
  
