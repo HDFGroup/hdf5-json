@@ -18,7 +18,7 @@ your solution will take.  Label the issue as ENHANCEMENT.
 Getting Started
 ---------------
 
-- Create a `Github account`_.
+- Create a `Github account` (see https://help.github.com/articles/signing-up-for-a-new-github-account/).
 - Fork the repository on Github at https://github.com/HDFGroup/hdf5-json.git.
 - Run ``python setup.py install`` and ``python testall.py`` and verify that all tests pass.
 - Implement your fix/feature
