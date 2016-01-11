@@ -35,11 +35,19 @@ Related Projects
 * HDF Server: https://www.hdfgroup.org/projects/hdfserver/ 
 * Product Designer: https://wiki.earthdata.nasa.gov/display/HPD/HDF+Product+Designer
 
+Installing
+-----------
 
-Installation
--------------
+Via pip::
 
-Clone the repository.  The hd5tojson and jsontoh5 convertors are in the util directory.
+   pip install h5json
+   
+From a release tarball or Git checkout::
+
+   python setup.py install
+   python testall.py  # optional
+   
+The hd5tojson.py and jsontoh5.py convertors will be added to the path.
 See docs/Installation.rst for step by step instructions.
 
  

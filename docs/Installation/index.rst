@@ -86,8 +86,16 @@ the destination directory of your choice.
 Next, cd to the folder you extracted the source files to.
 
 Run:
+
 ``python setup.py install``
+
 to install the package.
+
+Alternatively, you can install directly from PyPI.
+
+Run:
+
+``pip install h5json``
 
  
 Verification
@@ -109,7 +117,13 @@ At this point the file tall.json should contain a JSON description of the origin
 the file tall.h5 should be an HDF5 equivalent to the original file.
 
 Running:
+
 ``python testall.py``
+
 will run the complete set of unit and integration tests.
+
+You should also be able to import the h5json package in any Python script:
+
+``import h5json``
 
  
