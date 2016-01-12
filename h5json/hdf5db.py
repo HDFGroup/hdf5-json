@@ -652,6 +652,9 @@ class Hdf5db:
         obj_uuid = None
         if str(addr) in addrGrp.attrs:
             obj_uuid = addrGrp.attrs[str(addr)]
+        if obj_uuid and type(obj_uuid) is not str:
+            # convert bytes to unicode
+            obj_uuid = obj_uuid.decode('utf-8')
         return obj_uuid
 
     """
@@ -2429,7 +2432,11 @@ class Hdf5db:
                     obj_uuid, shape=datashape, maxshape=max_shape,
                     dtype=dt_ref, **kwargs)
             except ValueError as ve:
-                msg = "Unable to creation dataset: " + ve.message
+                msg = "Unable to create dataset"
+                try:
+                    msg += ": " + ve.message
+                except AttributeError:
+                    pass  # no message
                 self.log.info(msg)
                 raise IOError(errno.EINVAL, msg)  # assume this is due to invalid params
 
