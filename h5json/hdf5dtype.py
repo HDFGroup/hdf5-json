@@ -417,6 +417,9 @@ def createBaseDataType(typeItem):
 
     return dtRet
 
+"""
+Create a numpy datatype given a json type 
+"""
 def createDataType(typeItem):
     dtRet = None
     if type(typeItem) in [six.string_types, six.text_type, six.binary_type]:
