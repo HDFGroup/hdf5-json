@@ -2554,7 +2554,7 @@ class Hdf5db:
 
         if tgt is None:
             msg = "Unable to delete " + objtype + ", uuid: " + obj_uuid + " not found"
-            self.log.error(msg)
+            self.log.info(msg)
             raise IOError(errno.ENXIO, msg)
 
         # unlink from root (if present)
