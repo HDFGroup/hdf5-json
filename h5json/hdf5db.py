@@ -2410,7 +2410,7 @@ class Hdf5db:
                 tmpGrp = self.dbGrp.create_group("{tmp}")
             else:
                 tmpGrp = self.dbGrp["{tmp}"]
-            tmpDataset = tmpGrp.create_dataset(obj_uuid, shape=(0,),
+            tmpDataset = tmpGrp.create_dataset(obj_uuid, shape=(1,),
                                                dtype=dt_ref)
             tid = tmpDataset.id.get_type()
             sid = sid = h5py.h5s.create(h5py.h5s.NULL)
