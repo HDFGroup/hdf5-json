@@ -67,6 +67,7 @@ This class is used to manage UUID lookup tables for primary HDF objects (Groups,
 """
 import errno
 import time
+import base64
 import h5py
 import numpy as np
 import uuid
@@ -2073,8 +2074,13 @@ class Hdf5db:
     If a slices list or tuple is provided, it should have the same
     number of elements as the rank of the dataset.
     """
-    def getDatasetValuesByUuid(self, obj_uuid, slices=Ellipsis):
+    def getDatasetValuesByUuid(self, obj_uuid, slices=Ellipsis, format="json"):
         dset = self.getDatasetObjByUuid(obj_uuid)
+        if format not in ("json", "base64"):
+            msg = "only json and base64 formats are supported"
+            self.log.info(msg)
+            raise IOError(errno.EINVAL, msg)
+            
         if dset is None:
             return None
         values = None
@@ -2102,6 +2108,10 @@ class Hdf5db:
             raise IOError(errno.EIO, msg)
        
         if dt.kind == 'O':
+            if format != "json":
+                msg + "Only JSON is supported for for this data type"
+                self.log.info(msg)
+                raise IOError(errno.EINVAL, msg)
             # numpy object type - could be a vlen string or generic vlen
             h5t_check = h5py.h5t.check_dtype(vlen=dt)
             if h5t_check == str or h5t_check == unicode:
@@ -2134,7 +2144,10 @@ class Hdf5db:
             
         else:
             # just use tolist to dump
-            values = dset[slices].tolist()
+            if format == "json":
+                values = dset[slices].tolist()
+            else:
+                values = base64.b64encode(dset[slices].tobytes())
             
         return values
 

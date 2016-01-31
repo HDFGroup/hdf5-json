@@ -13,6 +13,7 @@ import unittest
 import sys
 import os
 import time
+import base64
 import errno
 import os.path as op
 import stat
@@ -325,7 +326,7 @@ class Hdf5dbTest(unittest.TestCase):
             d111Uuid = db.getUUIDByPath('/g1/g1.1/dset1.1.1')
             self.assertEqual(len(d111Uuid), UUID_LEN)
             d111_values = db.getDatasetValuesByUuid(d111Uuid)
-
+            self.assertTrue(type(d111_values) is list)
             self.assertEqual(len(d111_values), 10)
             for i in range(10):
                 arr = d111_values[i]
@@ -336,10 +337,33 @@ class Hdf5dbTest(unittest.TestCase):
             d112Uuid = db.getUUIDByPath('/g1/g1.1/dset1.1.2')
             self.assertEqual(len(d112Uuid), UUID_LEN)
             d112_values = db.getDatasetValuesByUuid(d112Uuid)
+            self.assertTrue(type(d112_values) is list)
             self.assertEqual(len(d112_values), 20)
             for i in range(20):
                 self.assertEqual(d112_values[i], i)
                 
+    def testReadDatasetBase64(self):
+         filepath = getFile('tall.h5', 'readdatasetbase64.h5')
+         d111_values = None
+         d112_values = None
+         with Hdf5db(filepath, app_logger=self.log) as db:
+            d111Uuid = db.getUUIDByPath('/g1/g1.1/dset1.1.1')
+            self.assertEqual(len(d111Uuid), UUID_LEN)
+            d111_data = db.getDatasetValuesByUuid(d111Uuid, format="base64")
+            self.assertTrue(type(d111_data) is bytes)
+            
+            self.assertEqual(len(d111_data), 536)
+            
+            d111_data_decoded = base64.b64decode(d111_data)
+            self.assertEqual(len(d111_data_decoded), 400)  # 10x10x(4 byte type)
+             
+            d112Uuid = db.getUUIDByPath('/g1/g1.1/dset1.1.2')
+            self.assertEqual(len(d112Uuid), UUID_LEN)
+            d112_data = db.getDatasetValuesByUuid(d112Uuid, format="base64")
+            self.assertEqual(len(d112_data), 108)
+            d112_data_decoded = base64.b64decode(d112_data)
+            self.assertEqual(len(d112_data_decoded), 80)  # 20x(4 byte type)
+               
     def testReadCompoundDataset(self):
          filepath = getFile('compound.h5', 'readcompound.h5')
          with Hdf5db(filepath, app_logger=self.log) as db:
