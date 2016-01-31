@@ -2076,8 +2076,8 @@ class Hdf5db:
     """
     def getDatasetValuesByUuid(self, obj_uuid, slices=Ellipsis, format="json"):
         dset = self.getDatasetObjByUuid(obj_uuid)
-        if format not in ("json", "base64"):
-            msg = "only json and base64 formats are supported"
+        if format not in ("json", "binary"):
+            msg = "only json and binary formats are supported"
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
             
@@ -2143,11 +2143,13 @@ class Hdf5db:
             values = self.bytesArrayToList(dset[slices])
             
         else:
+            values = dset[slices]
             # just use tolist to dump
             if format == "json":
-                values = dset[slices].tolist()
+                values = values.tolist()
             else:
-                values = base64.b64encode(dset[slices].tobytes())
+                #values = base64.b64encode(dset[slices].tobytes())
+                values = values.tobytes()
             
         return values
 
