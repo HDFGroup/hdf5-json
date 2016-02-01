@@ -66,41 +66,51 @@ class Hdf5dtypeTest(unittest.TestCase):
     def testBaseVLenAsciiTypeItem(self):
         dt = special_dtype(vlen=six.binary_type)
         typeItem = hdf5dtype.getTypeItem(dt)
+        typeSize = hdf5dtype.getItemSize(typeItem)
         self.assertEqual(typeItem['class'], 'H5T_STRING')
         self.assertEqual(typeItem['length'], 'H5T_VARIABLE')
         self.assertEqual(typeItem['strPad'], 'H5T_STR_NULLTERM')
         self.assertEqual(typeItem['charSet'], 'H5T_CSET_ASCII')
+        self.assertEqual(typeSize, 'H5T_VARIABLE')
+        
 
     def testBaseVLenUnicodeTypeItem(self):
         dt = special_dtype(vlen=six.text_type)
         typeItem = hdf5dtype.getTypeItem(dt)
+        typeSize = hdf5dtype.getItemSize(typeItem)
         self.assertEqual(typeItem['class'], 'H5T_STRING')
         self.assertEqual(typeItem['length'], 'H5T_VARIABLE')
         self.assertEqual(typeItem['strPad'], 'H5T_STR_NULLTERM')
         self.assertEqual(typeItem['charSet'], 'H5T_CSET_UTF8')
+        self.assertEqual(typeSize, 'H5T_VARIABLE')
 
     def testBaseEnumTypeItem(self):
         mapping = {'RED': 0, 'GREEN': 1, 'BLUE': 2}
         dt = special_dtype(enum=(np.int8, mapping))
         typeItem = hdf5dtype.getTypeItem(dt)
+        typeSize = hdf5dtype.getItemSize(typeItem)
         self.assertEqual(typeItem['class'], 'H5T_ENUM')
         baseItem = typeItem['base']
         self.assertEqual(baseItem['class'], 'H5T_INTEGER')
         self.assertEqual(baseItem['base'], 'H5T_STD_I8LE')
         self.assertTrue('mapping' in typeItem)
         self.assertEqual(typeItem['mapping']['GREEN'], 1)
+        self.assertEqual(typeSize, 1)
 
     def testBaseArrayTypeItem(self):
         dt = np.dtype('(2,2)<int32')
         typeItem = hdf5dtype.getTypeItem(dt)
+        typeSize = hdf5dtype.getItemSize(typeItem)
         self.assertEqual(typeItem['class'], 'H5T_ARRAY')
         baseItem = typeItem['base']
         self.assertEqual(baseItem['class'], 'H5T_INTEGER')
         self.assertEqual(baseItem['base'], 'H5T_STD_I32LE')
+        self.assertEqual(typeSize, 16)
 
     def testCompoundArrayTypeItem(self):
         dt = np.dtype([('a', '<i1'), ('b', 'S1', (10,))])
         typeItem = hdf5dtype.getTypeItem(dt)
+        typeSize = hdf5dtype.getItemSize(typeItem)
         self.assertEqual(typeItem['class'], 'H5T_COMPOUND')
         fields = typeItem['fields']
         field_a = fields[0]
@@ -115,25 +125,31 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertEqual(field_b_type['dims'], (10,))
         field_b_basetype = field_b_type['base']
         self.assertEqual(field_b_basetype['class'], 'H5T_STRING')
+        self.assertEqual(typeSize, 11)
 
 
     def testOpaqueTypeItem(self):
         dt = np.dtype('V200')
         typeItem = hdf5dtype.getTypeItem(dt)
+        typeSize = hdf5dtype.getItemSize(typeItem)
         self.assertEqual(typeItem['class'], 'H5T_OPAQUE')
         self.assertTrue('base' not in typeItem)
+        self.assertEqual(typeSize, 200)
 
     def testVlenDataItem(self):
         dt = special_dtype(vlen=np.dtype('int32'))
         typeItem = hdf5dtype.getTypeItem(dt)
+        typeSize = hdf5dtype.getItemSize(typeItem)
         self.assertEqual(typeItem['class'], 'H5T_VLEN')
         self.assertEqual(typeItem['size'], 'H5T_VARIABLE')
         baseItem = typeItem['base']
         self.assertEqual(baseItem['base'], 'H5T_STD_I32LE')
+        self.assertEqual(typeSize, 'H5T_VARIABLE')
 
     def testCompoundTypeItem(self):
         dt = np.dtype([("temp", np.float32), ("pressure", np.float32), ("wind", np.int16)])
         typeItem = hdf5dtype.getTypeItem(dt)
+        typeSize = hdf5dtype.getItemSize(typeItem)
         self.assertEqual(typeItem['class'], 'H5T_COMPOUND')
         self.assertTrue('fields' in typeItem)
         fields = typeItem['fields']
@@ -144,8 +160,10 @@ class Hdf5dtypeTest(unittest.TestCase):
         tempFieldType = tempField['type']
         self.assertEqual(tempFieldType['class'], 'H5T_FLOAT')
         self.assertEqual(tempFieldType['base'], 'H5T_IEEE_F32LE')
+        self.assertEqual(typeSize, 10)
 
         typeItem = hdf5dtype.getTypeResponse(typeItem) # non-verbose format
+        typeSize = hdf5dtype.getItemSize(typeItem)
         self.assertEqual(typeItem['class'], 'H5T_COMPOUND')
         self.assertTrue('fields' in typeItem)
         fields = typeItem['fields']
@@ -156,6 +174,7 @@ class Hdf5dtypeTest(unittest.TestCase):
         tempFieldType = tempField['type']
         self.assertEqual(tempFieldType['class'], 'H5T_FLOAT')
         self.assertEqual(tempFieldType['base'], 'H5T_IEEE_F32LE')
+        self.assertEqual(typeSize, 10)
 
     def testCreateBaseType(self):
         dt = hdf5dtype.createDataType('H5T_STD_U32BE')
@@ -176,18 +195,22 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertEqual(dt.kind, 'f')
 
         typeItem = { 'class': 'H5T_INTEGER', 'base': 'H5T_STD_I32BE' }
+        typeSize = hdf5dtype.getItemSize(typeItem)
         dt = hdf5dtype.createDataType(typeItem)
         self.assertEqual(dt.name, 'int32')
         self.assertEqual(dt.kind, 'i')
+        self.assertEqual(typeSize, 4)
 
     def testCreateBaseStringType(self):
         typeItem = { 'class': 'H5T_STRING', 'charSet': 'H5T_CSET_ASCII', 'length': 6 }
+        typeSize = hdf5dtype.getItemSize(typeItem)
         dt = hdf5dtype.createDataType(typeItem)
         if six.PY3:
             self.assertEqual(dt.name, 'bytes48')
         else:
             self.assertEqual(dt.name, 'string48')
         self.assertEqual(dt.kind, 'S')
+        self.assertEqual(typeSize, 6)
 
     def testCreateBaseUnicodeType(self):
         typeItem = { 'class': 'H5T_STRING', 'charSet': 'H5T_CSET_UTF8', 'length': 32 }
@@ -200,41 +223,51 @@ class Hdf5dtypeTest(unittest.TestCase):
     def testCreateNullTermStringType(self):
         typeItem = { 'class': 'H5T_STRING', 'charSet': 'H5T_CSET_ASCII',
             'length': 6, 'strPad': 'H5T_STR_NULLTERM'}
+        typeSize = hdf5dtype.getItemSize(typeItem)
         dt = hdf5dtype.createDataType(typeItem)
         if six.PY3:
             self.assertEqual(dt.name, 'bytes48')
         else:
             self.assertEqual(dt.name, 'string48')
         self.assertEqual(dt.kind, 'S')
+        self.assertEqual(typeSize, 6)
 
 
     def testCreateVLenStringType(self):
         typeItem = { 'class': 'H5T_STRING', 'charSet': 'H5T_CSET_ASCII', 'length': 'H5T_VARIABLE' }
+        typeSize = hdf5dtype.getItemSize(typeItem)
         dt = hdf5dtype.createDataType(typeItem)
         self.assertEqual(dt.name, 'object')
         self.assertEqual(dt.kind, 'O')
         self.assertEqual(check_dtype(vlen=dt), bytes)
+        self.assertEqual(typeSize, 'H5T_VARIABLE')
         
 
 
     def testCreateVLenUTF8Type(self):
         typeItem = { 'class': 'H5T_STRING', 'charSet': 'H5T_CSET_UTF8', 'length': 'H5T_VARIABLE' }
+        typeSize = hdf5dtype.getItemSize(typeItem)
         dt = hdf5dtype.createDataType(typeItem)
         self.assertEqual(dt.name, 'object')
         self.assertEqual(dt.kind, 'O')
         self.assertEqual(check_dtype(vlen=dt), six.text_type)
+        self.assertEqual(typeSize, 'H5T_VARIABLE')
 
     def testCreateVLenDataType(self):
         typeItem = {'class': 'H5T_VLEN', 'base': 'H5T_STD_I32BE'}
+        typeSize = hdf5dtype.getItemSize(typeItem)
         dt = hdf5dtype.createDataType(typeItem)
         self.assertEqual(dt.name, 'object')
         self.assertEqual(dt.kind, 'O')
+        self.assertEqual(typeSize, 'H5T_VARIABLE')
 
     def testCreateOpaqueType(self):
         typeItem = {'class': 'H5T_OPAQUE', 'size': 200}
+        typeSize = hdf5dtype.getItemSize(typeItem)
         dt = hdf5dtype.createDataType(typeItem)
         self.assertEqual(dt.name, 'void1600')
         self.assertEqual(dt.kind, 'V')
+        self.assertEqual(typeSize, 200)
 
     def testCreateCompoundType(self):
         typeItem = {
@@ -248,7 +281,7 @@ class Hdf5dtypeTest(unittest.TestCase):
                      'strPad': 'H5T_STR_NULLTERM'}},
                  {'name': 'wind',     'type': 'H5T_STD_I16LE'}]
         }
-
+        typeSize = hdf5dtype.getItemSize(typeItem)
         dt = hdf5dtype.createDataType(typeItem)
         self.assertEqual(dt.name, 'void144')
         self.assertEqual(dt.kind, 'V')
@@ -257,6 +290,7 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertEqual(dtLocation.name, 'object')
         self.assertEqual(dtLocation.kind, 'O')
         self.assertEqual(check_dtype(vlen=dtLocation), bytes)
+        self.assertEqual(typeSize, 'H5T_VARIABLE')
 
     def testCreateCompoundTypeUnicodeFields(self):
         typeItem = {
@@ -265,27 +299,32 @@ class Hdf5dtypeTest(unittest.TestCase):
                  {'name': u'pressure', 'type': 'H5T_IEEE_F32LE'},
                  {'name': u'wind',     'type': 'H5T_STD_I16LE'}]
         }
-
+        typeSize = hdf5dtype.getItemSize(typeItem)
         dt = hdf5dtype.createDataType(typeItem)   
         self.assertEqual(dt.name, 'void80')
         self.assertEqual(dt.kind, 'V')
         self.assertEqual(len(dt.fields), 3)
+        self.assertEqual(typeSize, 10)
 
     def testCreateArrayType(self):
         typeItem = {'class': 'H5T_ARRAY',
                     'base': 'H5T_STD_I64LE',
                     'dims': (3, 5) }
+        typeSize = hdf5dtype.getItemSize(typeItem)
         dt = hdf5dtype.createDataType(typeItem)
         self.assertEqual(dt.name, 'void960')
         self.assertEqual(dt.kind, 'V')
+        self.assertEqual(typeSize, 120)
 
     def testCreateArrayIntegerType(self):
         typeItem = {'class': 'H5T_INTEGER',
                     'base': 'H5T_STD_I64LE',
                     'dims': (3, 5) }
+        typeSize = hdf5dtype.getItemSize(typeItem)
         dt = hdf5dtype.createDataType(typeItem)
         self.assertEqual(dt.name, 'void960')
         self.assertEqual(dt.kind, 'V')
+        self.assertEqual(typeSize, 120)
 
     def testCreateCompoundArrayType(self):
         typeItem = {
@@ -310,15 +349,17 @@ class Hdf5dtypeTest(unittest.TestCase):
                             "strPad": "H5T_STR_NULLPAD"
                         },
                     "class": "H5T_ARRAY"
-                },
+                    },
                 "name": "b"
                 }
             ]
         }
+        typeSize = hdf5dtype.getItemSize(typeItem)
         dt = hdf5dtype.createDataType(typeItem)   
         self.assertEqual(len(dt.fields), 2)
         self.assertTrue('a' in dt.fields.keys())
         self.assertTrue('b' in dt.fields.keys())
+        self.assertEqual(typeSize, 11)
 
 
 
