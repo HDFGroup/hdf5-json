@@ -18,5 +18,6 @@ from __future__ import absolute_import
 
 from .hdf5dtype import getTypeItem
 from .hdf5dtype import getTypeResponse
+from .hdf5dtype import getItemSize
 from .hdf5dtype import createDataType
 from .hdf5db import Hdf5db 

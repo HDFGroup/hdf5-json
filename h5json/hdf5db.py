@@ -76,7 +76,7 @@ import os
 import json
 import logging
 
-from .hdf5dtype import getTypeItem, createDataType 
+from .hdf5dtype import getTypeItem, createDataType, getItemSize 
 
 # global dictionary to direct back to the Hdf5db instance by filename
 # (needed for visititems callback)
@@ -2085,6 +2085,13 @@ class Hdf5db:
             return None
         values = None
         dt = dset.dtype
+        typeItem = getTypeItem(dt)
+        itemSize = getItemSize(typeItem)
+        if itemSize == "H5T_VARIABLE" and format == "binary":
+            msg + "Only JSON is supported for for this data type"
+            self.log.info(msg)
+            raise IOError(errno.EINVAL, msg)
+            
         rank = len(dset.shape)
          
         if rank == 0:
@@ -2134,7 +2141,7 @@ class Hdf5db:
         elif dt.kind == 'V' and len(dt) <= 1 and len(dt.shape) == 0:
             # opaque type - skip for now
             self.log.warning("unable to print opaque type values")
-            values = "????"
+            values =  "????"
         elif dt.kind == 'S' and six.PY3:
             # For Python3 fixed string values will be returned as bytes,
             # so finese them into strings
@@ -2144,6 +2151,7 @@ class Hdf5db:
             
         else:
             values = dset[slices]
+            
             # just use tolist to dump
             if format == "json":
                 values = values.tolist()
