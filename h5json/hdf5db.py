@@ -2145,15 +2145,23 @@ class Hdf5db:
         elif dt.kind == 'S' and six.PY3:
             # For Python3 fixed string values will be returned as bytes,
             # so finese them into strings
+            if format != "json":
+                msg + "Only JSON is supported for for this data type"
+                self.log.info(msg)
+                raise IOError(errno.EINVAL, msg)
             values = self.bytesArrayToList(dset[slices])
         elif len(dt) > 1:
-            values = self.bytesArrayToList(dset[slices])
+            # compound type
+            if format == "json":
+                values = self.bytesArrayToList(dset[slices])
+            else:
+                values = dset[slices].tobytes()
             
         else:
             values = dset[slices]
             
             # just use tolist to dump
-            if format == "json":
+            if format == "json":             
                 values = values.tolist()
             else:
                 #values = base64.b64encode(dset[slices].tobytes())
