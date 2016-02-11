@@ -16,7 +16,7 @@ import h5py
 
 unit_tests = ( 'hdf5dtypeTest', 'hdf5dbTest' )
 integ_tests = ( 'h5tojson_test', 'jsontoh5_test' )
-
+print(h5py.version.info)
 # verify the hdf5 lib version is recent
 hdf5_version = h5py.version.hdf5_version_tuple
 print("hdf5_version:", hdf5_version)
