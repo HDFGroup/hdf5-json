@@ -36,7 +36,7 @@ test_files = (
     "compound.h5",
     "compound_array.h5",
     "compound_array_attr.h5",
-    "compound_array_vlen_string.h5",
+    #"compound_array_vlen_string.h5",  # crashes python w/ Linux!
     "compound_array_dset.h5",
     "compound_attr.h5",
     "compound_committed.h5",
