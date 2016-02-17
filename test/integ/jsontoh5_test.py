@@ -36,6 +36,7 @@ test_files = (
     # "compound_array.json",
     # "compound_array_attr.json",
     # "compound_array_dset.json",
+    "compound_array_vlen_string.json",
     "compound_attr.json",
     "compound_committed.json",
     "dim_scale.json",

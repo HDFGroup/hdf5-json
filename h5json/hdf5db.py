@@ -2457,7 +2457,7 @@ class Hdf5db:
         else:
 
             # create the dataset
-
+           
             try:
                 newDataset = datasets.create_dataset(
                     obj_uuid, shape=datashape, maxshape=max_shape,
