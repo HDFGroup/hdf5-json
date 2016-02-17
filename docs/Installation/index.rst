@@ -13,7 +13,7 @@ A computer running a 64-bit version of Windows, Mac OS X, or Linux.
 You will also need the following Python packages:
 
 * Python 2.7, 3.3, 3.4, or 3.5
-* NumPy 1.9.2 or later
+* NumPy 1.10.4 or later
 * h5py 2.5 or later
 
 If you are not familiar with installing Python packages, the easiest route is to 
