@@ -127,7 +127,7 @@ for test_file in test_files:
     out_file = os.path.join(out_dir, split_ext[0] + ".h5")
     if not os.path.exists(file_path):
         sys.exit("file: " + file_path + " not found")
-    cmd = "jsontoh5.py " + file_path + " " + out_file
+    cmd = "python ../../jsontoh5/jsontoh5.py " + file_path + " " + out_file
     print("cmd:", cmd)
     rc = os.system(cmd)
     if rc != 0:
