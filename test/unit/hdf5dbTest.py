@@ -799,7 +799,12 @@ class Hdf5dbTest(unittest.TestCase):
             base_type = attr_type["base"]
             # todo - this should be H5T_REFERENCE, not H5T_OPAQUE
             # See h5py issue: https://github.com/h5py/h5py/issues/553
-            self.assertEqual(base_type["class"], "H5T_OPAQUE")
+            import h5py
+            # test based on h5py version until we change install requirements
+            if h5py.version.version_tuple[1] >= 6:  
+                self.assertEqual(base_type["class"], "H5T_REFERENCE")
+            else:
+                self.assertEqual(base_type["class"], "H5T_OPAQUE")
 
     def testCreateReferenceListAttribute(self):
         filepath = getFile('empty.h5', 'createreferencelistattribute.h5')
