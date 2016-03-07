@@ -943,7 +943,13 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(len(fields), 4)
             # todo - the last field class should be H5T_STRING, but it is getting
             # saved to HDF5 as Opaque - see: https://github.com/h5py/h5py/issues/613
-            field_classes = ('H5T_INTEGER', 'H5T_FLOAT', 'H5T_STRING', 'H5T_OPAQUE')
+            # this is fixed in h5py v. 2.6.0 - check the version until 2.6.0 becomes
+            # available via pip and anaconda.
+            import h5py
+            if h5py.version.version_tuple[1] >= 6:
+                field_classes = ('H5T_INTEGER', 'H5T_FLOAT', 'H5T_STRING', 'H5T_OPAQUE')
+            else:
+                field_classes = ('H5T_INTEGER', 'H5T_FLOAT', 'H5T_STRING', 'H5T_OPAQUE')
             for i in range(4):
                 field = fields[i]
                 self.assertEqual(field['name'], 'field_' + str(i+1))
