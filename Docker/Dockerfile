@@ -3,4 +3,5 @@ MAINTAINER John Readey <jreadey@hdfgroup.org>
 RUN cd /usr/local/src                                    ; \
     git clone https://github.com/HDFGroup/hdf5-json.git  ; \
     cd hdf5-json                                         ; \
-    python setup.py install                               
+    python setup.py install                              ; \
+    python testall.py                             
