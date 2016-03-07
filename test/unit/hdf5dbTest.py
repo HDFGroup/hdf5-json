@@ -946,8 +946,7 @@ class Hdf5dbTest(unittest.TestCase):
             # this is fixed in h5py v. 2.6.0 - check the version until 2.6.0 becomes
             # available via pip and anaconda.
             import h5py
-            # fake error for testing
-            if h5py.version.version_tuple[1] >= 7:  
+            if h5py.version.version_tuple[1] >= 6:  
                 field_classes = ('H5T_INTEGER', 'H5T_FLOAT', 'H5T_STRING', 'H5T_OPAQUE')
             else:
                 field_classes = ('H5T_INTEGER', 'H5T_FLOAT', 'H5T_STRING', 'H5T_OPAQUE')
