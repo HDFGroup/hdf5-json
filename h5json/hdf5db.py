@@ -2082,13 +2082,16 @@ class Hdf5db:
             raise IOError(errno.EINVAL, msg)
             
         if dset is None:
-            return None
+            msg = "Dataset: " + obj_uuid + " not found"
+            self.log.info(msg)
+            raise IOError(errno.ENXIO, msg)
+            
         values = None
         dt = dset.dtype
         typeItem = getTypeItem(dt)
         itemSize = getItemSize(typeItem)
         if itemSize == "H5T_VARIABLE" and format == "binary":
-            msg + "Only JSON is supported for for this data type"
+            msg = "Only JSON is supported for for this data type"
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
             
@@ -2116,7 +2119,7 @@ class Hdf5db:
        
         if dt.kind == 'O':
             if format != "json":
-                msg + "Only JSON is supported for for this data type"
+                msg = "Only JSON is supported for for this data type"
                 self.log.info(msg)
                 raise IOError(errno.EINVAL, msg)
             # numpy object type - could be a vlen string or generic vlen
@@ -2146,7 +2149,7 @@ class Hdf5db:
             # For Python3 fixed string values will be returned as bytes,
             # so finese them into strings
             if format != "json":
-                msg + "Only JSON is supported for for this data type"
+                msg = "Only JSON is supported for for this data type"
                 self.log.info(msg)
                 raise IOError(errno.EINVAL, msg)
             values = self.bytesArrayToList(dset[slices])
@@ -2179,6 +2182,7 @@ class Hdf5db:
             msg = "Dataset: " + obj_uuid + " not found"
             self.log.info(msg)
             raise IOError(errno.ENXIO, msg)
+            
         rank = len(dset.shape)
         values = np.zeros(len(points), dtype=dset.dtype)
         try:
@@ -2200,18 +2204,36 @@ class Hdf5db:
     setDatasetValuesByUuid - update the given dataset values with supplied data
       and optionally a hyperslab selection (slices)
     """
-    def setDatasetValuesByUuid(self, obj_uuid, data, slices=None):
+    def setDatasetValuesByUuid(self, obj_uuid, data, slices=None, format="json"):
         dset = self.getDatasetObjByUuid(obj_uuid)
-
+        
+        if format not in ("json", "binary"):
+            msg = "only json and binary formats are supported"
+            self.log.info(msg)
+            raise IOError(errno.EINVAL, msg)
+            
+        if format == "binary" and type(data) is not bytes:
+            msg ="data must be of type bytes for binary writing"
+            self.log.info(msg)
+            raise IOError(errno.EINVAL, msg)
+            
         if dset is None:
             msg = "Dataset: " + obj_uuid + " not found"
             self.log.info(msg)
             raise IOError(errno.ENXIO, msg)
+            
+        dt = dset.dtype
+        typeItem = getTypeItem(dt)
+        itemSize = getItemSize(typeItem)
+        if itemSize == "H5T_VARIABLE" and format == "binary":
+            msg = "Only JSON is supported for for this data type"
+            self.log.info(msg)
+            raise IOError(errno.EINVAL, msg)        
 
         # need some special conversion for compound types --
         # each element must be a tuple, but the JSON decoder
         # gives us a list instead.
-        if len(dset.dtype) > 1 and type(data) in (list, tuple):
+        if format != "binary" and len(dset.dtype) > 1 and type(data) in (list, tuple):
             converted_data = []
             for i in range(len(data)):
                 converted_data.append(self.toTuple(data[i]))
@@ -2220,15 +2242,28 @@ class Hdf5db:
             h5t_check = h5py.check_dtype(ref=dset.dtype)
             if h5t_check in (h5py.Reference, h5py.RegionReference):
                 # convert data to data refs
+                if format == "binary":
+                    msg = "Only JSON is supported for for this data type"
+                    self.log.info(msg)
+                    raise IOError(errno.EINVAL, msg)  
                 data = self.listToRef(data)
 
         if slices is None:
             # write entire dataset
-            dset[()] = data
+            if format == "binary":
+                if len(data) != dset.size:
+                    msg = "Expected " + dset.size + " bytes, but got: " + len(data)
+                    self.log.info(msg)
+                    raise IOError(errno.EINVAL, msg)
+                arr = np.fromstring(data, dtype=dset.dtype)
+                arr.reshape(dset.shape)
+                dset[()] = arr    
+            else:             
+                dset[()] = data
         else:
             if type(slices) != tuple:
-                self.log.error(
-                    "setDatasetValuesByUuid: bad type for dim parameter")
+                msg = "setDatasetValuesByUuid: bad type for dim parameter"
+                self.log.error(msg)
                 return False
             rank = len(dset.shape)
 
