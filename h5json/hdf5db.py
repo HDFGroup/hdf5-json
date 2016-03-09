@@ -2220,7 +2220,7 @@ class Hdf5db:
         if dset is None:
             msg = "Dataset: " + obj_uuid + " not found"
             self.log.info(msg)
-            raise IOError(errno.ENXIO, msg)
+            raise IOError(errno.ENXIO, msg) 
             
         dt = dset.dtype
         typeItem = getTypeItem(dt)
@@ -2228,8 +2228,9 @@ class Hdf5db:
         if itemSize == "H5T_VARIABLE" and format == "binary":
             msg = "Only JSON is supported for for this data type"
             self.log.info(msg)
-            raise IOError(errno.EINVAL, msg)        
-
+            raise IOError(errno.EINVAL, msg)     
+            
+  
         # need some special conversion for compound types --
         # each element must be a tuple, but the JSON decoder
         # gives us a list instead.
@@ -2251,8 +2252,8 @@ class Hdf5db:
         if slices is None:
             # write entire dataset
             if format == "binary":
-                if len(data) != dset.size:
-                    msg = "Expected " + dset.size + " bytes, but got: " + len(data)
+                if len(data) != (dset.size * itemSize):
+                    msg = "Expected " + (dset.size * itemSize) + " bytes, but got: " + len(data)
                     self.log.info(msg)
                     raise IOError(errno.EINVAL, msg)
                 arr = np.fromstring(data, dtype=dset.dtype)
@@ -2271,7 +2272,6 @@ class Hdf5db:
                 self.log.error("setDatasetValuesByUuid: number of dims in selection not same as rank")
                 return False
             else:
-
                 npoints = 1
                 for i in range(rank):
                     s = slices[i]
@@ -2279,15 +2279,28 @@ class Hdf5db:
                     npoints *= count
                 if count <= 0:
                     self.log.error("invalid slice specification")
-                if count == 1 and len(dset.dtype) > 1:
-                    # convert to tuple for compound singleton writes
-                    data = tuple(data)
-
-                if rank == 1:
-                    slice = slices[0]
-                    dset[slice] = data
+                
+                if format == "binary":
+                    np_shape = []
+                    for i in range(rank):
+                        s = slices[i]
+                        np_shape.append( (s.stop - s.start) )
+                    arr = np.fromstring(data, dtype=dset.dtype)
+                    arr.reshape(np_shape)
+                    if rank == 1:
+                        s = slices[0]
+                        dset[s] = arr
+                    else:
+                        dset[slices] = arr
                 else:
-                    dset[slices] = data
+                    if count == 1 and len(dset.dtype) > 1:
+                        # convert to tuple for compound singleton writes
+                        data = tuple(data)
+                    elif rank == 1:
+                        s = slices[0]
+                        dset[s] = data
+                    else:
+                        dset[slices] = data
 
         # update modified time
         self.setModifiedTime(obj_uuid)
@@ -2297,7 +2310,7 @@ class Hdf5db:
     setDatasetValuesByPointSelection - Update the dataset values using the given
       data and point selection
     """
-    def setDatasetValuesByPointSelection(self, obj_uuid, data, points):
+    def setDatasetValuesByPointSelection(self, obj_uuid, data, points, format="json"):
         dset = self.getDatasetObjByUuid(obj_uuid)
         # need some special conversion for compound types --
         # each element must be a tuple, but the JSON decoder
