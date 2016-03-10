@@ -708,7 +708,7 @@ class Hdf5db:
 
     def getUUIDByPath(self, path):
         self.initFile()
-        self.log.info("getUUIDByPath: [[[" + path + "]")
+        self.log.info("getUUIDByPath: [" + path + "]")
         if len(path) >= 6 and path[:6] == '__db__':
             msg = "getUUIDByPath called with invalid path: [" + path + "]"
             self.log.error(msg)
@@ -2146,7 +2146,7 @@ class Hdf5db:
                     raise IOError(errno.EIO, msg)
         elif dt.kind == 'V' and len(dt) <= 1 and len(dt.shape) == 0:
             # opaque type - skip for now
-            self.log.warning("unable to print opaque type values")
+            self.log.warning("unable to get opaque type values")
             values =  "????"
         elif dt.kind == 'S' and six.PY3:
             # For Python3 fixed string values will be returned as bytes,
@@ -2289,9 +2289,7 @@ class Hdf5db:
                         s = slices[i]
                         np_shape.append( (s.stop - s.start) )
                     arr = np.fromstring(data, dtype=dset.dtype)
-                    print("np_shape:", np_shape)
                     arr = arr.reshape(np_shape)
-                    print("arr:", arr)
                     
                     if rank == 1:
                         s = slices[0]
