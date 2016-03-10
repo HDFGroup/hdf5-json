@@ -708,14 +708,18 @@ class Hdf5db:
 
     def getUUIDByPath(self, path):
         self.initFile()
-        self.log.info("getUUIDByPath: [" + path + "]")
+        self.log.info("getUUIDByPath: [[[" + path + "]")
         if len(path) >= 6 and path[:6] == '__db__':
             msg = "getUUIDByPath called with invalid path: [" + path + "]"
             self.log.error(msg)
             raise IOError(errno.EIO, msg)
         if path == '/':
             # just return the root UUID
-            return self.dbGrp.attrs["rootUUID"]
+            root_uuid = self.dbGrp.attrs["rootUUID"]
+            if root_uuid and type(root_uuid) is not str:
+                # convert bytes to unicode
+                root_uuid = root_uuid.decode('utf-8')
+            return root_uuid
 
         obj = self.f[path]  # will throw KeyError if object doesn't exist
         addr = h5py.h5o.get_info(obj.id).addr
