@@ -67,7 +67,6 @@ This class is used to manage UUID lookup tables for primary HDF objects (Groups,
 """
 import errno
 import time
-import base64
 import h5py
 import numpy as np
 import uuid
@@ -2286,7 +2285,10 @@ class Hdf5db:
                         s = slices[i]
                         np_shape.append( (s.stop - s.start) )
                     arr = np.fromstring(data, dtype=dset.dtype)
-                    arr.reshape(np_shape)
+                    print("np_shape:", np_shape)
+                    arr = arr.reshape(np_shape)
+                    print("arr:", arr)
+                    
                     if rank == 1:
                         s = slices[0]
                         dset[s] = arr
@@ -2312,33 +2314,61 @@ class Hdf5db:
     """
     def setDatasetValuesByPointSelection(self, obj_uuid, data, points, format="json"):
         dset = self.getDatasetObjByUuid(obj_uuid)
+        
+        if format not in ("json", "binary"):
+            msg = "only json and binary formats are supported"
+            self.log.info(msg)
+            raise IOError(errno.EINVAL, msg)
+            
+        if format == "binary" and type(data) is not bytes:
+            msg ="data must be of type bytes for binary writing"
+            self.log.info(msg)
+            raise IOError(errno.EINVAL, msg)
+            
+        if dset is None:
+            msg = "Dataset: " + obj_uuid + " not found"
+            self.log.info(msg)
+            raise IOError(errno.ENXIO, msg) 
+            
+        dt = dset.dtype
+        typeItem = getTypeItem(dt)
+        itemSize = getItemSize(typeItem)
+        if itemSize == "H5T_VARIABLE" and format == "binary":
+            msg = "Only JSON is supported for for this data type"
+            self.log.info(msg)
+            raise IOError(errno.EINVAL, msg)     
+            
         # need some special conversion for compound types --
         # each element must be a tuple, but the JSON decoder
         # gives us a list instead.
-        if len(dset.dtype) > 1 and type(data) in (list, tuple):
+        if format == "json" and len(dset.dtype) > 1 and type(data) in (list, tuple):
             converted_data = []
             for i in range(len(data)):
                 converted_data.append(self.toTuple(data[i]))
             data = converted_data
-        if dset is None:
-            msg = "Dataset: " + obj_uuid + " not found"
-            self.log.info(msg)
-            raise IOError(errno.ENXIO, msg)
+         
         rank = len(dset.shape)
+        
+        if format == "json":
 
-        try:
-            i = 0
-            for point in points:
-                if rank == 1:
-                    dset[[point]] = data[i]
-                else:
-                    dset[tuple(point)] = data[i]
-                i += 1
-        except ValueError:
-            # out of range error
-            msg = "setDatasetValuesByPointSelection, out of range error"
-            self.log.info(msg)
-            raise IOError(errno.EINVAL, msg)
+            try:
+                i = 0
+                for point in points:
+                    if rank == 1:
+                        dset[[point]] = data[i]
+                    else:
+                        dset[tuple(point)] = data[i]
+                    i += 1
+            except ValueError:
+                # out of range error
+                msg = "setDatasetValuesByPointSelection, out of range error"
+                self.log.info(msg)
+                raise IOError(errno.EINVAL, msg)
+            
+        else:
+            #binary
+            arr = np.fromstring(data, dtype=dset.dtype)
+            dset[points] = arr     # coordinate write
 
         # update modified time
         self.setModifiedTime(obj_uuid)
