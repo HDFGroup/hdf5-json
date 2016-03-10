@@ -2228,6 +2228,7 @@ class Hdf5db:
         dt = dset.dtype
         typeItem = getTypeItem(dt)
         itemSize = getItemSize(typeItem)
+            
         if itemSize == "H5T_VARIABLE" and format == "binary":
             msg = "Only JSON is supported for for this data type"
             self.log.info(msg)
@@ -2262,8 +2263,13 @@ class Hdf5db:
                 arr = np.fromstring(data, dtype=dset.dtype)
                 arr.reshape(dset.shape)
                 dset[()] = arr    
-            else:             
-                dset[()] = data
+            else:    
+                # json data
+                try:         
+                    dset[()] = data
+                except TypeError as te:
+                    raise IOError(errno.EINVAL, str(te))
+                    
         else:
             if type(slices) != tuple:
                 msg = "setDatasetValuesByUuid: bad type for dim parameter"
@@ -2300,11 +2306,17 @@ class Hdf5db:
                     if count == 1 and len(dset.dtype) > 1:
                         # convert to tuple for compound singleton writes
                         data = tuple(data)
-                    elif rank == 1:
+                    if rank == 1:
                         s = slices[0]
-                        dset[s] = data
+                        try:
+                            dset[s] = data
+                        except TypeError as te:
+                            raise IOError(errno.EINVAL, str(te))
                     else:
-                        dset[slices] = data
+                        try:
+                            dset[slices] = data
+                        except TypeError as te:
+                            raise IOError(errno.EINVAL, str(te))
 
         # update modified time
         self.setModifiedTime(obj_uuid)
