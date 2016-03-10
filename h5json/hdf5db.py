@@ -2228,6 +2228,10 @@ class Hdf5db:
         dt = dset.dtype
         typeItem = getTypeItem(dt)
         itemSize = getItemSize(typeItem)
+        rank = len(dset.shape)
+        arraySize = 1
+        for extent in dset.shape:
+            arraySize *= arraySize
             
         if itemSize == "H5T_VARIABLE" and format == "binary":
             msg = "Only JSON is supported for for this data type"
@@ -2254,69 +2258,97 @@ class Hdf5db:
                 data = self.listToRef(data)
 
         if slices is None:
-            # write entire dataset
-            if format == "binary":
-                if len(data) != (dset.size * itemSize):
-                    msg = "Expected " + (dset.size * itemSize) + " bytes, but got: " + len(data)
-                    self.log.info(msg)
-                    raise IOError(errno.EINVAL, msg)
-                arr = np.fromstring(data, dtype=dset.dtype)
-                arr.reshape(dset.shape)
-                dset[()] = arr    
-            else:    
-                # json data
-                try:         
-                    dset[()] = data
-                except TypeError as te:
-                    raise IOError(errno.EINVAL, str(te))
-                    
-        else:
-            if type(slices) != tuple:
-                msg = "setDatasetValuesByUuid: bad type for dim parameter"
-                self.log.error(msg)
-                return False
-            rank = len(dset.shape)
+            slices = []
+            # create selection that covers entire dataset
+            for dim in range(rank):
+                s = slice(0, dset.shape[dim], 1)
+                slices.append(s)
+            slices = tuple(slices)
+            
+             
+        if type(slices) != tuple:
+            msg = "setDatasetValuesByUuid: bad type for dim parameter"
+            self.log.error(msg)
+            raise IOError(erno.EIO, msg)
+            
 
-            if len(slices) != rank:
-                self.log.error("setDatasetValuesByUuid: number of dims in selection not same as rank")
-                return False
-            else:
-                npoints = 1
-                for i in range(rank):
-                    s = slices[i]
-                    count = (s.stop - s.start) // s.step
-                    npoints *= count
-                if count <= 0:
-                    self.log.error("invalid slice specification")
-                
-                if format == "binary":
-                    np_shape = []
-                    for i in range(rank):
-                        s = slices[i]
-                        np_shape.append( (s.stop - s.start) )
-                    arr = np.fromstring(data, dtype=dset.dtype)
-                    arr = arr.reshape(np_shape)
+        if len(slices) != rank:
+            msg = "number of dims in selection not same as rank"
+            self.log.info(msg)
+            raise IOError(errno.EINVAL, msg)
+           
+        npoints = 1
+        np_shape = []
+        for i in range(rank):
+            s = slices[i]
+            
+            if s.start < 0 or s.step <= 0 or s.stop < s.start:
+                msg = "invalid slice specification"
+                self.log.info(msg)
+                raise IOError(errno.EINVAL, msg)
+            if s.stop > dset.shape[i]:
+                msg = "invalid slice specification"
+                self.log.info(msg)
+                raise IOError(errno.EINVAL, msg)
+            np_shape.append(s.stop - s.start)
+                        
+            count = (s.stop - s.start) // s.step
+            if count <= 0:
+                msg = "invalid slice specification"
+                self.log.info(msg)
+                raise IOError(errno.EINVAL, msg)  
                     
-                    if rank == 1:
-                        s = slices[0]
-                        dset[s] = arr
-                    else:
-                        dset[slices] = arr
-                else:
-                    if count == 1 and len(dset.dtype) > 1:
-                        # convert to tuple for compound singleton writes
-                        data = tuple(data)
-                    if rank == 1:
-                        s = slices[0]
-                        try:
-                            dset[s] = data
-                        except TypeError as te:
-                            raise IOError(errno.EINVAL, str(te))
-                    else:
-                        try:
-                            dset[slices] = data
-                        except TypeError as te:
-                            raise IOError(errno.EINVAL, str(te))
+            npoints *= count        
+               
+        np_shape = tuple(np_shape)  # for comparison with ndarray shape
+                
+        self.log.info("selection shape:" + str(np_shape))
+                    
+        if format == "binary":
+            if npoints*itemSize != len(data):
+                msg = "Expected: " + str(npoints*itemSize) + " bytes, but got: " + str(len(data))
+                self.log.info(msg)
+                raise IOError(errno.EINVAL, msg)
+            arr = np.fromstring(data, dtype=dset.dtype)
+            arr = arr.reshape(np_shape)  # conform to selection shape
+                
+        else:
+             # data is json
+             if npoints == 1 and len(dset.dtype) > 1:
+                # convert to tuple for compound singleton writes
+                data = [tuple(data),]
+
+             arr = np.array(data, dtype=dset.dtype)
+             # raise an exception of the array shape doesn't match the selection shape
+             # allow if the array is a scalar and the selection shape is one element,
+             # numpy is ok with this
+             if arr.shape == () and np_shape == (1,):
+                np_shape = ()
+             if arr.shape == (1,) and np_shape == ():
+                np_shape = (1,)
+                
+             if arr.shape != np_shape:
+                msg = "data shape doesn't match selection shape"
+                msg += "--data shape: " + str(arr.shape)
+                msg += "--selection shape: " + str(np_shape)
+                
+                self.log.info(msg)
+                raise IOError(errno.EINVAL, msg)
+                    
+        # write temp numpy array to dataset        
+        if rank == 1:
+            s = slices[0]
+            try:
+                dset[s] = arr
+            except TypeError as te:
+                self.log.info("h5py setitem exception: " + str(te))
+                raise IOError(errno.EINVAL, str(te))
+        else:
+            try:
+                dset[slices] = arr
+            except TypeError as te:
+                self.log.info("h5py setitem exception: " + str(te))
+                raise IOError(errno.EINVAL, str(te))
 
         # update modified time
         self.setModifiedTime(obj_uuid)
