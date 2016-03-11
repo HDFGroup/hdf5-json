@@ -2313,21 +2313,31 @@ class Hdf5db:
             arr = arr.reshape(np_shape)  # conform to selection shape
                 
         else:
-             # data is json
-             if npoints == 1 and len(dset.dtype) > 1:
+            # data is json
+            if npoints == 1 and len(dset.dtype) > 1:
                 # convert to tuple for compound singleton writes
                 data = [tuple(data),]
 
-             arr = np.array(data, dtype=dset.dtype)
-             # raise an exception of the array shape doesn't match the selection shape
-             # allow if the array is a scalar and the selection shape is one element,
-             # numpy is ok with this
-             if arr.shape == () and np_shape == (1,):
-                np_shape = ()
-             if arr.shape == (1,) and np_shape == ():
-                np_shape = (1,)
-                
-             if arr.shape != np_shape:
+            arr = np.array(data, dtype=dset.dtype)
+            # raise an exception of the array shape doesn't match the selection shape
+            # allow if the array is a scalar and the selection shape is one element,
+            # numpy is ok with this
+            np_index = 0
+            for dim in range(len(arr.shape)):
+                data_extent = arr.shape[dim]
+                selection_extent = 1
+                if np_index < len(np_shape):
+                    selection_extent = np_shape[np_index]
+                if selection_extent == data_extent:
+                    np_index += 1
+                    continue  # good
+                if data_extent == 1:
+                    continue  # skip singleton selection
+                if selection_extent == 1:
+                    np_index += 1
+                    continue  # skip singleton selection
+                 
+                # selection/data mismatch!
                 msg = "data shape doesn't match selection shape"
                 msg += "--data shape: " + str(arr.shape)
                 msg += "--selection shape: " + str(np_shape)
