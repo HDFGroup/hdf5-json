@@ -2857,6 +2857,10 @@ class Hdf5db:
     def getLinkItemByUuid(self, grpUuid, link_name):
         self.log.info(
             "db.getLinkItemByUuid(" + grpUuid + ", [" + link_name + "])")
+        if not link_name:
+            msg = "link_name not specified"
+            self.log.info(msg)
+            raise IOError(errno.EINVAL, msg)
 
         self.initFile()
         parent = self.getGroupObjByUuid(grpUuid)
