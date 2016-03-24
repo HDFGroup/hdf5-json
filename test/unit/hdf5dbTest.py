@@ -507,14 +507,37 @@ class Hdf5dbTest(unittest.TestCase):
 
 
     def testReadZeroDimDataset(self):
-         filepath = getFile('zerodim.h5', 'readzerodeimdataset.h5')
-         d111_values = None
-         d112_values = None
-         with Hdf5db(filepath, app_logger=self.log) as db:
+        filepath = getFile('zerodim.h5', 'readzerodeimdataset.h5')
+              
+        with Hdf5db(filepath, app_logger=self.log) as db:
             dsetUuid = db.getUUIDByPath('/dset')
             self.assertEqual(len(dsetUuid), UUID_LEN)
             dset_value = db.getDatasetValuesByUuid(dsetUuid)
             self.assertEqual(dset_value, 42)
+            
+            
+    def testReadNullSpaceDataset(self):
+        filepath = getFile('null_space_dset.h5', 'readnullspacedataset.h5')
+         
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            dsetUuid = db.getUUIDByPath('/DS1')
+            self.assertEqual(len(dsetUuid), UUID_LEN)
+            obj = db.getDatasetObjByUuid(dsetUuid)
+            shape_item = db.getShapeItemByDsetObj(obj)
+            self.assertTrue('class' in shape_item)
+            self.assertEqual(shape_item['class'], 'H5S_NULL')
+            
+    def testReadNullSpaceAttribute(self):
+        filepath = getFile('null_space_attr.h5', 'readnullspaceattr.h5')
+         
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            rootUuid = db.getUUIDByPath('/')
+            self.assertEqual(len(rootUuid), UUID_LEN)
+            item = db.getAttributeItem("groups", rootUuid, "attr1") 
+            self.assertTrue('shape' in item)
+            shape_item = item['shape']
+            self.assertTrue('class' in shape_item)
+            self.assertEqual(shape_item['class'], 'H5S_NULL')
 
     def testReadAttribute(self):
         # getAttributeItemByUuid

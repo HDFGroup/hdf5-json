@@ -814,7 +814,10 @@ class Hdf5db:
 
     def getShapeItemByDsetObj(self, obj):
         item = {}
-        if len(obj.shape) == 0:
+        if obj.shape is None:
+            # new with h5py 2.6, null space datasets will return None for shape
+            item['class'] = 'H5S_NULL'
+        elif len(obj.shape) == 0:
             # check to see if this is a null space vs a scalar dataset we'll do
             # this by seeing if an exception is raised when reading the dataset
             # h5py issue https://github.com/h5py/h5py/issues/279 will provide a
@@ -846,7 +849,7 @@ class Hdf5db:
 
     def getShapeItemByAttrObj(self, obj):
         item = {}
-        if obj.get_storage_size() == 0:
+        if obj.shape is None or obj.get_storage_size() == 0:
             # If storage size is 0, assume this is a null space obj
             # See: h5py issue https://github.com/h5py/h5py/issues/279
             item['class'] = 'H5S_NULL'
@@ -2100,6 +2103,10 @@ class Hdf5db:
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
             
+        if dset.shape is None:
+            # null space dataset (with h5py 2.6.0)
+            return None   
+               
         rank = len(dset.shape)
          
         if rank == 0:
