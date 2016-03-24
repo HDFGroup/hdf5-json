@@ -152,11 +152,13 @@ class Hdf5db:
         if readonly:
             self.readonly = True
         else:
-            if os.access(filePath, os.W_OK):
+            if not os.stat(filePath).st_mode & 0o200:
+                # file is read-only
+                self.readonly = True
+            else:
                 mode = 'r+'
                 self.readonly = False
-            else:
-                self.readonly = True
+             
 
         self.log.info("init -- filePath: " + filePath + " mode: " + mode)
 
