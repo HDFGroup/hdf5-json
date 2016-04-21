@@ -1162,7 +1162,58 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(acl['delete'], 0)
             self.assertEqual(acl['readACL'], 0)
             self.assertEqual(acl['updateACL'], 0)
-
+            
+    def testGetEvalStr(self):
+        queries = { "date == 23": "rows['date'] == 23",
+                    "wind == b'W 5'": "rows['wind'] == b'W 5'",
+                    "temp > 61": "rows['temp'] > 61",
+                    "(date >=22) & (date <= 24)": "(rows['date'] >=22) & (rows['date'] <= 24)",
+                    "(date == 21) & (temp > 70)": "(rows['date'] == 21) & (rows['temp'] > 70)",
+                    "(wind == b'E 7') | (wind == b'S 7')": "(rows['wind'] == b'E 7') | (rows['wind'] == b'S 7')" }
+                    
+        fields = ["date", "wind", "temp" ]  
+        filepath = getFile('empty.h5', 'getevalstring.h5')
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            
+            for query in queries.keys():
+                eval_str = db._getEvalStr(query, fields)
+                self.assertEqual(eval_str, queries[query])
+                #print(query, "->", eval_str)
+                
+    def testBadQuery(self):
+        queries = ( "foobar",    # no variable used
+                "wind = b'abc",  # non-closed literal
+                "(wind = b'N') & (temp = 32",  # missing paren
+                "foobar > 42",                 # invalid field name
+                "import subprocess; subprocess.call(['ls', '/'])")  # injection attack
+                         
+        fields = ("date", "wind", "temp" )  
+        filepath = getFile('empty.h5', 'badquery.h5')
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            
+            for query in queries:
+                try:
+                    eval_str = db._getEvalStr(query, fields)
+                    self.assertTrue(False)  # shouldn't get here
+                except IOError as e:
+                    pass  # ok
+                    
+    def testInjectionBlock(self):
+        queries = ( 
+            "import subprocess; subprocess.call(['ls', '/'])", ) # injection attack
+                         
+        fields = ("import", "subprocess", "call" ) 
+        filepath = getFile('empty.h5', 'injectionblock.h5')
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            
+            for query in queries:
+                try:
+                    eval_str = db._getEvalStr(query, fields)
+                    self.assertTrue(False)  # shouldn't get here
+                except IOError as e:
+                    pass  # ok
+             
+ 
 
 
 if __name__ == '__main__':
