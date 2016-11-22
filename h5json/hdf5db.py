@@ -131,7 +131,7 @@ class Hdf5db:
     @staticmethod
     def getVersionInfo():
         versionInfo = {}
-        versionInfo['hdf5-json-version'] = "1.0.0" # todo - have this auto-synch with package version
+        versionInfo['hdf5-json-version'] = "1.1.0" # todo - have this auto-synch with package version
         versionInfo['h5py_version'] = h5py.version.version
         versionInfo['hdf5_version'] = h5py.version.hdf5_version
         return versionInfo
