@@ -2071,9 +2071,12 @@ class Hdf5db:
       Convert a list to a tuple, recursively.
       Example. [[1,2],[3,4]] -> ((1,2),(3,4))
     """
-    def toTuple(self, data):
+    def toTuple(self, rank, data):
         if type(data) in (list, tuple):
-            return tuple(self.toTuple(x) for x in data)
+            if rank > 0:
+                return list(self.toTuple(rank-1, x) for x in data)
+            else:
+                return tuple(self.toTuple(rank-1, x) for x in data)
         else:
             return data
 
@@ -2421,25 +2424,6 @@ class Hdf5db:
             msg = "Only JSON is supported for for this data type"
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)     
-            
-  
-        # need some special conversion for compound types --
-        # each element must be a tuple, but the JSON decoder
-        # gives us a list instead.
-        if format != "binary" and len(dset.dtype) > 1 and type(data) in (list, tuple):
-            converted_data = []
-            for i in range(len(data)):
-                converted_data.append(self.toTuple(data[i]))
-            data = converted_data
-        else:
-            h5t_check = h5py.check_dtype(ref=dset.dtype)
-            if h5t_check in (h5py.Reference, h5py.RegionReference):
-                # convert data to data refs
-                if format == "binary":
-                    msg = "Only JSON is supported for for this data type"
-                    self.log.info(msg)
-                    raise IOError(errno.EINVAL, msg)  
-                data = self.listToRef(data)
 
         if slices is None:
             slices = []
@@ -2487,6 +2471,25 @@ class Hdf5db:
         np_shape = tuple(np_shape)  # for comparison with ndarray shape
                 
         self.log.info("selection shape:" + str(np_shape))
+
+
+        # need some special conversion for compound types --
+        # each element must be a tuple, but the JSON decoder
+        # gives us a list instead.
+        if format != "binary" and len(dset.dtype) > 1 and type(data) in (list, tuple):
+            data = self.toTuple(rank, data)
+            #for i in range(len(data)):
+            #    converted_data.append(self.toTuple(data[i]))
+            #data = converted_data
+        else:
+            h5t_check = h5py.check_dtype(ref=dset.dtype)
+            if h5t_check in (h5py.Reference, h5py.RegionReference):
+                # convert data to data refs
+                if format == "binary":
+                    msg = "Only JSON is supported for for this data type"
+                    self.log.info(msg)
+                    raise IOError(errno.EINVAL, msg)  
+                data = self.listToRef(data)
                     
         if format == "binary":
             if npoints*itemSize != len(data):
@@ -2577,17 +2580,17 @@ class Hdf5db:
             msg = "Only JSON is supported for for this data type"
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)     
-            
+
+        rank = len(dset.shape)
+
         # need some special conversion for compound types --
         # each element must be a tuple, but the JSON decoder
         # gives us a list instead.
         if format == "json" and len(dset.dtype) > 1 and type(data) in (list, tuple):
-            converted_data = []
-            for i in range(len(data)):
-                converted_data.append(self.toTuple(data[i]))
-            data = converted_data
-         
-        rank = len(dset.shape)
+            converted_data = self.toTuple(rank, data)
+            #for i in range(len(data)):
+            #    converted_data.append(self.toTuple(data[i]))
+            #data = converted_data
         
         if format == "json":
 
@@ -2741,7 +2744,7 @@ class Hdf5db:
             ndscalar = np.zeros((), dtype=dt)
             for i in range(len(fillvalue)):
                 field = dt.names[i]
-                ndscalar[field] = self.toTuple(fillvalue[i])
+                ndscalar[field] = self.toTuple(0, fillvalue[i])
             fillvalue = ndscalar
 
         if fillvalue:

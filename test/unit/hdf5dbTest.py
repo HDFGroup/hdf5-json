@@ -1005,13 +1005,16 @@ class Hdf5dbTest(unittest.TestCase):
 
     def testToTuple(self):
         filepath = getFile('empty.h5', 'totuple.h5')
+        data1d = [1,2,3]
+        data2d = [[1,2],[3,4]] 
+        data3d = [[[1,2],[3,4]], [[5,6],[7,8]]]
         with Hdf5db(filepath, app_logger=self.log) as db:
-            self.assertEqual(db.toTuple( [1,2,3] ), (1,2,3) )
-            self.assertEqual(db.toTuple( [[1,2],[3,4]] ), ((1,2),(3,4))  )
-            self.assertEqual(db.toTuple( ([1,2],[3,4]) ), ((1,2),(3,4))  )
-            self.assertEqual(db.toTuple( [(1,2),(3,4)] ), ((1,2),(3,4))  )
-            self.assertEqual(db.toTuple( [[[1,2],[3,4]], [[5,6],[7,8]]] ),
-                (((1,2),(3,4)), ((5,6),(7,8)))  )
+            self.assertEqual(db.toTuple(1, data1d ), [1,2,3] )
+            self.assertEqual(db.toTuple(2, data2d ), [[1,2],[3,4]]  )
+            self.assertEqual(db.toTuple(1, data2d ), [(1,2),(3,4)]  )
+            self.assertEqual(db.toTuple(3, data3d), [[[1,2],[3,4]], [[5,6],[7,8]]] )
+            self.assertEqual(db.toTuple(2, data3d), [[(1,2),(3,4)], [(5,6),(7,8)]]  )
+            self.assertEqual(db.toTuple(1, data3d), [((1,2),(3,4)), ((5,6),(7,8))]  )
     
                
     def testBytesArrayToList(self):
