@@ -475,6 +475,21 @@ def createBaseDataType(typeItem):
         	dtRet = special_dtype(ref=RegionReference)
         else:
             raise TypeError("Invalid base type for reference type")
+    elif typeClass == 'H5T_ENUM':
+        if 'base' not in typeItem:
+            raise KeyError("Expected 'base' to be provided for enum type")
+        base_json = typeItem["base"]
+        if 'class' not in base_json:
+            raise KeyError("Expected class field in base type")
+        if base_json['class'] != 'H5T_INTEGER':
+            raise TypeError("Only integer base types can be used with enum type")
+        if 'mapping' not in typeItem:
+            raise KeyError("'mapping' not provided for enum type")
+        mapping = typeItem["mapping"]
+        if len(mapping) == 0:
+            raise KeyError("empty enum map")
+        dt = createBaseDataType(base_json)
+        dtRet = special_dtype(enum=(dt, mapping))
 
     else:
         raise TypeError("Invalid type class")
@@ -534,21 +549,6 @@ def createDataType(typeItem):
             subtypes.append((field['name'], dt))  # append tuple
             
         dtRet = np.dtype(subtypes)
-    elif typeClass == 'H5T_ENUM':
-        if 'base' not in typeItem:
-            raise KeyError("Expected 'base' to be provided for enum type")
-        base_json = typeItem["base"]
-        if 'class' not in base_json:
-            raise KeyError("Expected class field in base type")
-        if base_json['class'] != 'H5T_INTEGER':
-            raise TypeError("Only integer base types can be used with enum type")
-        if 'mapping' not in typeItem:
-            raise KeyError("'mapping' not provided for enum type")
-        mapping = typeItem["mapping"]
-        if len(mapping) == 0:
-            raise KeyError("empty enum map")
-        dt = createBaseDataType(base_json)
-        dtRet = special_dtype(enum=(dt, mapping))
         
     else:
         dtRet = createBaseDataType(typeItem)  # create non-compound dt
