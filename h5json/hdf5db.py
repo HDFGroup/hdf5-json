@@ -1029,7 +1029,6 @@ class Hdf5db:
                 raise IOError(errno.ENXIO, msg)
             dt = tgt  # can use the object as the dt parameter
         else:
-
             try:
                 dt = createDataType(attr_type)
             except KeyError as ke:

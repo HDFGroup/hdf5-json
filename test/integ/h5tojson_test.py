@@ -32,6 +32,8 @@ test_files = (
     # bitfields not supported yet
     # "bitfield_attr.h5",
     # "bitfield_dset.h5",
+    "bool_attr.h5",
+    "bool_dset.h5",
     "committed_type.h5",
     "compound.h5",
     "compound_array.h5",

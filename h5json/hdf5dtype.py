@@ -266,12 +266,21 @@ def getTypeItem(dt):
          
     elif dt.kind == 'b':
         # boolean type - h5py stores as enum
-        if dt.base == dt:
-            raise TypeError("Expected base type to be different than parent")
-        baseType = getBaseType(dt)
+        # assume LE unless the numpy byteorder is '>'
+        byteorder = 'LE'
+        if dt.base.byteorder == '>':
+            byteorder = 'BE'
+        # this mapping is an h5py convention for boolean support
+        mapping =  {
+            "FALSE": 0,
+            "TRUE": 1
+        }      
         type_info['class'] = 'H5T_ENUM'
-        type_info['mapping'] = {"false": 0, "true": 1}
-        type_info['base'] = getTypeItem(dt.base)
+        type_info['mapping'] = mapping
+        base_info = { "class": "H5T_INTEGER" }
+        base_info['base'] = "H5T_STD_I8" + byteorder
+        type_info["base"] = base_info
+
     elif dt.kind == 'f':
         # floating point type
         type_info['class'] = 'H5T_FLOAT'
@@ -525,6 +534,22 @@ def createDataType(typeItem):
             subtypes.append((field['name'], dt))  # append tuple
             
         dtRet = np.dtype(subtypes)
+    elif typeClass == 'H5T_ENUM':
+        if 'base' not in typeItem:
+            raise KeyError("Expected 'base' to be provided for enum type")
+        base_json = typeItem["base"]
+        if 'class' not in base_json:
+            raise KeyError("Expected class field in base type")
+        if base_json['class'] != 'H5T_INTEGER':
+            raise TypeError("Only integer base types can be used with enum type")
+        if 'mapping' not in typeItem:
+            raise KeyError("'mapping' not provided for enum type")
+        mapping = typeItem["mapping"]
+        if len(mapping) == 0:
+            raise KeyError("empty enum map")
+        dt = createBaseDataType(base_json)
+        dtRet = special_dtype(enum=(dt, mapping))
+        
     else:
         dtRet = createBaseDataType(typeItem)  # create non-compound dt
     return dtRet
