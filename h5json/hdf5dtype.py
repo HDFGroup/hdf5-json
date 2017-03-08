@@ -488,8 +488,14 @@ def createBaseDataType(typeItem):
         mapping = typeItem["mapping"]
         if len(mapping) == 0:
             raise KeyError("empty enum map")
+        
         dt = createBaseDataType(base_json)
-        dtRet = special_dtype(enum=(dt, mapping))
+        if dt.kind == 'i' and dt.name=='int8' and len(mapping) == 2 and 'TRUE' in mapping and 'FALSE' in mapping:
+            # convert to numpy boolean type
+            dtRet = np.dtype("bool")
+        else:
+            # not a boolean enum, use h5py special dtype 
+            dtRet = special_dtype(enum=(dt, mapping))
 
     else:
         raise TypeError("Invalid type class")
