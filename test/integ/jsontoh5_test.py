@@ -76,6 +76,7 @@ test_files = (
     # "sample.json",
     "scalar.json",
     #"scalar_attr.json",
+    #"scalar_array_dset.json",
     "tall.json",
     "tall_with_udlink.json",
     "tgroup.json",

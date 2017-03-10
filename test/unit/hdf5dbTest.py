@@ -526,6 +526,17 @@ class Hdf5dbTest(unittest.TestCase):
             shape_item = db.getShapeItemByDsetObj(obj)
             self.assertTrue('class' in shape_item)
             self.assertEqual(shape_item['class'], 'H5S_NULL')
+
+    def testReadScalarSpaceArrayDataset(self):
+        filepath = getFile('scalar_array_dset.h5', 'readscalarspacearraydataset.h5')
+         
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            dsetUuid = db.getUUIDByPath('/DS1')
+            self.assertEqual(len(dsetUuid), UUID_LEN)
+            obj = db.getDatasetObjByUuid(dsetUuid)
+            shape_item = db.getShapeItemByDsetObj(obj)
+            self.assertTrue('class' in shape_item)
+            self.assertEqual(shape_item['class'], 'H5S_SCALAR')
             
     def testReadNullSpaceAttribute(self):
         filepath = getFile('null_space_attr.h5', 'readnullspaceattr.h5')

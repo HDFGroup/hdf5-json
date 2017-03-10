@@ -82,6 +82,7 @@ test_files = (
     "resizable.h5",
     "sample.h5",
     "scalar.h5",
+    "scalar_array_dset.h5",
     "scalar_attr.h5",
     "tall.h5",
     "tall_with_udlink.h5",

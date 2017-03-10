@@ -822,9 +822,10 @@ class Hdf5db:
             # this by seeing if an exception is raised when reading the dataset
             # h5py issue https://github.com/h5py/h5py/issues/279 will provide a
             # better way to determine null spaces
+            # Update 3/10/17: Above issue is closed, but waiting on 2.7 final release
             try:
                 val = obj[...]
-                if not val:
+                if val is None:
                     self.log.warning("no value returned for scalar dataset")
                 item['class'] = 'H5S_SCALAR'
             except IOError:
@@ -2118,7 +2119,7 @@ class Hdf5db:
             except IOError:
                 # assume null dataspace, return none
                 return None
-            if not val:
+            if val is None:
                 self.log.warning("no value returned from scalar dataset")
 
         if type(slices) != list and type(slices) != tuple and slices is not Ellipsis:
