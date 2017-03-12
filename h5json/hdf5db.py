@@ -2496,9 +2496,17 @@ class Hdf5db:
                 msg = "Expected: " + str(npoints*itemSize) + " bytes, but got: " + str(len(data))
                 self.log.info(msg)
                 raise IOError(errno.EINVAL, msg)
-            arr = np.fromstring(data, dtype=dset.dtype)
-            arr = arr.reshape(np_shape)  # conform to selection shape
-                
+            if dset.dtype.shape == ():
+                arr = np.fromstring(data, dtype=dset.dtype)
+                arr = arr.reshape(np_shape)  # conform to selection shape
+            else:
+                # tricy array type!
+                arr = np.empty(np_shape, dtype=dset.dtype)
+                base_arr = np.fromstring(data, dtype=dset.dtype.base)
+                base_shape = list(np_shape)
+                base_shape.extend(dset.dtype.shape)  # add on the type dimensions
+                base_arr = base_arr.reshape(base_shape)
+                arr[...] = base_arr
         else:
             # data is json
             if npoints == 1 and len(dset.dtype) > 1:
