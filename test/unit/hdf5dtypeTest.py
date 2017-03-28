@@ -15,6 +15,8 @@ import numpy as np
 import sys
 from h5py import special_dtype
 from h5py import check_dtype
+from h5py import Reference
+from h5py import RegionReference
 import six
 
  
@@ -121,6 +123,25 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertEqual(baseItem['base'], 'H5T_STD_I32LE')
         self.assertEqual(typeSize, 16)
 
+    def testObjReferenceTypeItem(self):
+        #dt = np.dtype('S48', metadata={'ref': val.__class__})
+        dt = special_dtype(ref=Reference)
+        typeItem = hdf5dtype.getTypeItem(dt)
+        typeSize = hdf5dtype.getItemSize(typeItem)
+        self.assertEqual(typeItem['class'], 'H5T_REFERENCE')
+        self.assertEqual(typeItem['base'], 'H5T_STD_REF_OBJ')
+        self.assertEqual(typeSize, 'H5T_VARIABLE')
+
+    def testRegionReferenceTypeItem(self):
+        dt = special_dtype(ref=RegionReference)
+        typeItem = hdf5dtype.getTypeItem(dt)
+        typeSize = hdf5dtype.getItemSize(typeItem)
+        self.assertEqual(typeItem['class'], 'H5T_REFERENCE')
+        self.assertEqual(typeItem['base'], 'H5T_STD_REF_DSETREG')
+        self.assertEqual(typeSize, 'H5T_VARIABLE')
+        
+
+
     def testCompoundArrayTypeItem(self):
         dt = np.dtype([('a', '<i1'), ('b', 'S1', (10,))])
         typeItem = hdf5dtype.getTypeItem(dt)
@@ -218,6 +239,17 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertEqual(typeItem['size'], 'H5T_VARIABLE')
         baseItem = typeItem['base']
         self.assertEqual(baseItem['base'], 'H5T_STD_I32LE')
+        self.assertEqual(typeSize, 'H5T_VARIABLE')
+
+    def testVlenReferenceDataItem(self):
+        ref_dt = special_dtype(ref=Reference)
+        dt = special_dtype(vlen=ref_dt)
+        typeItem = hdf5dtype.getTypeItem(dt)
+        typeSize = hdf5dtype.getItemSize(typeItem)
+        self.assertEqual(typeItem['class'], 'H5T_VLEN')
+        self.assertEqual(typeItem['size'], 'H5T_VARIABLE')
+        baseItem = typeItem['base']
+        self.assertEqual(baseItem['base'], 'H5T_STD_REF_OBJ')
         self.assertEqual(typeSize, 'H5T_VARIABLE')
 
     def testCompoundTypeItem(self):
@@ -495,7 +527,19 @@ class Hdf5dtypeTest(unittest.TestCase):
             self.assertTrue(False) # expected exception - dims used with none array type
         except TypeError:
             pass # should get exception
-         
+
+
+    def testCreateVlenObjRefType(self):
+        typeItem = {'class': 'H5T_VLEN', 
+                    'base': {'class': 'H5T_REFERENCE', 'base': 'H5T_STD_REF_OBJ'} }
+        dt = hdf5dtype.createDataType(typeItem)
+        self.assertEqual(dt.name, 'object')
+        self.assertEqual(dt.kind, 'O')
+        self.assertTrue(check_dtype(ref=dt) is None)
+        dt_base = check_dtype(vlen=dt)
+        self.assertTrue(dt_base is not None)
+        self.assertTrue(check_dtype(ref=dt_base) is Reference)
+                             
 
     def testCreateCompoundArrayType(self):
         typeItem = {
