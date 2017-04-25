@@ -12,10 +12,17 @@ python:
 install:
     - sudo apt-get update -qq
     - sudo apt-get install -qq libhdf5-serial-dev 
-    - pip uninstall numpy -y
-    - pip install numpy>=1.10.4
-    - pip install h5py
+    - pip --upgrade --force-reinstall -r requirements.txt
 
 script:
     - python setup.py install
     - python testall.py
+
+deploy:
+  provider: pypi
+  user: "aberkley"
+  password: $PYPI_PASS
+  distributions: "sdist bdist bdist_wheel"
+  skip_cleanup: true
+  on:
+    tags: false
