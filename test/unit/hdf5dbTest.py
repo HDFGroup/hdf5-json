@@ -730,8 +730,35 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(item_type['strPad'], 'H5T_STR_NULLPAD')
             self.assertEqual(item_type['charSet'], 'H5T_CSET_ASCII')
             self.assertEqual(item_type['length'], 7)
-            row = db.getDatasetValuesByUuid(dset_uuid, (slice(0, 1),))
-            self.assertEqual(row, ['Parting'])
+            row = db.getDatasetValuesByUuid(dset_uuid)
+            self.assertEqual(row, ["Parting", "is such", "sweet", "sorrow."])
+            row = db.getDatasetValuesByUuid(dset_uuid, (slice(0,1),))
+            self.assertEqual(row,  ["Parting",])
+            row = db.getDatasetValuesByUuid(dset_uuid, (slice(2,3),))
+            self.assertEqual(row,  ["sweet",])
+
+    def testReadFixedStringDatasetBinary(self):
+        item = None
+        filepath = getFile('fixed_string_dset.h5', 'fixed_string_dset.h5')
+        with Hdf5db(filepath, app_logger=self.log) as db:
+            dset_uuid = db.getUUIDByPath('/DS1')
+            item = db.getDatasetItemByUuid(dset_uuid)   
+            shape = item['shape']
+            self.assertEqual(shape['class'], 'H5S_SIMPLE')
+            dims = shape['dims']
+            self.assertEqual(len(dims), 1)
+            self.assertEqual(dims[0], 4)
+            item_type = item['type']
+            self.assertEqual(item_type['class'], 'H5T_STRING')
+            self.assertEqual(item_type['strPad'], 'H5T_STR_NULLPAD')
+            self.assertEqual(item_type['charSet'], 'H5T_CSET_ASCII')
+            self.assertEqual(item_type['length'], 7)
+            row = db.getDatasetValuesByUuid(dset_uuid, format="binary")
+            self.assertEqual(row, b"Partingis suchsweet\x00\x00sorrow.")
+            row = db.getDatasetValuesByUuid(dset_uuid, (slice(0,1),), format="binary")
+            self.assertEqual(row,  b"Parting")
+            row = db.getDatasetValuesByUuid(dset_uuid, (slice(2,3),), format="binary")
+            self.assertEqual(row,  b"sweet\x00\x00")
 
 
     def testWriteVlenUnicodeAttribute(self):
@@ -1035,13 +1062,17 @@ class Hdf5dbTest(unittest.TestCase):
             val = db.bytesArrayToList(b'Hello')
             self.assertTrue(type(val) is str)
             val = db.bytesArrayToList([b'Hello',])
+            self.assertEqual(len(val), 1)
             self.assertTrue(type(val[0]) is str)
+            self.assertEqual(val[0], 'Hello')
             
             import numpy as np
             
             data = np.array([b'Hello'])
             val = db.bytesArrayToList(data)
+            self.assertEqual(len(val), 1)
             self.assertTrue(type(val[0]) is str)
+            self.assertEqual(val[0], 'Hello')
     
             
     def testGetDataValue(self):

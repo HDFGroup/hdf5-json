@@ -131,7 +131,7 @@ class Hdf5db:
     @staticmethod
     def getVersionInfo():
         versionInfo = {}
-        versionInfo['hdf5-json-version'] = "1.1.0" # todo - have this auto-synch with package version
+        versionInfo['hdf5-json-version'] = "1.1.1" # todo - have this auto-synch with package version
         versionInfo['h5py_version'] = h5py.version.version
         versionInfo['hdf5_version'] = h5py.version.hdf5_version
         return versionInfo
@@ -2160,13 +2160,7 @@ class Hdf5db:
             # opaque type - skip for now
             self.log.warning("unable to get opaque type values")
             values =  "????"
-        elif dt.kind == 'S' and six.PY3:
-            # For Python3 fixed string values will be returned as bytes,
-            # so finese them into strings
-            if format != "json":
-                msg = "Only JSON is supported for for this data type"
-                self.log.info(msg)
-                raise IOError(errno.EINVAL, msg)
+        elif dt.kind == 'S' and format == "json" and six.PY3:
             values = self.bytesArrayToList(dset[slices])
         elif len(dt) > 1:
             # compound type
@@ -2174,7 +2168,6 @@ class Hdf5db:
                 values = self.bytesArrayToList(dset[slices])
             else:
                 values = dset[slices].tobytes()
-            
         else:
             values = dset[slices]
             
