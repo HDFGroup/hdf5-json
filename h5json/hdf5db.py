@@ -1847,12 +1847,12 @@ class Hdf5db:
                         if obj:
                             obj_ref = obj.ref
                         else:
-                            msg = "Invalid object refence value: [" + uuid_ref + "] not found"
+                            msg = "Invalid object reference value: [" + uuid_ref + "] not found"
                             self.log.info(msg)
                             raise IOError(errno.ENXIO, msg)
                     break
             if not obj_ref:
-                msg = "Invalid object refence value: [" + data + "]"
+                msg = "Invalid object reference value: [" + data + "]"
                 self.log.info(msg)
                 raise IOError(errno.EINVAL, msg)
             else:
@@ -1866,7 +1866,7 @@ class Hdf5db:
             # assume region ref
             out = self.createRegionReference(data)
         else:
-            msg = "Invalid object refence value type: [" + str(type(data)) + "]"
+            msg = "Invalid object reference value type: [" + str(type(data)) + "]"
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
         return out
