@@ -233,7 +233,6 @@ class Writeh5:
         self.createLinks()      # link it all together
 
 def main():
-    
     parser = argparse.ArgumentParser(usage='%(prog)s [-h] <json_file> <h5_file>')
     parser.add_argument('in_filename', nargs='+', help='JSon file to be converted to h5')
     parser.add_argument('out_filename', nargs='+', help='name of HDF5 output file')
@@ -276,5 +275,5 @@ def main():
 
     print("done!")
 
-
-main()
+if __name__ == "__main__":
+    main()

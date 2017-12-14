@@ -244,4 +244,5 @@ def main():
         dumper.dumpFile()
 
 
-main()
+if __name__ == "__main__":
+    main()

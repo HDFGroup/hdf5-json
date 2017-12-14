@@ -6,7 +6,7 @@ https://github.com/pypa/sampleproject
 """
 
 # Always prefer setuptools over distutils
-from setuptools import setup, find_packages
+from setuptools import setup
 # To use a consistent encoding
 from codecs import open
 from os import path
@@ -23,7 +23,7 @@ setup(
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
     # https://packaging.python.org/en/latest/single_source_version.html
-    version='1.1.1',
+    version='1.1.2',
 
     description='HDF5/JSON Tools',
     long_description=long_description,
@@ -62,6 +62,7 @@ setup(
         'Programming Language :: Python :: 3.3',
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6'
     ],
 
     # What does your project relate to?
@@ -69,7 +70,8 @@ setup(
 
     # You can just specify the packages manually here if your project is
     # simple. Or you can use find_packages().
-    packages=find_packages(exclude=['docs', 'test*']),
+    #packages=find_packages(exclude=['docs', 'test*']),
+    packages=['h5json','h5json.h5tojson','h5json.jsontoh5'],
 
     # Alternatively, if you want to distribute just a my_module.py, uncomment
     # this:
@@ -80,6 +82,8 @@ setup(
     # requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=['numpy>=1.10.4', 'h5py>=2.5'],
+    setup_requires=['pkgconfig', 'six'],
+    zip_safe=False,
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). You can install these using the following syntax,
@@ -106,10 +110,8 @@ setup(
     # To provide executable scripts, use entry points in preference to the
     # "scripts" keyword. Entry points provide cross-platform support and allow
     # pip to create the appropriate form of executable for the target platform.
-    #entry_points={
-    #    'console_scripts': [
-    #        'h5tojson=h5tojson:h5tojson', 'jsontoh5=jsontoh5:jsontoh5',
-    #    ],
-    #},
-    scripts=['h5tojson/h5tojson.py', 'jsontoh5/jsontoh5.py'],
+    entry_points={'console_scripts':
+          ['h5tojson = h5json.h5tojson.h5tojson:main', 
+           'jsontoh5 = h5json.jsontoh5.jsontoh5:main' 
+          ]},
 )
