@@ -121,7 +121,7 @@ for test_file in test_files:
     out_file = os.path.join(out_dir, split_ext[0] + ".json")
     if not os.path.exists(file_path):
         sys.exit("file: " + file_path + " not found")
-    cmd = "python ../../h5tojson/h5tojson.py " + file_path + " >" + out_file
+    cmd = "python ../../h5json/h5tojson/h5tojson.py " + file_path + " >" + out_file
     print("cmd:", cmd)
     
     rc = os.system(cmd)
