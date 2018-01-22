@@ -2,10 +2,11 @@ Dataset
 =======
 
 .. productionlist::
-   dataset: `identifier` ":" "{"
-          : "alias" ":" `hdf5_path_name_array`
+   dataset: "{"
+          : "id" ":" `identifier` ","
+          : "alias" ":" `hdf5_path_name_array` ","
 	  : "attributes" ":" `attribute_collection` ","
-	  : "type" ":" `datatype` | `datatype_object_ref` ","
+	  : "type" ":" ( `datatype` | "{" "idref" : `id_reference` "}" ) ","
 	  : "shape" ":" `dataspace` ","
 	  : "value" ":" `json_value` ","
 	  : "creationProperties" ":" `dcpl`

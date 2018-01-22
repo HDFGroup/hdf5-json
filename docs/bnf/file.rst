@@ -7,20 +7,20 @@ File
        : "created" ":" `utc_datetime` ","
        : "lastModified" ":" `utc_datetime` ","
        : "root" ":" `id_reference` ","
-       : "groups" ":" "{" `group_hashtable` "}" ","
-       : "datasets" ":" "{" `dataset_hashtable` "}" ","
-       : "datatypes" ":" "{" `datatype_hashtable` "}" ","
+       : "groups" ":" "[" `group_array` "]" ","
+       : "datasets" ":" "[" `dataset_array` "]" ","
+       : "datatypes" ":" "[" `datatype_array` "]" ","
        : "userblock" ":" `byte_array` ","
        : "userblockSize" ":" `non_negative_integer` /power of 2, >= 512/ ","
        : "creationProperties" ":" `fcpl` ","
        : "driverInfo" ":" `file_driver_info` ","
-       : "apiVersion" ":" "1.0.0"
+       : "apiVersion" ":" "2.0.0"
        : "}"
 
 .. productionlist::
-   group_hashtable: `group` ("," `group`)*
-   dataset_hashtable: `dataset` ("," `dataset`)*
-   datatype_hashtable: `datatype_object` ("," `datatype_object`)*
+   group_array: `group` ("," `group`)*
+   dataset_array: `dataset` ("," `dataset`)*
+   datatype_array: `datatype_object` ("," `datatype_object`)*
 
 .. productionlist::
    fcpl: "{"

@@ -2,8 +2,9 @@ Datatype
 ========
 
 .. productionlist::
-   datatype_object: `identifier` ":" "{"
-                  : "alias" ":" `hdf5_path_name_array`
+   datatype_object: "{"
+                  : "id" ":" `identifier` ","
+                  : "alias" ":" `hdf5_path_name_array` ","
                   : "type" ":" `datatype`
                   : "}"
    datatype:  `array_datatype`
