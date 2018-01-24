@@ -7,10 +7,10 @@ Attribute
    attribute: "{"
             : "name" ":" `ascii_string` | `unicode_string` ","
             : "type" ":" ( `datatype` | "{" "idref" : `id_reference` "}" ) ","
-	    : "shape" ":" `dataspace` ","
-	    : "value" ":" `json_value` ","
+            : "shape" ":" `dataspace` ","
+            : "value" ":" `json_value` ","
             : "creationProperties" ":" `acpl`
-	    : "}"
+            : "}"
    acpl: "{"
        : "nameCharEncoding" ":" `char_encoding`
        : "}"
