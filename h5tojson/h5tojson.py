@@ -119,7 +119,7 @@ class DumpJson:
     def dumpDataset(self, uuid):
         response = { }
         self.log.info("dumpDataset: " + uuid)
-        item = self.db.getDatasetItemByUuid(uuid) #HAVE TO FIND WHERE THE ITEM HASHTABLE GETS CONSTRUCTED to determine the TYPE
+        item = self.db.getDatasetItemByUuid(uuid)
 
         if 'alias' in item:
             alias = item['alias']
@@ -189,19 +189,6 @@ class DumpJson:
             response['attributes'] = attributes
 
         return response
-
-
-
-    # def dumpDatatypes(self):
-    #     uuids = self.db.getCollection("datatypes")
-    #     if uuids:
-    #         datatypes = {}
-    #         for uuid in uuids:
-    #             item = self.dumpDatatype(uuid)
-    #             datatypes[uuid] = item
-    #
-    #         self.json['datatypes'] = datatypes
-
 
     def dumpDatatypes(self):
         uuids = self.db.getCollection("datatypes")
