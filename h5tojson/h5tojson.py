@@ -97,13 +97,21 @@ class DumpJson:
 
 
     def dumpGroups(self):
-        groups = {}
+        groups = []
         item = self.dumpGroup(self.root_uuid)
-        groups[self.root_uuid] = item
+
+        root_group = {"id": self.root_uuid}
+        root_group.update(item)
+        groups.append(root_group)
+
         uuids = self.db.getCollection("groups")
+
         for uuid in uuids:
             item = self.dumpGroup(uuid)
-            groups[uuid] = item
+
+            group = {"id": uuid}
+            group.update(item)
+            groups.append(group)
 
         self.json['groups'] = groups
 
@@ -112,6 +120,7 @@ class DumpJson:
         response = { }
         self.log.info("dumpDataset: " + uuid)
         item = self.db.getDatasetItemByUuid(uuid)
+
         if 'alias' in item:
             alias = item['alias']
             if alias:
@@ -124,10 +133,12 @@ class DumpJson:
         shape_rsp = {}
         num_elements = 1
         shape_rsp['class'] = shapeItem['class']
+
         if 'dims' in shapeItem:
             shape_rsp['dims'] = shapeItem['dims']
             for dim in shapeItem['dims']:
                 num_elements *= dim
+
         if 'maxdims' in shapeItem:
             maxdims = []
             for dim in shapeItem['maxdims']:
@@ -156,11 +167,14 @@ class DumpJson:
 
     def dumpDatasets(self):
         uuids = self.db.getCollection("datasets")
+
         if uuids:
-            datasets = {}
+            datasets = []
             for uuid in uuids:
                 item = self.dumpDataset(uuid)
-                datasets[uuid] = item
+                dataset = {"id": uuid}
+                dataset.update(item)
+                datasets.append(dataset)
 
             self.json['datasets'] = datasets
 
@@ -173,16 +187,20 @@ class DumpJson:
         attributes = self.dumpAttributes('datatypes', uuid)
         if attributes:
             response['attributes'] = attributes
-        return response
 
+        return response
 
     def dumpDatatypes(self):
         uuids = self.db.getCollection("datatypes")
+
         if uuids:
-            datatypes = {}
+            datatypes = []
             for uuid in uuids:
                 item = self.dumpDatatype(uuid)
-                datatypes[uuid] = item
+                datatype = {"id": uuid}
+                datatype.update(item)
+
+                datatypes.append(datatype)
 
             self.json['datatypes'] = datatypes
 
