@@ -4,7 +4,7 @@ Group
 .. productionlist::
    group: "{"
         : "id" ":" `identifier` ","
-        : "alias" ":" `hdf5_path_name_array` ","
+        : "alias" ":" `hdf5_path_name` ","
 	: "attributes" ":" `attribute_collection` ","
 	: "links" ":" `link_collection` ","
 	: "created" ":" `utc_datetime` ","

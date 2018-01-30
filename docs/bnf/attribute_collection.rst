@@ -8,7 +8,7 @@ Attribute
             : "name" ":" `ascii_string` | `unicode_string` ","
             : "type" ":" ( `datatype` | "{" "idref" : `id_reference` "}" ) ","
             : "shape" ":" `dataspace` ","
-            : "value" ":" `json_value` ","
+            : "value" ":" `unicode_string` ","
             : "creationProperties" ":" `acpl`
             : "}"
    acpl: "{"

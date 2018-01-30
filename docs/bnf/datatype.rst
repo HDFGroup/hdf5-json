@@ -4,7 +4,7 @@ Datatype
 .. productionlist::
    datatype_object: "{"
                   : "id" ":" `identifier` ","
-                  : "alias" ":" `hdf5_path_name_array` ","
+                  : "alias" ":" `hdf5_path_name` ","
                   : "type" ":" `datatype`
                   : "}"
    datatype:  `array_datatype`
