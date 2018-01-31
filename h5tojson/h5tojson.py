@@ -43,11 +43,14 @@ class DumpJson:
         typeItem = item['type']
         response['type'] = hdf5dtype.getTypeResponse(typeItem)
         response['shape'] = item['shape']
+
         if not self.options.D:
             if 'value' not in item:
                 self.log.warning("no value key in attribute: " + attr_name)
+            elif type(item['value']) is list:
+                response['value'] = str(item['value']).replace('\'', '\"')
             else:
-                response['value'] = item['value']   # dump values unless header -D was passed
+                response['value'] = item['value']
         return response
 
 
@@ -77,13 +80,14 @@ class DumpJson:
             items.append(item)
         return items
 
-
     def dumpGroup(self, uuid):
         item = self.db.getGroupItemByUuid(uuid)
         if 'alias' in item:
             alias = item['alias']
             if alias:
                 self.log.info("dumpGroup alias: [" + alias[0] + "]")
+            item['alias'] = alias[0]
+
         for key in ('ctime', 'mtime', 'linkCount', 'attributeCount', 'id'):
             if key in item:
                 del item[key]
@@ -125,7 +129,7 @@ class DumpJson:
             alias = item['alias']
             if alias:
                 self.log.info("dumpDataset alias: [" + alias[0] + "]")
-            response['alias'] = item['alias']
+            response['alias'] = alias[0]
 
         typeItem = item['type']
         response['type'] = hdf5dtype.getTypeResponse(typeItem)
@@ -181,10 +185,12 @@ class DumpJson:
     def dumpDatatype(self, uuid):
         response = { }
         item = self.db.getCommittedTypeItemByUuid(uuid)
-        response['alias'] = item['alias']
+        if 'alias' in item:
+            response['alias'] = item['alias'][0]
         typeItem = item['type']
         response['type'] = hdf5dtype.getTypeResponse(typeItem)
         attributes = self.dumpAttributes('datatypes', uuid)
+
         if attributes:
             response['attributes'] = attributes
 
