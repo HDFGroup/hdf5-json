@@ -210,23 +210,6 @@ class DumpJson:
 
             self.json['datatypes'] = datatypes
 
-    # def dumpFile(self):
-    #
-    #     self.root_uuid = self.db.getUUIDByPath('/')
-    #
-    #     db_version_info = self.db.getVersionInfo()
-    #
-    #     self.json['apiVersion'] = db_version_info['hdf5-json-version']
-    #     self.json['root'] = self.root_uuid
-    #
-    #     self.dumpGroups()
-    #
-    #     self.dumpDatasets()
-    #
-    #     self.dumpDatatypes()
-    #
-    #     print(json.dumps(self.json, sort_keys=True, indent=4))
-
     def dumpFile(self):
 
         self.root_uuid = self.db.getUUIDByPath('/')
@@ -244,7 +227,7 @@ class DumpJson:
 
         if not self.options.f:
             print(json.dumps(self.json, sort_keys=True, indent=4))
-        else:
+        else: # "flatten" the object into a single line for HJSON conformity
             print(json.dumps(self.json, sort_keys=True))
 
 
