@@ -210,6 +210,23 @@ class DumpJson:
 
             self.json['datatypes'] = datatypes
 
+    # def dumpFile(self):
+    #
+    #     self.root_uuid = self.db.getUUIDByPath('/')
+    #
+    #     db_version_info = self.db.getVersionInfo()
+    #
+    #     self.json['apiVersion'] = db_version_info['hdf5-json-version']
+    #     self.json['root'] = self.root_uuid
+    #
+    #     self.dumpGroups()
+    #
+    #     self.dumpDatasets()
+    #
+    #     self.dumpDatatypes()
+    #
+    #     print(json.dumps(self.json, sort_keys=True, indent=4))
+
     def dumpFile(self):
 
         self.root_uuid = self.db.getUUIDByPath('/')
@@ -224,8 +241,14 @@ class DumpJson:
         self.dumpDatasets()
 
         self.dumpDatatypes()
-      
-        print(json.dumps(self.json, sort_keys=True, indent=4))
+
+        if not self.options.f:
+            print(json.dumps(self.json, sort_keys=True, indent=4))
+        else:
+            print(json.dumps(self.json, sort_keys=True))
+
+
+
 
 """
   Generate a temporary filename to avoid problems with trying to create a dbfile
@@ -238,10 +261,13 @@ def getTempFileName():
 
 
 def main():
-    parser = argparse.ArgumentParser(usage='%(prog)s [-h] [-D|-d] <hdf5_file>')
+    parser = argparse.ArgumentParser(usage='%(prog)s [-h] [-D|-d] [-f] <hdf5_file>')
     parser.add_argument('-D', action='store_true', help='surpress all data output')
     parser.add_argument('-d', action='store_true', help='surpress data output for' +
         ' datasets (but not attribute values)')
+    parser.add_argument('-f', action='store_true', help='flatten data output to conform '
+                                                        'to HJSON format (each object is'
+                                                        'written to a single, newline)')
     parser.add_argument('filename', nargs='+', help='HDF5 to be converted to json')
     args = parser.parse_args()
 
