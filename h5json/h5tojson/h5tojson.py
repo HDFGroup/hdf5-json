@@ -99,13 +99,15 @@ class DumpJson:
 
 
     def dumpGroups(self):
-        groups = {}
+        groups = []
         item = self.dumpGroup(self.root_uuid)
-        groups[self.root_uuid] = item
+        item['id'] = self.root_uuid
+        groups.append(item)
         uuids = self.db.getCollection("groups")
         for uuid in uuids:
             item = self.dumpGroup(uuid)
-            groups[uuid] = item
+            item['id'] = uuid
+            groups.append(item)
 
         self.json['groups'] = groups
 
@@ -159,10 +161,11 @@ class DumpJson:
     def dumpDatasets(self):
         uuids = self.db.getCollection("datasets")
         if uuids:
-            datasets = {}
+            datasets = []
             for uuid in uuids:
                 item = self.dumpDataset(uuid)
-                datasets[uuid] = item
+                item['id'] = uuid
+                datasets.append(item)
 
             self.json['datasets'] = datasets
 
@@ -182,10 +185,11 @@ class DumpJson:
     def dumpDatatypes(self):
         uuids = self.db.getCollection("datatypes")
         if uuids:
-            datatypes = {}
+            datatypes = []
             for uuid in uuids:
                 item = self.dumpDatatype(uuid)
-                datatypes[uuid] = item
+                item['id'] = uuid
+                datatypes.append(item)
 
             self.json['datatypes'] = datatypes
 
