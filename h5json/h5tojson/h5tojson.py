@@ -56,8 +56,9 @@ class DumpJson:
         self.log.info("dumpAttributes: " + uuid)
         items = []
         for attr in attr_list:
-            item = self.dumpAttribute(col_name, uuid, attr['name'])
-            items.append(item)
+            if attr['name'] not in ['DIMENSION_LIST', 'REFERENCE_LIST']:
+                item = self.dumpAttribute(col_name, uuid, attr['name'])
+                items.append(item)
 
         return items
 
