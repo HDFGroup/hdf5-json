@@ -899,7 +899,7 @@ class Hdf5db:
 
         if type_class not in ('H5T_VLEN', 'H5T_OPAQUE'):
             if plist.fill_value_defined() == h5py.h5d.FILL_VALUE_USER_DEFINED:
-                creationProps['fillValue'] =  self.bytesArrayToList(dset.fillvalue)
+                creationProps['fillValue'] = str(self.bytesArrayToList(dset.fillvalue))
 
         # layout
         nLayout = plist.get_layout()
