@@ -47,7 +47,8 @@ class DumpJson:
             if 'value' not in item:
                 self.log.warning("no value key in attribute: " + attr_name)
             else:
-                response['value'] = item['value']   # dump values unless header -D was passed
+                if type(item['value']) is str:
+                    response['value'] = item['value']   # dump values unless header -D was passed
         return response
 
 
