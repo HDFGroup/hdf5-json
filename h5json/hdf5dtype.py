@@ -36,7 +36,7 @@ def getTypeResponse(typeItem):
     response = None
     if 'uuid' in typeItem:
         # committed type, just return uuid
-        response = 'datatypes/' + typeItem['uuid']
+        response = { 'idref' : 'datatypes/' + typeItem['uuid'] }
     elif typeItem['class'] == 'H5T_INTEGER' or  typeItem['class'] == 'H5T_FLOAT':
         # just return the class and base for pre-defined types
         response = {}
