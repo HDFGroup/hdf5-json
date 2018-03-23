@@ -85,6 +85,7 @@ class DumpJson:
             alias = item['alias']
             if alias:
                 self.log.info("dumpGroup alias: [" + alias[0] + "]")
+            item['alias'] = alias[0] if len(alias) > 0 else None
         for key in ('ctime', 'mtime', 'linkCount', 'attributeCount', 'id'):
             if key in item:
                 del item[key]
@@ -117,7 +118,7 @@ class DumpJson:
             alias = item['alias']
             if alias:
                 self.log.info("dumpDataset alias: [" + alias[0] + "]")
-            response['alias'] = item['alias']
+            response['alias'] = item['alias'][0] if len(item['alias']) > 0 else None
 
         typeItem = item['type']
         response['type'] = hdf5dtype.getTypeResponse(typeItem)
@@ -168,7 +169,8 @@ class DumpJson:
     def dumpDatatype(self, uuid):
         response = { }
         item = self.db.getCommittedTypeItemByUuid(uuid)
-        response['alias'] = item['alias']
+        if 'alias' in item:
+            response['alias'] = item['alias'][0] if len(item['alias']) > 0 else None
         typeItem = item['type']
         response['type'] = hdf5dtype.getTypeResponse(typeItem)
         attributes = self.dumpAttributes('datatypes', uuid)
