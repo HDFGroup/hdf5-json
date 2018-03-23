@@ -41,7 +41,7 @@ def getTypeResponse(typeItem):
         # just return the class and base for pre-defined types
         response = {}
         response['class'] = typeItem['class']
-        response['base'] = typeItem['base']
+        response['base'] = { "predefined" : typeItem['base'] }
     elif typeItem['class'] == 'H5T_OPAQUE':
         response = {}
         response['class'] = 'H5T_OPAQUE'
@@ -49,7 +49,7 @@ def getTypeResponse(typeItem):
     elif typeItem['class'] == 'H5T_REFERENCE':
         response = {}
         response['class'] = 'H5T_REFERENCE'
-        response['base'] = typeItem['base']
+        response['base'] = { "predefined" : typeItem['base'] }
     elif typeItem['class'] == 'H5T_COMPOUND':
         response = {}
         response['class'] = 'H5T_COMPOUND'
