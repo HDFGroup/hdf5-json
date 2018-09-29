@@ -13,7 +13,7 @@ import six
 
 if six.PY3:
     unicode = str
-    
+
 import sys
 import json
 import argparse
@@ -232,10 +232,18 @@ class Writeh5:
         self.createAttributes() # create attributes for objects
         self.createLinks()      # link it all together
 
+
 def main():
-    parser = argparse.ArgumentParser(usage='%(prog)s [-h] <json_file> <h5_file>')
-    parser.add_argument('in_filename', nargs='+', help='JSon file to be converted to h5')
-    parser.add_argument('out_filename', nargs='+', help='name of HDF5 output file')
+    parser = argparse.ArgumentParser(
+        usage='%(prog)s [-h] <json_file> <h5_file>',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('in_filename', nargs='+',
+                        help='JSon file to be converted to h5')
+    parser.add_argument('out_filename', nargs='+',
+                        help='name of HDF5 output file')
+    parser.add_argument('--libver', default='latest',
+                        choices=['earliest', 'latest'],
+                        help='Library version to use when storing objects')
     args = parser.parse_args()
 
     # create logger
@@ -249,7 +257,7 @@ def main():
     log.addHandler(handler)
 
     text = open(args.in_filename[0]).read()
-     
+
     # parse the json file
     h5json = json.loads(text)
 
@@ -258,11 +266,12 @@ def main():
     root_uuid = h5json["root"]
 
     filename = args.out_filename[0]
-     
-    # create the file, will raise IOError if there's a problem
-    Hdf5db.createHDF5File(filename) 
 
-    with Hdf5db(filename, root_uuid=root_uuid, update_timestamps=False, app_logger=log) as db:
+    # create the file, will raise IOError if there's a problem
+    Hdf5db.createHDF5File(filename)
+
+    with Hdf5db(filename, root_uuid=root_uuid, update_timestamps=False,
+                app_logger=log, libver=args.libver) as db:
         h5writer = Writeh5(db, h5json)
         h5writer.writeFile()
 
@@ -274,6 +283,7 @@ def main():
     f.close()
 
     print("done!")
+
 
 if __name__ == "__main__":
     main()

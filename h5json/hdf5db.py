@@ -16,7 +16,7 @@ import six
 
 if six.PY3:
     unicode = str
-    
+
 
 
 """
@@ -75,7 +75,7 @@ import os
 import json
 import logging
 
-from .hdf5dtype import getTypeItem, createDataType, getItemSize 
+from .hdf5dtype import getTypeItem, createDataType, getItemSize
 
 # global dictionary to direct back to the Hdf5db instance by filename
 # (needed for visititems callback)
@@ -138,7 +138,7 @@ class Hdf5db:
 
     def __init__(self, filePath, dbFilePath=None, readonly=False,
                  app_logger=None, root_uuid=None, update_timestamps=True,
-                 userid=None):
+                 userid=None, libver='latest'):
         if app_logger:
             self.log = app_logger
         else:
@@ -158,13 +158,13 @@ class Hdf5db:
             else:
                 mode = 'r+'
                 self.readonly = False
-             
+
 
         self.log.info("init -- filePath: " + filePath + " mode: " + mode)
 
         self.update_timestamps = update_timestamps
 
-        self.f = h5py.File(filePath, mode, libver='latest')
+        self.f = h5py.File(filePath, mode, libver=libver)
 
         self.root_uuid = root_uuid
 
@@ -1338,9 +1338,9 @@ class Hdf5db:
         if strLength < len(value):
             self.log.warning("makeNullTermStringAttribute: value string longer than length")
             #value = value[:strLength]  # truncate to length
-        
-        
-        if six.PY3 and type(attr_name) is str:    
+
+
+        if six.PY3 and type(attr_name) is str:
             try:
                 attr_name = attr_name.encode('ascii')
             except UnicodeDecodeError:
@@ -1432,7 +1432,7 @@ class Hdf5db:
 
                     # create numpy array
                     npdata = np.zeros(shape, dtype=dt)
-                    
+
                     if rank == 0:
                         npdata[()] = self.toNumPyValue(attr_type, value, npdata[()])
                     else:
@@ -1689,9 +1689,9 @@ class Hdf5db:
                     try:
                         src.encode('ascii')
                     except UnicodeDecodeError:
-                        raise TypeError("non-ascii value not allowed with H5T_CSET_ASCII")         
+                        raise TypeError("non-ascii value not allowed with H5T_CSET_ASCII")
                 des = src
-             
+
         else:
             msg = "Unexpected type class: " + typeClass
             self.log.info(msg)
@@ -1870,9 +1870,9 @@ class Hdf5db:
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
         return out
-        
+
     """
-       Convert list that may contain bytes type elements to list of string elements  
+       Convert list that may contain bytes type elements to list of string elements
     """
     def bytesArrayToList(self, data):
         if type(data) in (bytes, str, unicode):
@@ -1886,16 +1886,16 @@ class Hdf5db:
                 else:
                     is_list = False
             else:
-                is_list = True        
+                is_list = True
         elif type(data) in (list, tuple):
             is_list = True
         else:
             is_list = False
-                
+
         if is_list:
             out = []
             for item in data:
-                out.append(self.bytesArrayToList(item)) # recursive call  
+                out.append(self.bytesArrayToList(item)) # recursive call
         elif type(data) is bytes:
             if six.PY3:
                 out = data.decode("utf-8")
@@ -1903,9 +1903,9 @@ class Hdf5db:
                 out = data
         else:
             out = data
-                   
+
         return out
-    
+
     """
       Get item description of region reference value
     """
@@ -2058,7 +2058,7 @@ class Hdf5db:
                     h5py.h5s.SpaceID.select_hyperslab(space_id, start, count, op=h5py.h5s.SELECT_OR)
 
         # now that we've selected the desired region in the space, return a region reference
-        
+
         if six.PY3:
             dset_name = dset.name.encode('utf-8')
         else:
@@ -2091,12 +2091,12 @@ class Hdf5db:
             msg = "only json and binary formats are supported"
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
-            
+
         if dset is None:
             msg = "Dataset: " + obj_uuid + " not found"
             self.log.info(msg)
             raise IOError(errno.ENXIO, msg)
-            
+
         values = None
         dt = dset.dtype
         typeItem = getTypeItem(dt)
@@ -2105,13 +2105,13 @@ class Hdf5db:
             msg = "Only JSON is supported for for this data type"
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
-            
+
         if dset.shape is None:
             # null space dataset (with h5py 2.6.0)
-            return None   
-               
+            return None
+
         rank = len(dset.shape)
-         
+
         if rank == 0:
             # check for null dataspace
             try:
@@ -2131,7 +2131,7 @@ class Hdf5db:
             msg = "Unexpected error: getDatasetValuesByUuid: number of dims in selection not same as rank"
             self.log.error(msg)
             raise IOError(errno.EIO, msg)
-       
+
         if dt.kind == 'O':
             if format != "json":
                 msg = "Only JSON is supported for for this data type"
@@ -2170,31 +2170,31 @@ class Hdf5db:
                 values = dset[slices].tobytes()
         else:
             values = dset[slices]
-            
+
             # just use tolist to dump
-            if format == "json":             
+            if format == "json":
                 values = values.tolist()
             else:
                 #values = base64.b64encode(dset[slices].tobytes())
                 values = values.tobytes()
-            
+
         return values
-        
+
     """
       doDatasetQueryByUuid: return rows based on query string
         Return rows from a dataset that matches query string.
-        
+
         Note: Only supported for compound_type/one-dimensional datasets
     """
     def doDatasetQueryByUuid(self, obj_uuid, query, start=0, stop=-1, step=1, limit=None):
         self.log.info("doQueryByUuid - uuid: " + obj_uuid + " query:" + query)
         self.log.info("start: " + str(start) + " stop: " + str(stop) + " step: " + str(step) + " limit: " + str(limit))
-        dset = self.getDatasetObjByUuid(obj_uuid)   
+        dset = self.getDatasetObjByUuid(obj_uuid)
         if dset is None:
             msg = "Dataset: " + obj_uuid + " not found"
             self.log.info(msg)
             raise IOError(errno.ENXIO, msg)
-            
+
         values = []
         dt = dset.dtype
         typeItem = getTypeItem(dt)
@@ -2203,33 +2203,33 @@ class Hdf5db:
             msg = "Only compound type datasets can be used as query target"
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
-            
+
         if dset.shape is None:
             # null space dataset (with h5py 2.6.0)
-            return None   
-               
+            return None
+
         rank = len(dset.shape)
         if rank != 1:
             msg = "One one-dimensional datasets can be used as query target"
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
-        
+
 
         values = []
         indexes = []
         count = 0
-      
+
         num_elements = dset.shape[0]
         if stop == -1:
             stop = num_elements
         elif stop > num_elements:
             stop = num_elements
         block_size = self._getBlockSize(dset)
-        self.log.info("block_size: " + str(block_size))   
-        
+        self.log.info("block_size: " + str(block_size))
+
         field_names = list(dset.dtype.fields.keys())
-        eval_str = self._getEvalStr(query, field_names) 
-        
+        eval_str = self._getEvalStr(query, field_names)
+
         while start < stop:
             if limit and (count == limit):
                 break  # no more rows for this batch
@@ -2248,21 +2248,21 @@ class Hdf5db:
                     count += 1
                     if limit and (count == limit):
                         break  # no more rows for this batch
-                              
+
             start = end  # go to next block
-            
-         
+
+
         # values = self.getDataValue(item_type, values, dimension=1, dims=(len(values),))
-        
-        self.log.info("got " + str(count) + " query matches")    
+
+        self.log.info("got " + str(count) + " query matches")
         return (indexes, values)
-    
+
     """
      _getBlockSize: Get number of rows to read from disk
-     
+
         heurestic to get reasonable sized chunk of data to fetch.
         make multiple of chunk_size if possible
-    """    
+    """
     def _getBlockSize(self, dset):
         target_block_size = 256 * 1000
         if dset.chunks:
@@ -2274,12 +2274,12 @@ class Hdf5db:
         else:
             block_size = target_block_size
         return block_size
-    
+
     """
      _getEvalStr: Get eval string for given query
-     
+
         Gets Eval string to use with numpy where method.
-    """    
+    """
     def _getEvalStr(self, query, field_names):
         i = 0
         eval_str = ""
@@ -2310,7 +2310,7 @@ class Hdf5db:
                 eval_str += "rows['" + var_name + "']"
                 var_name = None
                 var_count += 1
-            
+
             if end_quote_char:
                 if ch == end_quote_char:
                     # end of literal
@@ -2352,7 +2352,7 @@ class Hdf5db:
             msg = "Mismatched paren"
             self.log.info("EINVAL: " + msg)
             raise IOError(errno.EINVAL, msg)
-            
+
         return eval_str
 
     """
@@ -2365,7 +2365,7 @@ class Hdf5db:
             msg = "Dataset: " + obj_uuid + " not found"
             self.log.info(msg)
             raise IOError(errno.ENXIO, msg)
-            
+
         rank = len(dset.shape)
         values = np.zeros(len(points), dtype=dset.dtype)
         try:
@@ -2389,22 +2389,22 @@ class Hdf5db:
     """
     def setDatasetValuesByUuid(self, obj_uuid, data, slices=None, format="json"):
         dset = self.getDatasetObjByUuid(obj_uuid)
-        
+
         if format not in ("json", "binary"):
             msg = "only json and binary formats are supported"
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
-            
+
         if format == "binary" and type(data) is not bytes:
             msg ="data must be of type bytes for binary writing"
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
-            
+
         if dset is None:
             msg = "Dataset: " + obj_uuid + " not found"
             self.log.info(msg)
-            raise IOError(errno.ENXIO, msg) 
-            
+            raise IOError(errno.ENXIO, msg)
+
         dt = dset.dtype
         typeItem = getTypeItem(dt)
         itemSize = getItemSize(typeItem)
@@ -2412,11 +2412,11 @@ class Hdf5db:
         arraySize = 1
         for extent in dset.shape:
             arraySize *= arraySize
-            
+
         if itemSize == "H5T_VARIABLE" and format == "binary":
             msg = "Only JSON is supported for for this data type"
             self.log.info(msg)
-            raise IOError(errno.EINVAL, msg)     
+            raise IOError(errno.EINVAL, msg)
 
         if slices is None:
             slices = []
@@ -2425,24 +2425,24 @@ class Hdf5db:
                 s = slice(0, dset.shape[dim], 1)
                 slices.append(s)
             slices = tuple(slices)
-            
-             
+
+
         if type(slices) != tuple:
             msg = "setDatasetValuesByUuid: bad type for dim parameter"
             self.log.error(msg)
             raise IOError(erno.EIO, msg)
-            
+
 
         if len(slices) != rank:
             msg = "number of dims in selection not same as rank"
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
-           
+
         npoints = 1
         np_shape = []
         for i in range(rank):
             s = slices[i]
-            
+
             if s.start < 0 or s.step <= 0 or s.stop < s.start:
                 msg = "invalid slice specification"
                 self.log.info(msg)
@@ -2452,17 +2452,17 @@ class Hdf5db:
                 self.log.info(msg)
                 raise IOError(errno.EINVAL, msg)
             np_shape.append(s.stop - s.start)
-                        
+
             count = (s.stop - s.start) // s.step
             if count <= 0:
                 msg = "invalid slice specification"
                 self.log.info(msg)
-                raise IOError(errno.EINVAL, msg)  
-                    
-            npoints *= count        
-               
+                raise IOError(errno.EINVAL, msg)
+
+            npoints *= count
+
         np_shape = tuple(np_shape)  # for comparison with ndarray shape
-                
+
         self.log.info("selection shape:" + str(np_shape))
 
 
@@ -2481,9 +2481,9 @@ class Hdf5db:
                 if format == "binary":
                     msg = "Only JSON is supported for for this data type"
                     self.log.info(msg)
-                    raise IOError(errno.EINVAL, msg)  
+                    raise IOError(errno.EINVAL, msg)
                 data = self.listToRef(data)
-                    
+
         if format == "binary":
             if npoints*itemSize != len(data):
                 msg = "Expected: " + str(npoints*itemSize) + " bytes, but got: " + str(len(data))
@@ -2524,16 +2524,16 @@ class Hdf5db:
                 if selection_extent == 1:
                     np_index += 1
                     continue  # skip singleton selection
-                 
+
                 # selection/data mismatch!
                 msg = "data shape doesn't match selection shape"
                 msg += "--data shape: " + str(arr.shape)
                 msg += "--selection shape: " + str(np_shape)
-                
+
                 self.log.info(msg)
                 raise IOError(errno.EINVAL, msg)
-                    
-        # write temp numpy array to dataset        
+
+        # write temp numpy array to dataset
         if rank == 1:
             s = slices[0]
             try:
@@ -2558,29 +2558,29 @@ class Hdf5db:
     """
     def setDatasetValuesByPointSelection(self, obj_uuid, data, points, format="json"):
         dset = self.getDatasetObjByUuid(obj_uuid)
-        
+
         if format not in ("json", "binary"):
             msg = "only json and binary formats are supported"
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
-            
+
         if format == "binary" and type(data) is not bytes:
             msg ="data must be of type bytes for binary writing"
             self.log.info(msg)
             raise IOError(errno.EINVAL, msg)
-            
+
         if dset is None:
             msg = "Dataset: " + obj_uuid + " not found"
             self.log.info(msg)
-            raise IOError(errno.ENXIO, msg) 
-            
+            raise IOError(errno.ENXIO, msg)
+
         dt = dset.dtype
         typeItem = getTypeItem(dt)
         itemSize = getItemSize(typeItem)
         if itemSize == "H5T_VARIABLE" and format == "binary":
             msg = "Only JSON is supported for for this data type"
             self.log.info(msg)
-            raise IOError(errno.EINVAL, msg)     
+            raise IOError(errno.EINVAL, msg)
 
         rank = len(dset.shape)
 
@@ -2592,7 +2592,7 @@ class Hdf5db:
             #for i in range(len(data)):
             #    converted_data.append(self.toTuple(data[i]))
             #data = converted_data
-        
+
         if format == "json":
 
             try:
@@ -2608,7 +2608,7 @@ class Hdf5db:
                 msg = "setDatasetValuesByPointSelection, out of range error"
                 self.log.info(msg)
                 raise IOError(errno.EINVAL, msg)
-            
+
         else:
             #binary
             arr = np.fromstring(data, dtype=dset.dtype)
@@ -2779,7 +2779,7 @@ class Hdf5db:
         else:
 
             # create the dataset
-           
+
             try:
                 newDataset = datasets.create_dataset(
                     obj_uuid, shape=datashape, maxshape=max_shape,
