@@ -10,7 +10,7 @@ Contents:
    :maxdepth: 2
 
    Installation/index
-   Utiltities
+   Utilities
    bnf/index
    examples/index
     
