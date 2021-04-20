@@ -1,0 +1,231 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema#",
+    "$id": "https://example.com/hdf5/file.schema.json",
+    "title": "HDF5 File JSON Schema",
+    "description": "JSON Schema describing HDF5 file.",
+    "type": "object",
+    "required": [
+        "apiVersion",
+        "root"
+    ],
+    "properties": {
+        "apiVersion": {
+            "description": "HDF5/JSON version identifier.",
+            "type": "string",
+            "enum": [
+                "1.0.0",
+                "1.1.0"
+            ]
+        },
+        "id": {
+            "description": "HDF5 file identifier.",
+            "type": "string"
+        },
+        "root": {
+            "description": "Unique identifier of the HDF5 root group.",
+            "type": "string"
+        },
+        "created": {
+            "description": "UTC date/time of file creation.",
+            "type": "string",
+            "format": "date-time"
+        },
+        "lastModified": {
+            "description": "UTC date/time of last file content modification.",
+            "type": "string",
+            "format": "date-time"
+        },
+        "userblock": {
+            "description": "HDF5 file user block.",
+            "type": "array",
+            "items": {
+                "type": "integer"
+            },
+            "minItems": 1
+        },
+        "userblockSize": {
+            "description": "HDF5 file user block size.",
+            "type": "integer",
+            "minimum": 512,
+            "multipleOf": 2
+        },
+        "driverInfo": {
+            "description": "HDF5 file driver information.",
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "memberSize": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        }
+                    }
+                },
+                {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "dataMap": {
+                                "type": "string",
+                                "enum": [
+                                    "H5FD_MEM_SUPER",
+                                    "H5FD_MEM_BTREE",
+                                    "H5FD_MEM_DRAW",
+                                    "H5FD_MEM_GHEAP",
+                                    "H5FD_MEM_LHEAP",
+                                    "H5FD_MEM_OHDR"
+                                ]
+                            },
+                            "fileName": {
+                                "type": "string"
+                            },
+                            "address": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0
+                            },
+                            "relaxFlag": {
+                                "type": "boolean"
+                            }
+                        },
+                        "required": [
+                            "dataMap",
+                            "fileName",
+                            "address",
+                            "relaxFlag"
+                        ]
+                    }
+                }
+            ]
+        },
+        "creationProperties": {
+            "type": "object",
+            "properties": {
+                "chunkStorageConfig": {
+                    "type": "object",
+                    "properties": {
+                        "chunkStorageBTreeHalfRank": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        }
+                    },
+                    "required": ["chunkStorageBTreeHalfRank"]
+                },
+                "freeListConfig": {
+                    "type": "object",
+                    "properties": {
+                        "freeListVersion": {
+                            "type": "integer",
+                            "minimum": 0
+                        }
+                    },
+                    "required": ["freeListVersion"]
+                },
+                "sizeConfig": {
+                    "type": "object",
+                    "properties": {
+                        "lengthSizeInBytes": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        },
+                        "offsetSizeInBytes": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        }
+                    },
+                    "required": ["lengthSizeInBytes", "offsetSizeInBytes"]
+                },
+                "sohmConfig": {
+                    "type": "object",
+                    "properties": {
+                        "maxList": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        },
+                        "minBTree": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        },
+                        "version": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        },
+                        "indexes": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                                "description": "HDF5 shared object header message (SOHM) index.",
+                                "type": "object",
+                                "properties": {
+                                    "minMessageSize": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0
+                                    },
+                                    "messageTypes": {
+                                        "type": "array",
+                                        "minItems": 1,
+                                        "items": {
+                                            "type": "string",
+                                            "enum": [
+                                                "H5O_SHMESG_ATTR_FLAG",
+                                                "H5O_SHMESG_DTYPE_FLAG",
+                                                "H5O_SHMESG_FILL_FLAG",
+                                                "H5O_SHMESG_PLINE_FLAG",
+                                                "H5O_SHMESG_SDSPACE_FLAG"
+                                            ]
+                                        }
+                                    }
+                                },
+                                "required": ["minMessageSize", "messageTypes"]
+                            }
+                        }
+                    },
+                    "required": [
+                        "maxList",
+                        "minBTree",
+                        "version",
+                        "indexes"
+                    ]
+                    },
+                "superBlockVersion": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "symbolTableConfig": {
+                    "type": "object",
+                    "properties": {
+                        "nodeSize": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        },
+                        "treeRank": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        },
+                        "version": {
+                            "type": "integer",
+                            "minimum": 0
+                        }
+                    },
+                    "required": ["nodeSize", "treeRank", "version"]
+                }
+            }
+        },
+        "groups": {
+            "description": "All groups in HDF5 file.",
+            "type": "object",
+            "$ref": "group.schema.json#/$defs/group"
+        },
+        "datasets": {
+            "description": "All datasets in HDF5 file.",
+            "type": "object",
+            "$ref": "dataset.schema.json#/$defs/dataset"
+        },
+        "datatypes": {
+            "description": "All committed datatypes in HDF5 file.",
+            "type": "object",
+            "$ref": "datatypes.schema.json#/$defs/committed"
+        }
+    }
+}

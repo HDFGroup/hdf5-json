@@ -1,0 +1,53 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema#",
+    "$id": "https://example.com/hdf5/attribute.schema.json",
+    "title": "HDF5/JSON Attribute Schema",
+    "description": "JSON Schema describing HDF5 attribute.",
+    "type": "object",
+    "$defs": {
+        "attributes": {
+            "description": "HDF5 attributes attached to an HDF5 group or dataset.",
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/attribute"
+            }
+        },
+        "attribute": {
+            "description": "HDF5 attribute.",
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "type": {
+                    "$ref": "datatypes.schema.json#/$defs/datatype"
+                },
+                "shape": {
+                    "description": "HDF5 dataset's shape.",
+                    "type": "object",
+                    "$ref": "dataspaces.schema.json#/$defs/dataspace"
+                },
+                "creationProperties": {
+                    "type": "object",
+                    "properties": {
+                        "nameCharEncoding": {
+                            "type": "string",
+                            "enum": ["H5T_CSET_ASCII", "H5T_CSET_UTF8"]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": ["nameCharEncoding"]
+                },
+                "value": {
+                    "oneOf": [
+                        {"type": "string"},
+                        {"type": "number"},
+                        {"type": "array"},
+                        {"type": "null"}
+                    ]
+                }
+            }
+        }
+    }
+}
