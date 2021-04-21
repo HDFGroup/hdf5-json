@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema#",
-    "$id": "https://example.com/hdf5/dataset.schema.json",
+    "$id": "https://hdfgroup.org/schemas/hdf5/json/dataset.schema.json",
     "title": "HDF5 Dataset JSON Schema",
     "description": "JSON Schema describing HDF5 dataset.",
     "type": "object",
@@ -61,7 +61,10 @@
                                             "minimum": 0
                                         }
                                     },
-                                    "required": ["maxCompact", "minDense"]
+                                    "required": [
+                                        "maxCompact",
+                                        "minDense"
+                                    ]
                                 },
                                 "fillTime": {
                                     "type": "string",
@@ -73,10 +76,18 @@
                                 },
                                 "fillValue": {
                                     "anyOf": [
-                                        {"type": "string"},
-                                        {"type": "number"},
-                                        {"type": "null"},
-                                        {"type": "array"}
+                                        {
+                                            "type": "string"
+                                        },
+                                        {
+                                            "type": "number"
+                                        },
+                                        {
+                                            "type": "null"
+                                        },
+                                        {
+                                            "type": "array"
+                                        }
                                     ]
                                 },
                                 "trackTimes": {
@@ -98,7 +109,9 @@
                                                     "const": "H5D_COMPACT"
                                                 }
                                             },
-                                            "required": ["class"]
+                                            "required": [
+                                                "class"
+                                            ]
                                         },
                                         {
                                             "type": "object",
@@ -115,7 +128,10 @@
                                                     }
                                                 }
                                             },
-                                            "required": ["class", "dims"]
+                                            "required": [
+                                                "class",
+                                                "dims"
+                                            ]
                                         },
                                         {
                                             "type": "object",
@@ -144,7 +160,9 @@
                                                     }
                                                 }
                                             },
-                                            "required": ["class"]
+                                            "required": [
+                                                "class"
+                                            ]
                                         }
                                     ]
                                 }

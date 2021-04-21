@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema#",
-    "$id": "https://example.com/hdf5/file.schema.json",
+    "$id": "https://hdfgroup.org/schemas/hdf5/json/file.schema.json",
     "title": "HDF5 File JSON Schema",
     "description": "JSON Schema describing HDF5 file.",
     "type": "object",
@@ -110,7 +110,9 @@
                             "exclusiveMinimum": 0
                         }
                     },
-                    "required": ["chunkStorageBTreeHalfRank"]
+                    "required": [
+                        "chunkStorageBTreeHalfRank"
+                    ]
                 },
                 "freeListConfig": {
                     "type": "object",
@@ -120,7 +122,9 @@
                             "minimum": 0
                         }
                     },
-                    "required": ["freeListVersion"]
+                    "required": [
+                        "freeListVersion"
+                    ]
                 },
                 "sizeConfig": {
                     "type": "object",
@@ -134,7 +138,10 @@
                             "exclusiveMinimum": 0
                         }
                     },
-                    "required": ["lengthSizeInBytes", "offsetSizeInBytes"]
+                    "required": [
+                        "lengthSizeInBytes",
+                        "offsetSizeInBytes"
+                    ]
                 },
                 "sohmConfig": {
                     "type": "object",
@@ -177,7 +184,10 @@
                                         }
                                     }
                                 },
-                                "required": ["minMessageSize", "messageTypes"]
+                                "required": [
+                                    "minMessageSize",
+                                    "messageTypes"
+                                ]
                             }
                         }
                     },
@@ -187,7 +197,7 @@
                         "version",
                         "indexes"
                     ]
-                    },
+                },
                 "superBlockVersion": {
                     "type": "integer",
                     "minimum": 0
@@ -208,7 +218,11 @@
                             "minimum": 0
                         }
                     },
-                    "required": ["nodeSize", "treeRank", "version"]
+                    "required": [
+                        "nodeSize",
+                        "treeRank",
+                        "version"
+                    ]
                 }
             }
         },

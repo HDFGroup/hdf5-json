@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema#",
-    "$id": "https://example.com/hdf5/group.schema.json",
+    "$id": "https://hdfgroup.org/schemas/hdf5/json/group.schema.json",
     "title": "HDF5/JSON Group Schema",
     "description": "JSON Schema describing HDF5 group.",
     "type": "object",
@@ -96,7 +96,9 @@
                             "additionalProperties": false
                         }
                     },
-                    "required": [ "alias" ]
+                    "required": [
+                        "alias"
+                    ]
                 }
             }
         },
@@ -105,10 +107,18 @@
             "minItems": 1,
             "items": {
                 "oneOf": [
-                    {"$ref": "#/$defs/hard_link"},
-                    {"$ref": "#/$defs/soft_link"},
-                    {"$ref": "#/$defs/external_link"},
-                    {"$ref": "#/$defs/user_defined_link"}
+                    {
+                        "$ref": "#/$defs/hard_link"
+                    },
+                    {
+                        "$ref": "#/$defs/soft_link"
+                    },
+                    {
+                        "$ref": "#/$defs/external_link"
+                    },
+                    {
+                        "$ref": "#/$defs/user_defined_link"
+                    }
                 ]
             }
         },
@@ -137,7 +147,12 @@
                     "$ref": "#/$defs/link_creation_props"
                 }
             },
-            "required": ["class", "title", "collection", "id"]
+            "required": [
+                "class",
+                "title",
+                "collection",
+                "id"
+            ]
         },
         "soft_link": {
             "type": "object",
@@ -155,7 +170,11 @@
                     "$ref": "#/$defs/link_creation_props"
                 }
             },
-            "required": [ "class", "title", "h5path" ]
+            "required": [
+                "class",
+                "title",
+                "h5path"
+            ]
         },
         "external_link": {
             "type": "object",
@@ -176,7 +195,12 @@
                     "$ref": "#/$defs/link_creation_props"
                 }
             },
-            "required": [ "class", "title", "file", "h5path" ]
+            "required": [
+                "class",
+                "title",
+                "file",
+                "h5path"
+            ]
         },
         "user_defined_link": {
             "type": "object",
@@ -200,7 +224,11 @@
                     }
                 }
             },
-            "required": [ "class", "title", "target"]
+            "required": [
+                "class",
+                "title",
+                "target"
+            ]
         },
         "link_name": {
             "type": "string",
@@ -211,7 +239,10 @@
             "properties": {
                 "charSet": {
                     "type": "string",
-                    "enum": ["H5T_CSET_ASCII", "H5T_CSET_UTF8"]
+                    "enum": [
+                        "H5T_CSET_ASCII",
+                        "H5T_CSET_UTF8"
+                    ]
                 },
                 "creationOrder": {
                     "type": "integer",
