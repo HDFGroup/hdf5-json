@@ -1,0 +1,608 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema#",
+    "$id": "https://hdfgroup.org/schemas/hdf5/json/datatypes.schema.json",
+    "title": "HDF5 Datatype JSON Schema",
+    "description": "JSON Schema describing HDF5/JSON datatypes.",
+    "type": "object",
+    "$defs": {
+        "committed": {
+            "description": "HDF5 committed datatype.",
+            "type": "object",
+            "patternProperties": {
+                "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$": {
+                    "type": "object",
+                    "properties": {
+                        "alias": {
+                            "description": "HDF5 committed datatype path names",
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                                "type": "string",
+                                "pattern": "^(/[^/]+)+$"
+                            }
+                        },
+                        "type": {
+                            "$ref": "#/$defs/datatype"
+                        }
+                    }
+                }
+            },
+            "additionalProperties": false
+        },
+        "datatype": {
+            "oneOf": [
+                {
+                    "$ref": "#/$defs/array_datatype"
+                },
+                {
+                    "$ref": "#/$defs/bitfield_datatype"
+                },
+                {
+                    "$ref": "#/$defs/compound_datatype"
+                },
+                {
+                    "$ref": "#/$defs/enumeration_datatype"
+                },
+                {
+                    "$ref": "#/$defs/floating_point_datatype"
+                },
+                {
+                    "$ref": "#/$defs/integer_datatype"
+                },
+                {
+                    "$ref": "#/$defs/opaque_datatype"
+                },
+                {
+                    "$ref": "#/$defs/reference_datatype"
+                },
+                {
+                    "$ref": "#/$defs/string_datatype"
+                },
+                {
+                    "$ref": "#/$defs/vlen_datatype"
+                },
+                {
+                    "type": "string",
+                    "pattern": "^datatypes/"
+                }
+            ]
+        },
+        "string_datatype": {
+            "description": "HDF5 string datatype.",
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5T_STRING"
+                },
+                "charSet": {
+                    "type": "string",
+                    "enum": [
+                        "H5T_CSET_ASCII",
+                        "H5T_CSET_UTF8"
+                    ]
+                },
+                "length": {
+                    "oneOf": [
+                        {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        },
+                        {
+                            "const": "H5T_VARIABLE"
+                        }
+                    ]
+                },
+                "strPad": {
+                    "type": "string",
+                    "enum": [
+                        "H5T_STR_NULLTERM",
+                        "H5T_STR_NULLPAD",
+                        "H5T_STR_SPACEPAD"
+                    ]
+                }
+            },
+            "required": [
+                "class",
+                "length",
+                "strPad"
+            ]
+        },
+        "integer_datatype": {
+            "description": "HDF5 integer datatypes",
+            "type": "object",
+            "oneOf": [
+                {
+                    "description": "HDF5 predefined integer datatypes.",
+                    "type": "object",
+                    "properties": {
+                        "class": {
+                            "const": "H5T_INTEGER"
+                        },
+                        "base": {
+                            "type": "string",
+                            "enum": [
+                                "H5T_STD_I8BE",
+                                "H5T_STD_I8LE",
+                                "H5T_STD_I16BE",
+                                "H5T_STD_I16LE",
+                                "H5T_STD_I32BE",
+                                "H5T_STD_I32LE",
+                                "H5T_STD_I64BE",
+                                "H5T_STD_I64LE",
+                                "H5T_STD_U8BE",
+                                "H5T_STD_U8LE",
+                                "H5T_STD_U16BE",
+                                "H5T_STD_U16LE",
+                                "H5T_STD_U32BE",
+                                "H5T_STD_U32LE",
+                                "H5T_STD_U64BE",
+                                "H5T_STD_U64LE"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "class",
+                        "base"
+                    ]
+                },
+                {
+                    "description": "HDF5 user-defined integer datatypes.",
+                    "type": "object",
+                    "properties": {
+                        "class": {
+                            "const": "H5T_INTEGER"
+                        },
+                        "bitOffset": {
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        "byteOrder": {
+                            "type": "string",
+                            "enum": [
+                                "H5T_ORDER_LE",
+                                "H5T_ORDER_BE"
+                            ]
+                        },
+                        "lsbPad": {
+                            "type": "string",
+                            "enum": [
+                                "H5T_PAD_ZERO",
+                                "H5T_PAD_ONE",
+                                "H5T_PAD_BACKGROUND"
+                            ]
+                        },
+                        "msbPad": {
+                            "type": "string",
+                            "enum": [
+                                "H5T_PAD_ZERO",
+                                "H5T_PAD_ONE",
+                                "H5T_PAD_BACKGROUND"
+                            ]
+                        },
+                        "precision": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        },
+                        "size": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        },
+                        "signType": {
+                            "type": "string",
+                            "enum": [
+                                "H5T_SGN_NONE",
+                                "H5T_SGN_2"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "class",
+                        "size",
+                        "precision",
+                        "bitOffset"
+                    ]
+                }
+            ]
+        },
+        "floating_point_datatype": {
+            "description": "HDF5 floating-point datatypes",
+            "oneOf": [
+                {
+                    "description": "HDF5 predefined floating-point datatypes.",
+                    "type": "object",
+                    "properties": {
+                        "class": {
+                            "const": "H5T_FLOAT"
+                        },
+                        "base": {
+                            "type": "string",
+                            "enum": [
+                                "H5T_IEEE_F32BE",
+                                "H5T_IEEE_F32LE",
+                                "H5T_IEEE_F64BE",
+                                "H5T_IEEE_F64LE"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "class",
+                        "base"
+                    ]
+                },
+                {
+                    "description": "HDF5 user-defined floating-point datatypes.",
+                    "type": "object",
+                    "properties": {
+                        "class": {
+                            "const": "H5T_FLOAT"
+                        },
+                        "bitOffset": {
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        "byteOrder": {
+                            "type": "string",
+                            "enum": [
+                                "H5T_ORDER_LE",
+                                "H5T_ORDER_BE"
+                            ]
+                        },
+                        "expBias": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        },
+                        "expBits": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        },
+                        "expBitPos": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        },
+                        "intlbPad": {
+                            "type": "string",
+                            "enum": [
+                                "H5T_PAD_ZERO",
+                                "H5T_PAD_ONE",
+                                "H5T_PAD_BACKGROUND"
+                            ]
+                        },
+                        "lsbPad": {
+                            "type": "string",
+                            "enum": [
+                                "H5T_PAD_ZERO",
+                                "H5T_PAD_ONE",
+                                "H5T_PAD_BACKGROUND"
+                            ]
+                        },
+                        "mantBits": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        },
+                        "mantBitPos": {
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        "mantNorm": {
+                            "type": "string",
+                            "enum": [
+                                "H5T_NORM_IMPLIED",
+                                "H5T_NORM_MSBSET",
+                                "H5T_NORM_NONE"
+                            ]
+                        },
+                        "msbitPad": {
+                            "type": "string",
+                            "enum": [
+                                "H5T_PAD_ZERO",
+                                "H5T_PAD_ONE",
+                                "H5T_PAD_BACKGROUND"
+                            ]
+                        },
+                        "msbPad": {
+                            "type": "string",
+                            "enum": [
+                                "H5T_PAD_ZERO",
+                                "H5T_PAD_ONE",
+                                "H5T_PAD_BACKGROUND"
+                            ]
+                        },
+                        "precision": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        },
+                        "signBitPos": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        },
+                        "size": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "class",
+                        "size",
+                        "precision",
+                        "bitOffset"
+                    ]
+                }
+            ]
+        },
+        "array_datatype": {
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5T_ARRAY"
+                },
+                "base": {
+                    "allOf": [
+                        {
+                            "$comment": "Placeholder for what the grammar calls datatype_object_ref."
+                        },
+                        {
+                            "$ref": "#/$defs/datatype"
+                        }
+                    ]
+                },
+                "dims": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                    }
+                }
+            },
+            "additionalProperties": false,
+            "required": [
+                "class",
+                "base",
+                "dims"
+            ]
+        },
+        "bitfield_datatype": {
+            "description": "HDF5 bitfield datatypes",
+            "oneOf": [
+                {
+                    "description": "HDF5 predefined bitfield datatypes.",
+                    "type": "object",
+                    "properties": {
+                        "class": {
+                            "const": "H5T_BITFIELD"
+                        },
+                        "base": {
+                            "type": "string",
+                            "enum": [
+                                "H5T_STD_I8BE",
+                                "H5T_STD_I8LE",
+                                "H5T_STD_I16BE",
+                                "H5T_STD_I16LE",
+                                "H5T_STD_I32BE",
+                                "H5T_STD_I32LE",
+                                "H5T_STD_I64BE",
+                                "H5T_STD_I64LE",
+                                "H5T_STD_U8BE",
+                                "H5T_STD_U8LE",
+                                "H5T_STD_U16BE",
+                                "H5T_STD_U16LE",
+                                "H5T_STD_U32BE",
+                                "H5T_STD_U32LE",
+                                "H5T_STD_U64BE",
+                                "H5T_STD_U64LE"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "class",
+                        "base"
+                    ]
+                },
+                {
+                    "description": "HDF5 user-defined bitfield datatypes.",
+                    "type": "object",
+                    "properties": {
+                        "class": {
+                            "const": "H5T_BITFIELD"
+                        },
+                        "bitOffset": {
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        "byteOrder": {
+                            "type": "string",
+                            "enum": [
+                                "H5T_ORDER_LE",
+                                "H5T_ORDER_BE"
+                            ]
+                        },
+                        "lsbPad": {
+                            "type": "string",
+                            "enum": [
+                                "H5T_PAD_ZERO",
+                                "H5T_PAD_ONE",
+                                "H5T_PAD_BACKGROUND"
+                            ]
+                        },
+                        "msbPad": {
+                            "type": "string",
+                            "enum": [
+                                "H5T_PAD_ZERO",
+                                "H5T_PAD_ONE",
+                                "H5T_PAD_BACKGROUND"
+                            ]
+                        },
+                        "precision": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        },
+                        "size": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "class",
+                        "size",
+                        "precision",
+                        "bitOffset",
+                        "byteOrder"
+                    ]
+                }
+            ]
+        },
+        "compound_datatype": {
+            "description": "HDF5 compound datatype.",
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5T_COMPOUND"
+                },
+                "fields": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "minLength": 1
+                            },
+                            "type": {
+                                "allOf": [
+                                    {
+                                        "$comment": "Placeholder for what the grammar calls datatype_object_ref."
+                                    },
+                                    {
+                                        "$ref": "#/$defs/datatype"
+                                    }
+                                ]
+                            }
+                        },
+                        "additionalProperties": false,
+                        "required": []
+                    }
+                }
+            },
+            "additionalProperties": false,
+            "required": [
+                "class",
+                "fields"
+            ]
+        },
+        "enumeration_datatype": {
+            "description": "HDF5 enumerated datatype.",
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5T_ENUM"
+                },
+                "base": {
+                    "allOf": [
+                        {
+                            "$ref": "#/$defs/integer_datatype"
+                        },
+                        {
+                            "$comment": "The grammar calls this datatype_reference."
+                        }
+                    ]
+                },
+                "members": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "minLength": 1
+                            },
+                            "value": {
+                                "type": "integer"
+                            }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                            "name",
+                            "value"
+                        ]
+                    }
+                }
+            },
+            "additionalProperties": false,
+            "required": [
+                "class",
+                "base",
+                "members"
+            ]
+        },
+        "opaque_datatype": {
+            "description": "HDF5 opaque datatype.",
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5T_OPAQUE"
+                },
+                "size": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                },
+                "tag": {
+                    "type": "string",
+                    "minLength": 1
+                }
+            },
+            "additionalProperties": false,
+            "required": [
+                "class",
+                "size"
+            ]
+        },
+        "reference_datatype": {
+            "description": "HDF5 object and region reference datatypes.",
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5T_REFERENCE"
+                },
+                "base": {
+                    "type": "string",
+                    "enum": [
+                        "H5T_STD_REF_OBJ",
+                        "H5T_STD_REF_DSETREG"
+                    ]
+                }
+            },
+            "required": [
+                "class",
+                "base"
+            ]
+        },
+        "vlen_datatype": {
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5T_VLEN"
+                },
+                "base": {
+                    "allOf": [
+                        {
+                            "$comment": "Placeholder for what the grammar calls datatype_object_ref."
+                        },
+                        {
+                            "$ref": "#/$defs/datatype"
+                        }
+                    ]
+                }
+            },
+            "additionalProperties": false,
+            "required": [
+                "class",
+                "base"
+            ]
+        }
+    }
+}

@@ -1,0 +1,197 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema#",
+    "$id": "https://hdfgroup.org/schemas/hdf5/json/filters.schema.json",
+    "title": "HDF5/JSON Filters Schema",
+    "description": "JSON Schema describing supported HDF5 filters.",
+    "type": "object",
+    "$defs": {
+        "filter": {
+            "oneOf": [
+                {
+                    "$ref": "#/$defs/deflate_filter"
+                },
+                {
+                    "$ref": "#/$defs/fletcher32_filter"
+                },
+                {
+                    "$ref": "#/$defs/lzf_filter"
+                },
+                {
+                    "$ref": "#/$defs/nbit_filter"
+                },
+                {
+                    "$ref": "#/$defs/scaleoffset_filter"
+                },
+                {
+                    "$ref": "#/$defs/shuffle_filter"
+                },
+                {
+                    "$ref": "#/$defs/szip_filter"
+                },
+                {
+                    "$ref": "#/$defs/other_filter"
+                }
+            ]
+        },
+        "other_filter": {
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5Z_FILTER_USER"
+                },
+                "id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                },
+                "parameters": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                    }
+                }
+            },
+            "required": [
+                "class",
+                "id"
+            ]
+        },
+        "deflate_filter": {
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5Z_FILTER_DEFLATE"
+                },
+                "id": {
+                    "const": 1
+                },
+                "level": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9
+                }
+            },
+            "required": [
+                "class"
+            ]
+        },
+        "fletcher32_filter": {
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5Z_FILTER_FLETCHER32"
+                },
+                "id": {
+                    "const": 3
+                }
+            },
+            "required": [
+                "class"
+            ]
+        },
+        "lzf_filter": {
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5Z_FILTER_LZF"
+                },
+                "id": {
+                    "const": 32000
+                }
+            },
+            "required": [
+                "class"
+            ]
+        },
+        "nbit_filter": {
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5Z_FILTER_NBIT"
+                },
+                "id": {
+                    "const": 5
+                }
+            },
+            "required": [
+                "class"
+            ]
+        },
+        "scaleoffset_filter": {
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5Z_FILTER_SCALEOFFSET"
+                },
+                "id": {
+                    "const": 6
+                },
+                "scaleType": {
+                    "type": "string",
+                    "enum": [
+                        "H5Z_SO_FLOAT_DSCALE",
+                        "H5Z_SO_FLOAT_ESCALE",
+                        "H5Z_SO_INT"
+                    ]
+                },
+                "scaleOffset": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                }
+            },
+            "required": [
+                "class",
+                "scaleType",
+                "scaleOffset"
+            ]
+        },
+        "shuffle_filter": {
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5Z_FILTER_SHUFFLE"
+                },
+                "id": {
+                    "const": 2
+                }
+            },
+            "required": [
+                "class"
+            ]
+        },
+        "szip_filter": {
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5Z_FILTER_SZIP"
+                },
+                "id": {
+                    "const": 4
+                },
+                "bitsPerPixel": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                },
+                "pixelsPerBlock": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                },
+                "pixelsPerScanline": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                },
+                "coding": {
+                    "type": "string",
+                    "enum": [
+                        "H5_SZIP_EC_OPTION_MASK",
+                        "H5_SZIP_NN_OPTION_MASK"
+                    ]
+                }
+            },
+            "required": [
+                "class"
+            ]
+        }
+    }
+}

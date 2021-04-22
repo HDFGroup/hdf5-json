@@ -1,0 +1,198 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema#",
+    "$id": "https://hdfgroup.org/schemas/hdf5/json/dataset.schema.json",
+    "title": "HDF5 Dataset JSON Schema",
+    "description": "JSON Schema describing HDF5 dataset.",
+    "type": "object",
+    "$defs": {
+        "dataset": {
+            "type": "object",
+            "patternProperties": {
+                "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$": {
+                    "type": "object",
+                    "properties": {
+                        "alias": {
+                            "description": "HDF5 dataset path names",
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                                "type": "string",
+                                "pattern": "^(/[^/]+)+$"
+                            }
+                        },
+                        "type": {
+                            "description": "HDF5 dataset's dataype.",
+                            "$ref": "datatypes.schema.json#/$defs/datatype"
+                        },
+                        "shape": {
+                            "description": "HDF5 dataset's shape.",
+                            "type": "object",
+                            "minProperties": 1,
+                            "$ref": "dataspaces.schema.json#/$defs/dataspace"
+                        },
+                        "creationProperties": {
+                            "type": "object",
+                            "properties": {
+                                "allocTime": {
+                                    "type": "string",
+                                    "enum": [
+                                        "H5D_ALLOC_TIME_DEFAULT",
+                                        "H5D_ALLOC_TIME_EARLY",
+                                        "H5D_ALLOC_TIME_INCR",
+                                        "H5D_ALLOC_TIME_LATE"
+                                    ]
+                                },
+                                "attributeCreationOrder": {
+                                    "type": "string",
+                                    "enum": [
+                                        "H5P_CRT_ORDER_TRACKED",
+                                        "H5P_CRT_ORDER_INDEXED"
+                                    ]
+                                },
+                                "attributePhaseChange": {
+                                    "type": "object",
+                                    "properties": {
+                                        "maxCompact": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                        },
+                                        "minDense": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                        }
+                                    },
+                                    "required": [
+                                        "maxCompact",
+                                        "minDense"
+                                    ]
+                                },
+                                "fillTime": {
+                                    "type": "string",
+                                    "enum": [
+                                        "H5D_FILL_TIME_IFSET",
+                                        "H5D_FILL_TIME_ALLOC",
+                                        "H5D_FILL_TIME_NEVER"
+                                    ]
+                                },
+                                "fillValue": {
+                                    "anyOf": [
+                                        {
+                                            "type": "string"
+                                        },
+                                        {
+                                            "type": "number"
+                                        },
+                                        {
+                                            "type": "null"
+                                        },
+                                        {
+                                            "type": "array"
+                                        }
+                                    ]
+                                },
+                                "trackTimes": {
+                                    "type": "boolean"
+                                },
+                                "filters": {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "items": {
+                                        "$ref": "filters.schema.json#/$defs/filter"
+                                    }
+                                },
+                                "layout": {
+                                    "oneOf": [
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "class": {
+                                                    "const": "H5D_COMPACT"
+                                                }
+                                            },
+                                            "required": [
+                                                "class"
+                                            ]
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "class": {
+                                                    "const": "H5D_CHUNKED"
+                                                },
+                                                "dims": {
+                                                    "type": "array",
+                                                    "minItems": 1,
+                                                    "items": {
+                                                        "type": "integer",
+                                                        "exclusiveMinimum": 0
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "class",
+                                                "dims"
+                                            ]
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "class": {
+                                                    "const": "H5D_CONTIGUOUS"
+                                                },
+                                                "externalStorage": {
+                                                    "type": "array",
+                                                    "minItems": 1,
+                                                    "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "name": {
+                                                                "type": "string"
+                                                            },
+                                                            "offset": {
+                                                                "type": "integer",
+                                                                "minimum": 0
+                                                            },
+                                                            "size": {
+                                                                "type": "integer",
+                                                                "exclusiveMinimum": 0
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "class"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "value": {
+                            "oneOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "number"
+                                },
+                                {
+                                    "type": "array"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ]
+                        },
+                        "attributes": {
+                            "description": "All attributes of one HDF5 dataset.",
+                            "type": "array",
+                            "$ref": "attribute.schema.json#/$defs/attributes"
+                        }
+                    }
+                }
+            },
+            "additionalProperties": false
+        }
+    }
+}

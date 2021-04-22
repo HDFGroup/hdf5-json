@@ -1,0 +1,86 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema#",
+    "$id": "https://hdfgroup.org/schemas/hdf5/json/dataspaces.schema.json",
+    "title": "HDF5/JSON Dataspace Schema",
+    "description": "JSON Schema for HDF5 dataspaces.",
+    "type": "object",
+    "$defs": {
+        "dataspace": {
+            "description": "HDF5 dataspaces.",
+            "oneOf": [
+                {
+                    "$ref": "#/$defs/null_dataspace"
+                },
+                {
+                    "$ref": "#/$defs/scalar_dataspace"
+                },
+                {
+                    "$ref": "#/$defs/simple_dataspace"
+                }
+            ]
+        },
+        "null_dataspace": {
+            "description": "HDF5 null dataspace.",
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5S_NULL"
+                }
+            },
+            "additionalProperties": false,
+            "required": [
+                "class"
+            ]
+        },
+        "scalar_dataspace": {
+            "description": "HDF5 scalar dataspace.",
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5S_SCALAR"
+                }
+            },
+            "additionalProperties": false,
+            "required": [
+                "class"
+            ]
+        },
+        "simple_dataspace": {
+            "description": "HDF5 simple dataspace.",
+            "type": "object",
+            "properties": {
+                "class": {
+                    "const": "H5S_SIMPLE"
+                },
+                "dims": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer",
+                        "minimum": 0
+                    }
+                },
+                "maxdims": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "oneOf": [
+                            {
+                                "type": "integer",
+                                "exclusiveMinimum": 0
+                            },
+                            {
+                                "const": "H5S_UNLIMITED"
+                            }
+                        ]
+                    }
+                }
+            },
+            "additionalProperties": false,
+            "required": [
+                "class",
+                "dims"
+            ]
+        }
+    }
+}
