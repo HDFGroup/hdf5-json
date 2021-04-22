@@ -1,0 +1,12 @@
+FROM node:8-alpine
+
+ARG AJV_CLI_VERSION=5.0.0
+ARG AJV_FORMATS_VERSION=2.0.2
+
+RUN npm install -g ajv-cli@${AJV_CLI_VERSION} && \
+    npm install ajv-formats@${AJV_FORMATS_VERSION}
+
+VOLUME [ "/data", "/schema" ]
+WORKDIR "/data"
+
+ENTRYPOINT ["/usr/local/bin/ajv"]
