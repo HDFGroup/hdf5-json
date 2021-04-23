@@ -11,20 +11,16 @@
 ##############################################################################
 import sys
 import os
-import stat
-from shutil import copyfile
-
-
 
 
 """
 main
 """
-top_dir = os.path.abspath(os.path.join("..",".."))
+top_dir = os.path.abspath(os.path.join("..", ".."))
 
-data_dir = os.path.join(top_dir, "data","hdf5")
+data_dir = os.path.join(top_dir, "data", "hdf5")
 
-out_dir = os.path.join(top_dir, "test","integ","json_out")
+out_dir = os.path.join(top_dir, "test", "integ", "json_out")
 
 test_files = (
     "array_dset.h5",
@@ -38,7 +34,7 @@ test_files = (
     "compound.h5",
     "compound_array.h5",
     "compound_array_attr.h5",
-    #"compound_array_vlen_string.h5",  # crashes python w/ Linux!
+    # "compound_array_vlen_string.h5",  # crashes python w/ Linux!
     "compound_array_dset.h5",
     "compound_attr.h5",
     "compound_committed.h5",
@@ -99,7 +95,7 @@ test_files = (
     "vlen_string_nullterm_attr.h5",
     "vlen_string_nullterm_dset.h5",
     "vlen_unicode_attr.h5",
-    "zerodim.h5"
+    "zerodim.h5",
 )
 
 # mkdir for output files
@@ -109,10 +105,8 @@ if not os.path.exists(out_dir):
 # delete any output files from previous run
 for out_file in os.listdir(out_dir):
     split_ext = os.path.splitext(out_file)
-    if split_ext[1] == '.json':
+    if split_ext[1] == ".json":
         os.unlink(os.path.join(out_dir, out_file))
-
-
 
 # convert test files to json
 for test_file in test_files:
@@ -123,7 +117,7 @@ for test_file in test_files:
         sys.exit("file: " + file_path + " not found")
     cmd = "python ../../h5json/h5tojson/h5tojson.py " + file_path + " >" + out_file
     print("cmd:", cmd)
-    
+
     rc = os.system(cmd)
     if rc != 0:
         sys.exit("h5tojson failed converting: " + test_file)
