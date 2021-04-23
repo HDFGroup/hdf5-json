@@ -20,10 +20,16 @@
                             "class": "H5T_INTEGER"
                         },
                         "class": "H5T_ENUM",
-                        "mapping": {
-                            "FALSE": 0,
-                            "TRUE": 1
-                        }
+                        "members": [
+                            {
+                                "name": "FALSE",
+                                "value": 0
+                            },
+                            {
+                                "name": "TRUE",
+                                "value": 1
+                            }
+                        ]
                     },
                     "value": [
                         false,
