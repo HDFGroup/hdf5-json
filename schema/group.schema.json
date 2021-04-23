@@ -226,8 +226,7 @@
             },
             "required": [
                 "class",
-                "title",
-                "target"
+                "title"
             ]
         },
         "link_name": {

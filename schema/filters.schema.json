@@ -137,7 +137,7 @@
                 },
                 "scaleOffset": {
                     "type": "integer",
-                    "exclusiveMinimum": 0
+                    "minimum": 0
                 }
             },
             "required": [
