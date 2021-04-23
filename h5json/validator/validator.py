@@ -77,6 +77,7 @@ def main():
         ajv_opts = [
             "--spec=draft2020",
             "-c ajv-formats",
+            "--all-errors",
             "-s /schema/file.schema.json",
             '-r "/schema/data*.schema.json"',
             "-r /schema/filters.schema.json",
