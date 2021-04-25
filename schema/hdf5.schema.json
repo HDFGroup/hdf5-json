@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema#",
-    "$id": "https://hdfgroup.org/schemas/hdf5/json/file.schema.json",
+    "$id": "https://hdfgroup.org/schemas/hdf5/json/hdf5.schema.json",
     "title": "HDF5 File JSON Schema",
     "description": "JSON Schema describing HDF5 file.",
     "type": "object",
