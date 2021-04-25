@@ -1,7 +1,7 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema#",
     "$id": "https://hdfgroup.org/schemas/hdf5/json/dataset.schema.json",
-    "title": "HDF5 Dataset JSON Schema",
+    "title": "HDF5/JSON Dataset Schema",
     "description": "JSON Schema describing HDF5 dataset.",
     "type": "object",
     "$defs": {
@@ -166,7 +166,10 @@
                                         }
                                     ]
                                 }
-                            }
+                            },
+                            "required": [
+                                "layout"
+                            ]
                         },
                         "value": {
                             "oneOf": [
@@ -189,7 +192,12 @@
                             "type": "array",
                             "$ref": "attribute.schema.json#/$defs/attributes"
                         }
-                    }
+                    },
+                    "required": [
+                        "alias",
+                        "type",
+                        "shape"
+                    ]
                 }
             },
             "additionalProperties": false

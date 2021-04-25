@@ -24,7 +24,11 @@
                         "type": {
                             "$ref": "#/$defs/datatype"
                         }
-                    }
+                    },
+                    "required": [
+                        "alias",
+                        "type"
+                    ]
                 }
             },
             "additionalProperties": false
