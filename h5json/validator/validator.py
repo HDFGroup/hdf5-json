@@ -8,6 +8,7 @@
 # distribution tree. If you do not have access to this file, you may         #
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
+import sys
 import argparse
 from pathlib import Path
 import subprocess
@@ -44,7 +45,7 @@ def main():
 
     if not args.schema.is_dir():
         raise OSError(f"{args.schema} is not a directory or does not exist")
-    elif not args.schema.joinpath("file.schema.json").is_file():
+    elif not args.schema.joinpath("hdf5.schema.json").is_file():
         raise OSError(f"Main HDF5/JSON schema file not found in {args.schema}")
     full_schema_dir = str(args.schema.resolve())
 
@@ -65,6 +66,7 @@ def main():
         print("No JSON files found.")
         return
 
+    was_error = False
     for dir_ in json_table.keys():
         docker_cmd = [
             "docker",
@@ -78,7 +80,7 @@ def main():
             "--spec=draft2020",
             "-c ajv-formats",
             "--all-errors",
-            "-s /schema/file.schema.json",
+            "-s /schema/hdf5.schema.json",
             '-r "/schema/data*.schema.json"',
             "-r /schema/filters.schema.json",
             "-r /schema/attribute.schema.json",
@@ -87,7 +89,12 @@ def main():
         for f in json_table[dir_]:
             ajv_opts.append(f"-d /data/{f}")
         cmd = docker_cmd + ajv_opts
-        subprocess.run(" ".join(cmd), shell=True)
+        ret = subprocess.run(" ".join(cmd), shell=True, check=False)
+        # See https://docs.docker.com/engine/reference/run/#exit-status
+        if 0 < ret.returncode < 125:
+            was_error = True
+    if was_error:
+        sys.exit("ERROR: There were validation errors.")
 
 
 if __name__ == "__main__":
