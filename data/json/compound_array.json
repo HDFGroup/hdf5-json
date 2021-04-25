@@ -2,6 +2,9 @@
     "apiVersion": "1.1.0",
     "datasets": {
         "4c97c75c-2553-42b7-a733-1c18887001c2": {
+            "alias": [
+                "/dset"
+            ],
             "type": {
                 "fields": [
                     {
