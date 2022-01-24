@@ -12,6 +12,9 @@ from setuptools import setup
 from codecs import open
 from os import path
 
+# For automated versioning
+import versioneer
+
 here = path.abspath(path.dirname(__file__))
 
 # Get the long description from the README file
@@ -23,7 +26,8 @@ setup(
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
     # https://packaging.python.org/en/latest/single_source_version.html
-    version="1.1.3",
+    version=versioneer.get_version(),
+    cmdclass=versioneer.get_cmdclass(),
     description="HDF5/JSON Tools",
     long_description=long_description,
     # The project's main homepage.

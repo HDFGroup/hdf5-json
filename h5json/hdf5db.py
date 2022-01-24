@@ -11,6 +11,7 @@
 ##############################################################################
 
 from __future__ import absolute_import
+from . import _version
 
 import six
 
@@ -145,9 +146,7 @@ class Hdf5db:
     @staticmethod
     def getVersionInfo():
         versionInfo = {}
-        versionInfo[
-            "hdf5-json-version"
-        ] = "1.1.1"  # todo - have this auto-synch with package version
+        versionInfo["hdf5-json-version"] = _version.get_versions()["version"]
         versionInfo["h5py_version"] = h5py.version.version
         versionInfo["hdf5_version"] = h5py.version.hdf5_version
         return versionInfo
@@ -2271,9 +2270,7 @@ class Hdf5db:
                 raise IOError(errno.EINVAL, msg)
             # numpy object type - could be a vlen string or generic vlen
             h5t_check = h5py.h5t.check_dtype(vlen=dt)
-            if h5t_check == str or h5t_check == unicode:
-                values = dset[slices].tolist()  # just dump to list
-            elif six.PY3 and h5t_check == bytes:
+            if h5t_check == str or h5t_check == bytes:
                 values = self.bytesArrayToList(dset[slices])
             elif h5t_check is not None:
                 # other vlen data
