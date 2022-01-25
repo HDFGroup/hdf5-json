@@ -21,7 +21,7 @@
                             }
                         },
                         "type": {
-                            "description": "HDF5 dataset's dataype.",
+                            "description": "HDF5 dataset's datatype.",
                             "$ref": "datatypes.schema.json#/$defs/datatype"
                         },
                         "shape": {
