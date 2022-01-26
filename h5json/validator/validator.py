@@ -11,10 +11,35 @@
 import sys
 import argparse
 from pathlib import Path
-import subprocess
+import importlib.resources
+import json
+import jsonschema
+from h5json import schema
 
 
-def main():
+def prepare_validator() -> jsonschema.Draft202012Validator:
+    """Return a configured jsonschema.Draft202012Validator instance."""
+    with importlib.resources.open_text(schema, "hdf5.schema.json") as f:
+        h5schema = json.load(f)
+
+    schema_store = dict()
+    schema_components = [
+        "attribute.schema.json",
+        "filters.schema.json",
+        "group.schema.json",
+        "datatypes.schema.json",
+        "dataspaces.schema.json",
+        "dataset.schema.json",
+    ]
+    for sc in schema_components:
+        with importlib.resources.open_text(schema, sc) as f:
+            temp = json.load(f)
+        schema_store[temp["$id"]] = temp
+    resolver = jsonschema.RefResolver(h5schema["$id"], h5schema, store=schema_store)
+    return jsonschema.Draft202012Validator(h5schema, resolver=resolver)
+
+
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="HDF5/JSON validator",
         epilog="Copyright 2021 The HDF Group",
@@ -23,78 +48,50 @@ def main():
     parser.add_argument(
         "jsonloc",
         nargs="+",
-        help="JSON location (file(s) or folder(s)",
+        help="JSON location (files or folders)",
         metavar="JSON_LOC",
         type=Path,
     )
     parser.add_argument(
-        "--schema",
+        "--stop",
         "-s",
-        metavar="SCHEMA_DIR",
-        help="Directory of HDF5/JSON schema files",
-        type=Path,
-    )
-    parser.add_argument(
-        "--docker-image",
-        "-di",
-        metavar="DOCKER_IMAGE",
-        help="Docker image with the Ajv JSON Schema validator",
-        default="hdf5json/ajv",
+        action="store_true",
+        help="Stop after first HDF5/JSON file failed validation",
     )
     args = parser.parse_args()
 
-    if not args.schema.is_dir():
-        raise OSError(f"{args.schema} is not a directory or does not exist")
-    elif not args.schema.joinpath("hdf5.schema.json").is_file():
-        raise OSError(f"Main HDF5/JSON schema file not found in {args.schema}")
-    full_schema_dir = str(args.schema.resolve())
-
-    # Find all JSON files...
-    json_table = dict()
+    # Find all JSON files for validation...
+    json_files = list()
     for p in args.jsonloc:
         if p.is_file():
-            dir_ = str(p.resolve().parent)
-            if dir_ not in json_table:
-                json_table[dir_] = list()
-            json_table[dir_].append(p.name)
+            json_files.append(p)
         elif p.is_dir():
-            dir_ = str(p.resolve())
-            if dir_ not in json_table:
-                json_table[dir_] = list()
-            json_table[dir_].extend([f.name for f in p.glob("*.json")])
-    if not json_table:
-        print("No JSON files found.")
-        return
+            json_files.extend([f for f in p.glob("*.json")])
+    if not json_files:
+        sys.exit("No JSON files for validation found.")
 
-    was_error = False
-    for dir_ in json_table.keys():
-        docker_cmd = [
-            "docker",
-            "run",
-            "--rm",
-            f"-v {full_schema_dir}:/schema",
-            f"-v {dir_}:/data",
-            args.docker_image,
-        ]
-        ajv_opts = [
-            "--spec=draft2020",
-            "-c ajv-formats",
-            "--all-errors",
-            "-s /schema/hdf5.schema.json",
-            '-r "/schema/data*.schema.json"',
-            "-r /schema/filters.schema.json",
-            "-r /schema/attribute.schema.json",
-            "-r /schema/group.schema.json",
-        ]
-        for f in json_table[dir_]:
-            ajv_opts.append(f"-d /data/{f}")
-        cmd = docker_cmd + ajv_opts
-        ret = subprocess.run(" ".join(cmd), shell=True, check=False)
-        # See https://docs.docker.com/engine/reference/run/#exit-status
-        if 0 < ret.returncode < 125:
-            was_error = True
-    if was_error:
-        sys.exit("ERROR: There were validation errors.")
+    validator = prepare_validator()
+
+    # Validate HDF5/JSON files...
+    valid_errors = False
+    for h5j in json_files:
+        print(f"Validating {str(h5j)} ... ", end="")
+        try:
+            with h5j.open() as f:
+                inst = json.load(f)
+            validator.validate(inst)
+            print("pass")
+        except jsonschema.exceptions.ValidationError:
+            print("FAIL")
+            valid_errors = True
+            inst_name = str(h5j)
+            print(f"HDF5/JSON validation failed for {inst_name}", file=sys.stderr)
+            for err in validator.iter_errors(inst):
+                print(f"{inst_name} ---> {err}", file=sys.stderr)
+            if args.stop:
+                sys.exit("HDF5/JSON validation failed.")
+    if valid_errors:
+        sys.exit("HDF5/JSON validation failed.")
 
 
 if __name__ == "__main__":
