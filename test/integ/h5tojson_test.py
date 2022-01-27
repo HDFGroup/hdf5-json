@@ -108,7 +108,7 @@ for out_file in os.listdir(out_dir):
     if split_ext[1] == ".json":
         os.unlink(os.path.join(out_dir, out_file))
 
-# convert test files to json
+# convert test files to json and validate
 for test_file in test_files:
     split_ext = os.path.splitext(test_file)
     file_path = os.path.join(data_dir, test_file)
@@ -117,7 +117,11 @@ for test_file in test_files:
         sys.exit("file: " + file_path + " not found")
     cmd = "python ../../h5json/h5tojson/h5tojson.py " + file_path + " >" + out_file
     print("cmd:", cmd)
-
     rc = os.system(cmd)
     if rc != 0:
         sys.exit("h5tojson failed converting: " + test_file)
+
+    cmd = "python ../../h5json/validator/validator.py " + out_file
+    print("cmd:", cmd)
+    if rc != 0:
+        sys.exit("HDF5/JSON validation failed for: " + out_file)
