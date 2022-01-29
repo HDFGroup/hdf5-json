@@ -2,6 +2,7 @@
     "apiVersion": "1.0.0",
     "datasets": {
         "a615cf0a-7b51-11e4-bc7e-3c15c2da029e": {
+            "alias": ["/DS1"],
             "attributes": [
                 {
                     "name": "A1", 
@@ -54,6 +55,7 @@
     }, 
     "groups": {
         "a614dc9c-7b51-11e4-a3f7-3c15c2da029e": {
+            "alias": ["/"],
             "links": [
                 {
 		    "class": "H5L_TYPE_HARD",
