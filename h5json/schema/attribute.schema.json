@@ -24,7 +24,7 @@
                     "$ref": "datatypes.schema.json#/$defs/datatype"
                 },
                 "shape": {
-                    "description": "HDF5 dataset's shape.",
+                    "description": "HDF5 attribute's shape.",
                     "type": "object",
                     "$ref": "dataspaces.schema.json#/$defs/dataspace"
                 },
