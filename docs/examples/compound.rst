@@ -2,4 +2,4 @@ An HDF5 Compound Datatype
 =========================
 
 .. literalinclude:: compound.json
-   :language: javascript
+   :language: json
