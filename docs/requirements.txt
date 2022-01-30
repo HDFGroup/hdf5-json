@@ -1,3 +1,2 @@
 file:.#egg=h5json
-sphinx
 sphinx-book-theme
