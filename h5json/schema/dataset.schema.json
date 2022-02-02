@@ -194,7 +194,6 @@
                         }
                     },
                     "required": [
-                        "alias",
                         "type",
                         "shape"
                     ]

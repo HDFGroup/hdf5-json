@@ -95,10 +95,7 @@
                             },
                             "additionalProperties": false
                         }
-                    },
-                    "required": [
-                        "alias"
-                    ]
+                    }
                 }
             }
         },
