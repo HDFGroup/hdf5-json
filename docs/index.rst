@@ -1,15 +1,14 @@
 HDF5/JSON
 =========
 
-Specification for representing and tools for manipulating HDF5 content in JSON
-by the `HDF Group <https://www.hdfgroup.org>`_.
+Specification for representation and tools for manipulation of HDF5 content in
+JSON by the `HDF Group <https://www.hdfgroup.org>`_.
 
 What is Here:
 
 .. toctree::
    :maxdepth: 2
 
-   bnf/index
-   schema/index
+   specs
    examples/index
    tools/h5json
