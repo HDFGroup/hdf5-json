@@ -1,66 +1,39 @@
-hdf5-json
-=========
+h5json
+======
 
 .. image:: https://travis-ci.org/HDFGroup/hdf5-json.svg?branch=develop
-    :target: https://travis-ci.org/HDFGroup/hdf5-json
+   :target: https://travis-ci.org/HDFGroup/hdf5-json
 
-Specification and tools for representing HDF5 in JSON
+.. image:: https://readthedocs.org/projects/hdf5-json/badge/?version=latest
+   :target: https://hdf5-json.readthedocs.io/en/latest/?badge=latest
+   :alt: Documentation Status
+
+Specification and tools for representing HDF5 in JSON.
 
 
 Introduction
 ------------
-This repository contains a specification, library, and utilities for describing HDF5 content in JSON. 
-The utilities can be used to convert any HDF5 file to JSON or from a JSON file (using the convention 
+This repository contains a specification, library, and utilities for describing HDF5 content in JSON.
+The utilities can be used to convert any HDF5 file to JSON or from a JSON file (using the convention
 described here to HDF5).
 
-The library is useful for any Python application that needs to translate between HDF5 objects and JSON 
-serializations.  In addition to the utilities provided in this repository, the library is used by HDF 
-Server (a RESTful web service for HDF5), and HDF Product Designer (an application for creating product 
-designs).   
+The library is useful for any Python application that needs to translate between HDF5 objects and JSON
+serializations.  In addition to the utilities provided in this repository, the library is used by `HDF
+Server <https://www.hdfgroup.org/solutions/highly-scalable-data-service-hsds/>`_ (a RESTful web service for HDF5), and `HDF Product Designer <https://wiki.earthdata.nasa.gov/display/HPD/HDF+Product+Designer>`_ (an application for creating product
+designs).
 
-This respository also include utilities to generate code in Fortran or Python based on a JSON file.
-
-See :doc:`Utilities` for a description of the included utilties.
 
 Websites
 --------
 
 * Main website: http://www.hdfgroup.org
 * Source code: https://github.com/HDFGroup/hdf5-json
-* Mailing list: hdf-forum@lists.hdfgroup.org <hdf-forum@lists.hdfgroup.org>
-* Documentation: http://hdf5-json.readthedocs.org
+* HDF Forum: https://forum.hdfgroup.org/c/hsds
+* Documentation: https://hdf5-json.readthedocs.org
 
-Related Projects
-----------------
-* HDF Server: https://www.hdfgroup.org/projects/hdfserver/ 
-* Product Designer: https://wiki.earthdata.nasa.gov/display/HPD/HDF+Product+Designer
-
-Installing
------------
-
-Via pip::
-
-   pip install h5json
-   
-From a release tarball or Git checkout::
-
-   python setup.py install
-   python testall.py  # optional
-   
-The hd5tojson.py and jsontoh5.py convertors will be added to the path.
-See docs/Installation.rst for step by step instructions.
-
- 
-Uninstalling
-------------
-
-Just remove the install directory and all contents to uninstall.
-
-    
 Reporting bugs (and general feedback)
 -------------------------------------
 
-Create new issues at http://github.com/HDFGroup/hdf5-json/issues for any problems you find. 
+Create new issues at http://github.com/HDFGroup/hdf5-json/issues for any problems you find.
 
-For general questions/feedback, please use the list (hdf-forum@lists.hdfgroup.org).
-
+For general questions/feedback, please post on the `HDF Forum <https://forum.hdfgroup.org/c/hsds>`_.
