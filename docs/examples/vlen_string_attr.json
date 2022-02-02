@@ -32,8 +32,10 @@
         "a9208b38-7bf7-11e4-b1be-3c15c2da029e": {
             "links": [
                 {
-                    "href": "datasets/a9217e6b-7bf7-11e4-9645-3c15c2da029e", 
-                    "title": "DS1"
+                    "collection": "datasets", 
+                    "title": "DS1",
+                    "id": "a9217e6b-7bf7-11e4-9645-3c15c2da029e",
+                    "class": "H5L_TYPE_HARD"
                 }
             ]
         }
