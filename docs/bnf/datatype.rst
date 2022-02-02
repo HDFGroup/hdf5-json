@@ -15,13 +15,13 @@ Datatype
            :| `opaque_datatype`
            :| `reference_datatype`
            :| `string_datatype`
-	   :| `vlen_datatype`
+           :| `vlen_datatype`
 
 
 .. productionlist::
    array_datatype: "{"
                  : "class" ":" "H5T_ARRAY" ","
-                 : "base" ":" `datatype` | `datatype_object_ref` ","
+                 : "base" ":" `datatype` | `datatype_ref` ","
 		 : "dims" ":" `dims_array`
 		 : "}"
 
@@ -56,7 +56,7 @@ Datatype
    field_list: `field_def` ("," `field_def`)*
    field_def: "{"
             : "name" ":" `ascii_string` ","
-	    : "type" ":" `datatype` | `datatype_object_ref` ","
+	    : "type" ":" `datatype` | `datatype_ref` ","
 	    : "}"
 
 
@@ -167,5 +167,5 @@ Datatype
 .. productionlist::
    vlen_datatype: "{"
                 : "class" ":" "H5T_VLEN" ","
-		: "base" ":" `datatype` | `datatype_object_ref` ","
+		: "base" ":" `datatype` | `datatype_ref` ","
 		: "}"

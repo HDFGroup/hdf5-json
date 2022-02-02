@@ -6,7 +6,7 @@ Attribute
    attribute_list: `attribute` ("," `attribute`)*
    attribute: "{"
             : "name" ":" `ascii_string` | `unicode_string` ","
-	    : "type" ":" `datatype` | `datatype_object_ref` ","
+	    : "type" ":" `datatype` | `datatype_ref` ","
 	    : "shape" ":" `dataspace` ","
 	    : "value" ":" `json_value` ","
             : "creationProperties" ":" `acpl`

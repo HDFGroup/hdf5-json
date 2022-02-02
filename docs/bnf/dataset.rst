@@ -5,7 +5,7 @@ Dataset
    dataset: `identifier` ":" "{"
           : "alias" ":" `hdf5_path_name_array`
 	  : "attributes" ":" `attribute_collection` ","
-	  : "type" ":" `datatype` | `datatype_object_ref` ","
+	  : "type" ":" `datatype` | `datatype_ref` ","
 	  : "shape" ":" `dataspace` ","
 	  : "value" ":" `json_value` ","
 	  : "creationProperties" ":" `dcpl`
