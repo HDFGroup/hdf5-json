@@ -103,6 +103,7 @@ test_files_latest = (
     "vlen_string_dset.json",
     "vlen_string_nullterm_attr.json",
     "vlen_string_nullterm_dset.json",
+    "vlen_string_dset_utc.json",
     "vlen_unicode_attr.json",
 )
 

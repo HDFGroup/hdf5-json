@@ -91,7 +91,7 @@ test_files = (
     "vlen_dset.h5",
     "vlen_string_attr.h5",
     "vlen_string_dset.h5",
-    # "vlen_string_dset_utc.h5",
+    "vlen_string_dset_utc.h5",
     "vlen_string_nullterm_attr.h5",
     "vlen_string_nullterm_dset.h5",
     "vlen_unicode_attr.h5",
