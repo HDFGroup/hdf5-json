@@ -11,9 +11,19 @@
 ##############################################################################
 
 from __future__ import absolute_import
-from . import _version
-
 import six
+import errno
+import time
+import h5py
+import numpy as np
+import uuid
+import os.path as op
+import os
+import json
+import logging
+from .hdf5dtype import getTypeItem, createDataType, getItemSize
+from .apiversion import _apiver
+
 
 if six.PY3:
     unicode = str
@@ -60,22 +70,7 @@ This class is used to manage UUID lookup tables for primary HDF objects (Groups,
     description: contains map of file offset to UUID.
     members: none
     attrs: map of file offset to UUID
-
-
-
-
 """
-import errno
-import time
-import h5py
-import numpy as np
-import uuid
-import os.path as op
-import os
-import json
-import logging
-
-from .hdf5dtype import getTypeItem, createDataType, getItemSize
 
 # global dictionary to direct back to the Hdf5db instance by filename
 # (needed for visititems callback)
@@ -146,7 +141,7 @@ class Hdf5db:
     @staticmethod
     def getVersionInfo():
         versionInfo = {}
-        versionInfo["hdf5-json-version"] = _version.get_versions()["version"]
+        versionInfo["hdf5-json-version"] = _apiver
         versionInfo["h5py_version"] = h5py.version.version
         versionInfo["hdf5_version"] = h5py.version.hdf5_version
         return versionInfo
@@ -2339,7 +2334,7 @@ class Hdf5db:
         values = []
         dt = dset.dtype
         typeItem = getTypeItem(dt)
-        itemSize = getItemSize(typeItem)
+        # itemSize = getItemSize(typeItem)
         if typeItem["class"] != "H5T_COMPOUND":
             msg = "Only compound type datasets can be used as query target"
             self.log.info(msg)
@@ -2736,7 +2731,8 @@ class Hdf5db:
         # each element must be a tuple, but the JSON decoder
         # gives us a list instead.
         if format == "json" and len(dset.dtype) > 1 and type(data) in (list, tuple):
-            converted_data = self.toTuple(rank, data)
+            raise NotImplementedError("need some special conversion for compound types")
+            # converted_data = self.toTuple(rank, data)
             # for i in range(len(data)):
             #    converted_data.append(self.toTuple(data[i]))
             # data = converted_data

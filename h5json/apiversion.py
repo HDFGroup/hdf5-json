@@ -9,3 +9,7 @@
 # distribution tree.  If you do not have access to this file, you may        #
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
+
+# IMPORTANT: HDF5/JSON apiVersion key value is set here. Update only when the
+# HDF5/JSON spec changes.
+_apiver = "1.1.1"
