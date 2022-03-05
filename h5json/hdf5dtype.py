@@ -194,7 +194,7 @@ def getTypeItem(dt):
     predefined_float_types = {"float32": "H5T_IEEE_F32", "float64": "H5T_IEEE_F64"}
 
     type_info = {}
-    if len(dt) > 1:
+    if len(dt) > 1 or dt.names:
         # compound type
         names = dt.names
         type_info["class"] = "H5T_COMPOUND"
@@ -444,9 +444,14 @@ def createBaseDataType(typeItem):
         if type(arrayBaseType) is dict:
             if "class" not in arrayBaseType:
                 raise KeyError("'class' not provided for array base type")
-            if arrayBaseType["class"] not in ("H5T_INTEGER", "H5T_FLOAT", "H5T_STRING"):
+            if arrayBaseType["class"] not in (
+                "H5T_INTEGER",
+                "H5T_FLOAT",
+                "H5T_STRING",
+                "H5T_COMPOUND",
+            ):
                 raise TypeError(
-                    "Array Type base type must be integer, float, or string"
+                    f"{arrayBaseType['class']}: H5T_ARRAY base type not supported."
                 )
 
         dt_base = createDataType(arrayBaseType)

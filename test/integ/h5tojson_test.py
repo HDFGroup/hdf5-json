@@ -31,6 +31,7 @@ test_files = (
     "bool_attr.h5",
     "bool_dset.h5",
     "committed_type.h5",
+    "comp_complex.h5",
     "compound.h5",
     "compound_array.h5",
     "compound_array_attr.h5",

@@ -1681,17 +1681,16 @@ class Hdf5db:
             raise IOError(errno.ENINVAL, msg)
         return out
 
-    """
-      Return a numpy value based on json representation
-    """
-
-    def getRefValue(self, typeItem, value):
+    def getRefValue(self, typeItem: dict, value: list):
+        """
+        Return a numpy value based on json representation
+        """
         out = None
         typeClass = typeItem["class"]
         if typeClass == "H5T_COMPOUND":
 
-            if type(value) not in (list, tuple):
-                msg = "Unexpected type for compound value"
+            if not isinstance(value, (list, tuple)):
+                msg = f"Unexpected type for compound value: {type(value)}"
                 self.log.error(msg)
                 raise IOError(errno.EIO, msg)
 
@@ -1723,7 +1722,7 @@ class Hdf5db:
         elif typeClass == "H5T_OPAQUE":
             out = "???"  # todo
         elif typeClass == "H5T_ARRAY":
-            out = value
+            out = self.toRef(len(typeItem["dims"]), typeItem["base"], value)
         elif typeClass in ("H5T_INTEGER", "H5T_FLOAT", "H5T_ENUM"):
             out = value  # just copy value
         elif typeClass == "H5T_STRING":
@@ -1827,14 +1826,13 @@ class Hdf5db:
                 if not hasattr(des_sec, "flags") or not des_sec.flags["WRITEABLE"]:
                     des[i] = rv
 
-    """
-       Convert json list to h5py compatible values
-    """
-
     def toRef(self, rank, typeItem, data):
+        """
+        Convert json list to h5py compatible values
+        """
         out = None
 
-        if type(typeItem) in (str, unicode):
+        if isinstance(typeItem, str):
             # commited type - get json representation
             committed_type_item = self.getCommittedTypeItemByUuid(typeItem)
             typeItem = committed_type_item["type"]
@@ -2020,11 +2018,10 @@ class Hdf5db:
 
         return out
 
-    """
-      Get item description of region reference value
-    """
-
     def getRegionReference(self, regionRef):
+        """
+        Get item description of region reference value
+        """
         selectionEnums = {
             h5py.h5s.SEL_NONE: "H5S_SEL_NONE",
             h5py.h5s.SEL_ALL: "H5S_SEL_ALL",
@@ -2066,11 +2063,10 @@ class Hdf5db:
 
         return item
 
-    """
-      Create region reference from item description of region reference value
-    """
-
     def createRegionReference(self, item):
+        """
+        Create region reference from item description of region reference value
+        """
         selectionEnums = {
             "H5S_SEL_NONE": h5py.h5s.SEL_NONE,
             "H5S_SEL_ALL": h5py.h5s.SEL_ALL,
@@ -2191,13 +2187,12 @@ class Hdf5db:
 
         return region_ref
 
-    """
-      Convert a list to a tuple, recursively.
-      Example. [[1,2],[3,4]] -> ((1,2),(3,4))
-    """
-
     def toTuple(self, rank, data):
-        if type(data) in (list, tuple):
+        """
+        Convert a list to a tuple, recursively.
+        Example. [[1,2],[3,4]] -> ((1,2),(3,4))
+        """
+        if isinstance(data, (list, tuple)):
             if rank > 0:
                 return list(self.toTuple(rank - 1, x) for x in data)
             else:
@@ -2205,13 +2200,12 @@ class Hdf5db:
         else:
             return data
 
-    """
-    Get values from dataset identified by obj_uuid.
-    If a slices list or tuple is provided, it should have the same
-    number of elements as the rank of the dataset.
-    """
-
     def getDatasetValuesByUuid(self, obj_uuid, slices=Ellipsis, format="json"):
+        """
+        Get values from dataset identified by obj_uuid.
+        If a slices list or tuple is provided, it should have the same
+        number of elements as the rank of the dataset.
+        """
         dset = self.getDatasetObjByUuid(obj_uuid)
         if format not in ("json", "binary"):
             msg = "only json and binary formats are supported"
@@ -2280,13 +2274,13 @@ class Hdf5db:
                     msg = "Unexpected error, object type unknown"
                     self.log.error(msg)
                     raise IOError(errno.EIO, msg)
-        elif dt.kind == "V" and len(dt) <= 1 and len(dt.shape) == 0:
+        elif dt.kind == "V" and len(dt) <= 1 and len(dt.shape) == 0 and not dt.names:
             # opaque type - skip for now
             self.log.warning("unable to get opaque type values")
             values = "????"
         elif dt.kind == "S" and format == "json" and six.PY3:
             values = self.bytesArrayToList(dset[slices])
-        elif len(dt) > 1:
+        elif len(dt) > 1 or dt.names:
             # compound type
             if format == "json":
                 values = self.bytesArrayToList(dset[slices])
@@ -2604,7 +2598,7 @@ class Hdf5db:
         # need some special conversion for compound types --
         # each element must be a tuple, but the JSON decoder
         # gives us a list instead.
-        if format != "binary" and len(dset.dtype) > 1 and type(data) in (list, tuple):
+        if format != "binary" and dset.dtype.names and isinstance(data, (list, tuple)):
             data = self.toTuple(rank, data)
             # for i in range(len(data)):
             #    converted_data.append(self.toTuple(data[i]))
@@ -2951,7 +2945,7 @@ class Hdf5db:
                     shape=datashape,
                     maxshape=max_shape,
                     dtype=dt_ref,
-                    **kwargs
+                    **kwargs,
                 )
             except ValueError as ve:
                 msg = "Unable to create dataset"

@@ -62,7 +62,7 @@ class Writeh5:
     #
     def createDataset(self, uuid, body):
         datatype = body["type"]
-        if type(datatype) in (str, unicode) and datatype.startswith("datatypes/"):
+        if isinstance(datatype, str) and datatype.startswith("datatypes/"):
             # committed datatype, just pass in the UUID part
             datatype = datatype[len("datatypes/") :]
         dims = ()  # if no space in body, default to scalar
