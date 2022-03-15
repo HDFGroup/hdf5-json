@@ -30,16 +30,15 @@ if h5py.version.version_tuple < (3, 0, 0):
 
 # Run all hdf5-json tests
 # Run this script before running any integ tests
-os.chdir("test/unit")
 for file_name in unit_tests:
     print(file_name)
-    rc = os.system("python " + file_name + ".py")
+    rc = os.system("python test/unit/" + file_name + ".py")
     if rc != 0:
         sys.exit("FAILED")
 shutil.rmtree("./out", ignore_errors=True)
 os.remove("hdf5dbtest.log")
 
-os.chdir("../integ")
+os.chdir("test/integ")
 for file_name in integ_tests:
     print(file_name)
     rc = os.system("python " + file_name + ".py")

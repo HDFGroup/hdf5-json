@@ -16,9 +16,6 @@ from h5py import special_dtype
 from h5py import check_dtype
 from h5py import Reference
 from h5py import RegionReference
-import six
-
-
 from h5json import hdf5dtype
 
 
@@ -65,7 +62,7 @@ class Hdf5dtypeTest(unittest.TestCase):
             pass  # expected
 
     def testBaseVLenAsciiTypeItem(self):
-        dt = special_dtype(vlen=six.binary_type)
+        dt = special_dtype(vlen=bytes)
         typeItem = hdf5dtype.getTypeItem(dt)
         typeSize = hdf5dtype.getItemSize(typeItem)
         self.assertEqual(typeItem["class"], "H5T_STRING")
@@ -75,7 +72,7 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertEqual(typeSize, "H5T_VARIABLE")
 
     def testBaseVLenUnicodeTypeItem(self):
-        dt = special_dtype(vlen=six.text_type)
+        dt = special_dtype(vlen=str)
         typeItem = hdf5dtype.getTypeItem(dt)
         typeSize = hdf5dtype.getItemSize(typeItem)
         self.assertEqual(typeItem["class"], "H5T_STRING")
@@ -193,7 +190,7 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertEqual(field_c_base_base_type["base"], "H5T_STD_I32LE")
 
     def testCompoundArrayVlenStringTypeItem(self):
-        dt_vlen = special_dtype(vlen=six.binary_type)
+        dt_vlen = special_dtype(vlen=bytes)
         dt_arr = np.dtype((dt_vlen, (4,)))
         dt_compound = np.dtype(
             [("VALUE1", np.float64), ("VALUE2", np.int64), ("VALUE3", dt_arr)]
@@ -336,10 +333,7 @@ class Hdf5dtypeTest(unittest.TestCase):
         typeItem = {"class": "H5T_STRING", "charSet": "H5T_CSET_ASCII", "length": 6}
         typeSize = hdf5dtype.getItemSize(typeItem)
         dt = hdf5dtype.createDataType(typeItem)
-        if six.PY3:
-            self.assertEqual(dt.name, "bytes48")
-        else:
-            self.assertEqual(dt.name, "string48")
+        self.assertEqual(dt.name, "bytes48")
         self.assertEqual(dt.kind, "S")
         self.assertEqual(typeSize, 6)
 
@@ -361,10 +355,7 @@ class Hdf5dtypeTest(unittest.TestCase):
         }
         typeSize = hdf5dtype.getItemSize(typeItem)
         dt = hdf5dtype.createDataType(typeItem)
-        if six.PY3:
-            self.assertEqual(dt.name, "bytes48")
-        else:
-            self.assertEqual(dt.name, "string48")
+        self.assertEqual(dt.name, "bytes48")
         self.assertEqual(dt.kind, "S")
         self.assertEqual(typeSize, 6)
 
@@ -391,7 +382,7 @@ class Hdf5dtypeTest(unittest.TestCase):
         dt = hdf5dtype.createDataType(typeItem)
         self.assertEqual(dt.name, "object")
         self.assertEqual(dt.kind, "O")
-        self.assertEqual(check_dtype(vlen=dt), six.text_type)
+        self.assertEqual(check_dtype(vlen=dt), str)
         self.assertEqual(typeSize, "H5T_VARIABLE")
 
     def testCreateVLenDataType(self):

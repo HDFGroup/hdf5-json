@@ -9,9 +9,6 @@
 # distribution tree.  If you do not have access to this file, you may        #
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
-
-from __future__ import absolute_import
-import six
 import errno
 import time
 import h5py
@@ -24,53 +21,6 @@ import logging
 from .hdf5dtype import getTypeItem, createDataType, getItemSize
 from .apiversion import _apiver
 
-
-if six.PY3:
-    unicode = str
-
-
-"""
-This class is used to manage UUID lookup tables for primary HDF objects (Groups, Datasets,
- and Datatypes).  For HDF5 files that are read/write, this information is managed within
- the file itself in the "__db__" group.  For read-only files, the data is managed in
- an external file (domain filename with ".db" extension).
-
- "___db__"  ("root" for read-only case)
-    description: Group object (member of root group). Only objects below this group are used
-            for UUID data
-    members: "{groups}", "{datasets}", "{datatypes}", "{objects}", "{paths}"
-    attrs: 'rootUUID': UUID of the root group
-
-"{groups}"
-    description: contains map of UUID->group objects
-    members: hard link to each anonymous group (i.e. groups which are not
-        linked to by anywhere else).  Link name is the UUID
-    attrs: group reference (or path for read-only files) to the group (for non-
-        anonymous groups).
-
-"{datasets}"
-    description: contains map of UUID->dataset objects
-    members: hard link to each anonymous dataset (i.e. datasets which are not
-        linked to by anywhere else).  Link name is the UUID
-    attrs: dataset reference (or path for read-only files) to the dataset (for non-
-        anonymous datasets).
-
-"{dataset_props}:
-    description contains dataset creation properties"
-    members: sub-group with link name as UUID.  Sub-group attributes are the creation props
-
-"{datatypes}"
-    description: contains map of UUID->datatyped objects
-    members: hard link to each anonymous datatype (i.e. datatypes which are not
-        linked to by anywhere else).  Link name is the UUID
-    attrs: datatype reference (or path for read-only files) to the datatype (for non-
-        anonymous datatypes).
-
-"{addr}"
-    description: contains map of file offset to UUID.
-    members: none
-    attrs: map of file offset to UUID
-"""
 
 # global dictionary to direct back to the Hdf5db instance by filename
 # (needed for visititems callback)
@@ -129,6 +79,49 @@ def visitObj(path, obj):
 
 
 class Hdf5db:
+    """
+    This class is used to manage UUID lookup tables for primary HDF objects (Groups, Datasets,
+    and Datatypes).  For HDF5 files that are read/write, this information is managed within
+    the file itself in the "__db__" group.  For read-only files, the data is managed in
+    an external file (domain filename with ".db" extension).
+
+    "___db__"  ("root" for read-only case)
+        description: Group object (member of root group). Only objects below this group are used
+                for UUID data
+        members: "{groups}", "{datasets}", "{datatypes}", "{objects}", "{paths}"
+        attrs: 'rootUUID': UUID of the root group
+
+    "{groups}"
+        description: contains map of UUID->group objects
+        members: hard link to each anonymous group (i.e. groups which are not
+            linked to by anywhere else).  Link name is the UUID
+        attrs: group reference (or path for read-only files) to the group (for non-
+            anonymous groups).
+
+    "{datasets}"
+        description: contains map of UUID->dataset objects
+        members: hard link to each anonymous dataset (i.e. datasets which are not
+            linked to by anywhere else).  Link name is the UUID
+        attrs: dataset reference (or path for read-only files) to the dataset (for non-
+            anonymous datasets).
+
+    "{dataset_props}:
+        description contains dataset creation properties"
+        members: sub-group with link name as UUID.  Sub-group attributes are the creation props
+
+    "{datatypes}"
+        description: contains map of UUID->datatyped objects
+        members: hard link to each anonymous datatype (i.e. datatypes which are not
+            linked to by anywhere else).  Link name is the UUID
+        attrs: datatype reference (or path for read-only files) to the datatype (for non-
+            anonymous datatypes).
+
+    "{addr}"
+        description: contains map of file offset to UUID.
+        members: none
+        attrs: map of file offset to UUID
+    """
+
     @staticmethod
     def createHDF5File(filePath):
         # create an "empty" hdf5 file
@@ -414,11 +407,9 @@ class Hdf5db:
             acl[field] = value
         return acl
 
-    """
-      Get default acl - returns dict obj
-    """
-
     def getDefaultAcl(self):
+        """Get default acl - returns dict obj"""
+
         dt = self.getAclDtype()
         acl = {}
         for field in dt.fields.keys():
@@ -428,22 +419,21 @@ class Hdf5db:
                 acl[field] = 1  # default is allowed
         return acl
 
-    """
-      getAcl - return ACL for given uuid and userid
-        returns ACL associated with the given uuid, or if none exists,
-        the ACL associatted with the root group.
-
-        If an ACL is not present for a userid/obj and ACL will be returned
-        via the following precedence:
-
-        1) obj_uuid, user_id
-        2) root_uuid, user_id
-        3) obj_uuid, 0
-        4) root_uuid, 0
-        5) 'all perm' ACL
-    """
-
     def getAcl(self, obj_uuid, userid):
+        """
+        getAcl - return ACL for given uuid and userid
+            returns ACL associated with the given uuid, or if none exists,
+            the ACL associatted with the root group.
+
+            If an ACL is not present for a userid/obj and ACL will be returned
+            via the following precedence:
+
+            1) obj_uuid, user_id
+            2) root_uuid, user_id
+            3) obj_uuid, 0
+            4) root_uuid, 0
+            5) 'all perm' ACL
+        """
         acl_grp = self.getAclGroup()
 
         if acl_grp is not None:
@@ -474,13 +464,11 @@ class Hdf5db:
 
         return acl
 
-    """
-      get ACL for specific uuid and user
-         return None if not found
-    """
-
     def getAclByObjAndUser(self, obj_uuid, userid):
-
+        """
+        get ACL for specific uuid and user
+            return None if not found
+        """
         acl = None
         acl_dset = self.getAclDataset(obj_uuid)
 
@@ -499,12 +487,10 @@ class Hdf5db:
             acl = self.convertAclNdArrayToDict(acl)
         return acl
 
-    """
-      getAcls - get all acls for given uuid
-    """
-
     def getAcls(self, obj_uuid):
-
+        """
+        getAcls - get all acls for given uuid
+        """
         acls = []
         acl_dset = self.getAclDataset(obj_uuid)
 
@@ -519,11 +505,10 @@ class Hdf5db:
 
         return acls
 
-    """
-      setAcl -  set the acl for given uuid.
-    """
-
     def setAcl(self, obj_uuid, acl):
+        """
+        setAcl -  set the acl for given uuid.
+        """
         acl_dset = self.getAclDataset(obj_uuid, create=True)
 
         if acl_dset is None:
@@ -697,11 +682,10 @@ class Hdf5db:
             obj_uuid = obj_uuid.decode("utf-8")
         return obj_uuid
 
-    """
-     Get the number of links in a group to an object
-    """
-
     def getNumLinksToObjectInGroup(self, grp, obj):
+        """
+        Get the number of links in a group to an object
+        """
         objAddr = h5py.h5o.get_info(obj.id).addr
         numLinks = 0
         for name in grp:
@@ -718,11 +702,10 @@ class Hdf5db:
 
         return numLinks
 
-    """
-     Get the number of links to the given object
-    """
-
     def getNumLinksToObject(self, obj):
+        """
+        Get the number of links to the given object
+        """
         self.initFile()
         groups = self.dbGrp["{groups}"]
         numLinks = 0
@@ -822,11 +805,10 @@ class Hdf5db:
 
         return item
 
-    """
-    getNullReference - return a null object reference
-    """
-
     def getNullReference(self):
+        """
+        getNullReference - return a null object reference
+        """
         tmpGrp = None
         if "{tmp}" not in self.dbGrp:
             tmpGrp = self.dbGrp.create_group("{tmp}")
@@ -838,11 +820,10 @@ class Hdf5db:
         nullref_dset = tmpGrp["nullref"]
         return nullref_dset[0]
 
-    """
-    getNullRegionReference - return a null region reference
-    """
-
     def getNullRegionReference(self):
+        """
+        getNullRegionReference - return a null region reference
+        """
         tmpGrp = None
         if "{tmp}" not in self.dbGrp:
             tmpGrp = self.dbGrp.create_group("{tmp}")
@@ -1058,17 +1039,13 @@ class Hdf5db:
 
         return item
 
-    """
-    createTypeFromItem - create type given dictionary definition
-    """
-
     def createTypeFromItem(self, attr_type):
+        """
+        createTypeFromItem - create type given dictionary definition
+        """
         dt = None
 
-        if (
-            type(attr_type) in (six.text_type, six.binary_type)
-            and len(attr_type) == UUID_LEN
-        ):
+        if isinstance(attr_type, (str, bytes)) and len(attr_type) == UUID_LEN:
             # assume attr_type is a uuid of a named datatype
             tgt = self.getCommittedTypeObjByUuid(attr_type)
             if tgt is None:
@@ -1097,12 +1074,11 @@ class Hdf5db:
                 raise IOError(errno, errno.EIO, msg)
         return dt
 
-    """
-    createCommittedType - creates new named datatype
-    Returns item
-    """
-
     def createCommittedType(self, datatype, obj_uuid=None):
+        """
+        createCommittedType - creates new named datatype
+        Returns item
+        """
         self.log.info("createCommittedType")
         self.initFile()
         if self.readonly:
@@ -1137,12 +1113,11 @@ class Hdf5db:
             item["mtime"] = self.getModifiedTime(obj_uuid)
         return item
 
-    """
-    getCommittedTypeObjByUuid - get obj from {datatypes} collection
-    Returns type obj
-    """
-
     def getCommittedTypeObjByUuid(self, obj_uuid):
+        """
+        getCommittedTypeObjByUuid - get obj from {datatypes} collection
+        Returns type obj
+        """
         self.log.info("getCommittedTypeObjByUuid(" + obj_uuid + ")")
         self.initFile()
         datatype = None
@@ -1159,12 +1134,11 @@ class Hdf5db:
 
         return datatype
 
-    """
-    getCommittedTypeItemByUuid - get json from {datatypes} collection
-    Returns type obj
-    """
-
     def getCommittedTypeItemByUuid(self, obj_uuid):
+        """
+        getCommittedTypeItemByUuid - get json from {datatypes} collection
+        Returns type obj
+        """
         self.log.info("getCommittedTypeItemByUuid(" + obj_uuid + ")")
         self.initFile()
         datatype = self.getCommittedTypeObjByUuid(obj_uuid)
@@ -1192,12 +1166,11 @@ class Hdf5db:
 
         return item
 
-    """
-      Get attribute given an object and name
-      returns: JSON object
-    """
-
     def getAttributeItemByObj(self, obj, name, includeData=True):
+        """
+        Get attribute given an object and name
+        returns: JSON object
+        """
         if name not in obj.attrs:
             msg = "Attribute: [" + name + "] not found in object: " + obj.name
             self.log.info(msg)
@@ -1332,11 +1305,10 @@ class Hdf5db:
 
         return item
 
-    """
-    isDimensionList - return True if this attribute json looks like a dimension list
-    """
-
     def isDimensionList(self, attr_name, attr_type):
+        """
+        isDimensionList - return True if this attribute json looks like a dimension list
+        """
         if attr_name != "DIMENSION_LIST":
             return False
         if type(attr_type) is not dict:
@@ -1348,11 +1320,10 @@ class Hdf5db:
             return False
         return True
 
-    """
-    isReferenceList - return True if this attribute json looks like a reference list
-    """
-
     def isReferenceList(self, attr_name, attr_type):
+        """
+        isReferenceList - return True if this attribute json looks like a reference list
+        """
         if attr_name != "REFERENCE_LIST":
             return False
         if type(attr_type) is not dict:
@@ -1362,14 +1333,13 @@ class Hdf5db:
 
         return True
 
-    """
-     makeDimensionList - work-around for h5py problems saving dimension list -
-        types which are vlen's of references are not working directly, so use dim_scale api
-        Note: this is a work-around for h5py issue:
-         https://github.com/h5py/h5py/issues/553
-    """
-
     def makeDimensionList(self, obj, shape, value):
+        """
+        makeDimensionList - work-around for h5py problems saving dimension list -
+            types which are vlen's of references are not working directly, so use dim_scale api
+            Note: this is a work-around for h5py issue:
+            https://github.com/h5py/h5py/issues/553
+        """
         dset_refs = self.listToRef(value)
         for i in range(len(dset_refs)):
             refs = dset_refs[i]
@@ -1396,30 +1366,27 @@ class Hdf5db:
                 except RuntimeError:
                     self.log.error("got runtime error attaching scale")
 
-    """
-    writeNdArrayToAttribute - create an attribute given numpy array
-    """
-
     def writeNdArrayToAttribute(self, attrs, attr_name, npdata, shape, dt):
+        """
+        writeNdArrayToAttribute - create an attribute given numpy array
+        """
         attrs.create(attr_name, npdata, shape=shape, dtype=dt)
 
-    """
-    create a scalar string attribute using nullterm padding
-    """
-
     def makeNullTermStringAttribute(self, obj, attr_name, strLength, value):
+        """
+        create a scalar string attribute using nullterm padding
+        """
         self.log.info(
             "make nullterm, length: " + str(strLength) + " value:" + str(value)
         )
-        if type(value) == unicode:
-            value = str(value)
+        value = str(value)
         if strLength < len(value):
             self.log.warning(
                 "makeNullTermStringAttribute: value string longer than length"
             )
             # value = value[:strLength]  # truncate to length
 
-        if six.PY3 and type(attr_name) is str:
+        if isinstance(attr_name, str):
             try:
                 attr_name = attr_name.encode("ascii")
             except UnicodeDecodeError:
@@ -1442,7 +1409,7 @@ class Hdf5db:
         attribute)
         """
         is_committed_type = False
-        if type(attr_type) in (str, unicode) and len(attr_type) == UUID_LEN:
+        if isinstance(attr_type, str) and len(attr_type) == UUID_LEN:
             # assume attr_type is a uuid of a named datatype
             is_committed_type = True
 
@@ -1461,11 +1428,8 @@ class Hdf5db:
             else:
                 tmpGrp = self.dbGrp["{tmp}"]
             tmpGrp.attrs.create(attr_name, 0, shape=(), dtype=dt)
-            if six.PY3:
-                b_attr_name = attr_name.encode("utf-8")
-                tmpAttr = h5py.h5a.open(tmpGrp.id, name=b_attr_name)
-            else:
-                tmpAttr = h5py.h5a.open(tmpGrp.id, name=attr_name)
+            b_attr_name = attr_name.encode("utf-8")
+            tmpAttr = h5py.h5a.open(tmpGrp.id, name=b_attr_name)
             if not tmpAttr:
                 msg = "Unexpected error creating datatype for nullspace attribute"
                 self.log.error(msg)
@@ -1476,10 +1440,7 @@ class Hdf5db:
             if attr_name in obj.attrs:
                 self.log.info("deleting attribute: " + attr_name)
                 del obj.attrs[attr_name]
-            if six.PY3:
-                attr_id = h5py.h5a.create(obj.id, b_attr_name, tid, sid)
-            else:
-                attr_id = h5py.h5a.create(obj.id, attr_name, tid, sid)
+            attr_id = h5py.h5a.create(obj.id, b_attr_name, tid, sid)
             # delete the temp attribute
             del tmpGrp.attrs[attr_name]
             if not attr_id:
@@ -1663,17 +1624,13 @@ class Hdf5db:
         elif typeClass in ("H5T_INTEGER", "H5T_FLOAT", "H5T_ENUM"):
             out = value  # just copy value
         elif typeClass == "H5T_STRING":
-            if six.PY3:
-                if "charSet" in typeItem:
-                    charSet = typeItem["charSet"]
-                else:
-                    charSet = "H5T_CSET_ASCII"
-                if charSet == "H5T_CSET_ASCII" and isinstance(value, bytes):
-                    out = value.decode("utf-8")
-                else:
-                    out = value
+            if "charSet" in typeItem:
+                charSet = typeItem["charSet"]
             else:
-                # things are simpler in PY2
+                charSet = "H5T_CSET_ASCII"
+            if charSet == "H5T_CSET_ASCII" and isinstance(value, bytes):
+                out = value.decode("utf-8")
+            else:
                 out = value
         else:
             msg = "Unexpected type class: " + typeClass
@@ -1943,7 +1900,7 @@ class Hdf5db:
         if not data:
             # null reference
             out = self.getNullReference()
-        elif type(data) in (bytes, str, unicode):
+        elif isinstance(data, (bytes, str)):
             obj_ref = None
             # object reference should be in the form: <collection_name>/<uuid>
             for prefix in ("datasets", "groups", "datatypes"):
@@ -1982,24 +1939,23 @@ class Hdf5db:
             raise IOError(errno.EINVAL, msg)
         return out
 
-    """
-       Convert list that may contain bytes type elements to list of string elements
-    """
-
     def bytesArrayToList(self, data):
-        if type(data) in (bytes, str, unicode):
+        """
+        Convert list that may contain bytes type elements to list of string elements
+        """
+        if isinstance(data, (bytes, str)):
             is_list = False
         elif isinstance(data, (np.ndarray, np.generic)):
             if len(data.shape) == 0:
                 is_list = False
                 data = data.tolist()  # tolist will return a scalar in this case
-                if type(data) in (list, tuple):
+                if isinstance(data, (list, tuple)):
                     is_list = True
                 else:
                     is_list = False
             else:
                 is_list = True
-        elif type(data) in (list, tuple):
+        elif isinstance(data, (list, tuple)):
             is_list = True
         else:
             is_list = False
@@ -2008,11 +1964,8 @@ class Hdf5db:
             out = []
             for item in data:
                 out.append(self.bytesArrayToList(item))  # recursive call
-        elif type(data) is bytes:
-            if six.PY3:
-                out = data.decode("utf-8")
-            else:
-                out = data
+        elif isinstance(data, bytes):
+            out = data.decode("utf-8")
         else:
             out = data
 
@@ -2176,11 +2129,7 @@ class Hdf5db:
                 )
 
         # now that we've selected the desired region in the space, return a region reference
-
-        if six.PY3:
-            dset_name = dset.name.encode("utf-8")
-        else:
-            dset_name = dset.name
+        dset_name = dset.name.encode("utf-8")
         region_ref = h5py.h5r.create(
             self.f.id, dset_name, h5py.h5r.DATASET_REGION, space_id
         )
@@ -2278,7 +2227,7 @@ class Hdf5db:
             # opaque type - skip for now
             self.log.warning("unable to get opaque type values")
             values = "????"
-        elif dt.kind == "S" and format == "json" and six.PY3:
+        elif dt.kind == "S" and format == "json":
             values = self.bytesArrayToList(dset[slices])
         elif len(dt) > 1 or dt.names:
             # compound type
@@ -2928,17 +2877,12 @@ class Hdf5db:
             sid = sid = h5py.h5s.create(h5py.h5s.NULL)
             # now create the permanent dataset
             gid = datasets.id
-            if six.PY3:
-                b_obj_uuid = obj_uuid.encode("utf-8")
-                dataset_id = h5py.h5d.create(gid, b_obj_uuid, tid, sid)
-            else:
-                dataset_id = h5py.h5d.create(gid, obj_uuid, tid, sid)
+            b_obj_uuid = obj_uuid.encode("utf-8")
+            dataset_id = h5py.h5d.create(gid, b_obj_uuid, tid, sid)
             # delete the temp dataset
             del tmpGrp[obj_uuid]
         else:
-
             # create the dataset
-
             try:
                 newDataset = datasets.create_dataset(
                     obj_uuid,

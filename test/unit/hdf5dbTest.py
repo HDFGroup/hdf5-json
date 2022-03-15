@@ -17,14 +17,14 @@ import os.path as op
 import stat
 import logging
 import shutil
-
 from h5json import Hdf5db
+
 
 UUID_LEN = 36  # length for uuid strings
 
 
 def getFile(name, tgt, ro=False):
-    src = "../../data/hdf5/" + name
+    src = "data/hdf5/" + name
     logging.info("copying file to this directory: " + src)
 
     filepath = "./out/" + tgt

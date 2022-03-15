@@ -19,22 +19,15 @@ from h5py.h5t import special_dtype
 from h5py.h5t import check_dtype
 from h5py.h5r import Reference
 from h5py.h5r import RegionReference
-import six
-
-if six.PY3:
-    unicode = str
-
-
-"""
-Convert the given type item  to a predefined type string for
-predefined integer and floating point types ("H5T_STD_I64LE", et. al).
-For compound types, recursively iterate through the typeItem and do same
-conversion for fields of the compound type.
-"""
 
 
 def getTypeResponse(typeItem):
-
+    """
+    Convert the given type item  to a predefined type string for
+    predefined integer and floating point types ("H5T_STD_I64LE", et. al).
+    For compound types, recursively iterate through the typeItem and do same
+    conversion for fields of the compound type.
+    """
     response = None
     if "uuid" in typeItem:
         # committed type, just return uuid
@@ -75,16 +68,16 @@ def getTypeResponse(typeItem):
     return response
 
 
-"""
+def getItemSize(typeItem):
+    """
     Get size of an item in bytes.
     For variable length types (e.g. variable length strings),
     return the string "H5T_VARIABLE"
-"""
-
-
-def getItemSize(typeItem):
+    """
     # handle the case where we are passed a primitive type first
-    if type(typeItem) in [six.string_types, six.text_type, six.binary_type]:
+    if isinstance(typeItem, bytes):
+        typeItem = typeItem.decode("ascii")
+    if isinstance(typeItem, str):
         for type_prefix in ("H5T_STD_I", "H5T_STD_U", "H5T_IEEE_F"):
             if typeItem.startswith(type_prefix):
                 num_bits = typeItem[len(type_prefix) :]
@@ -220,12 +213,12 @@ def getTypeItem(dt):
         if vlen_check is not None and type(vlen_check) != np.dtype:
             vlen_check = np.dtype(vlen_check)
         ref_check = check_dtype(ref=dt.base)
-        if vlen_check == six.binary_type:
+        if vlen_check == bytes:
             type_info["class"] = "H5T_STRING"
             type_info["length"] = "H5T_VARIABLE"
             type_info["charSet"] = "H5T_CSET_ASCII"
             type_info["strPad"] = "H5T_STR_NULLTERM"
-        elif vlen_check == six.text_type:
+        elif vlen_check == str:
             type_info["class"] = "H5T_STRING"
             type_info["length"] = "H5T_VARIABLE"
             type_info["charSet"] = "H5T_CSET_UTF8"
@@ -365,7 +358,7 @@ def getNumpyTypename(hdf5TypeName, typeClass=None):
 def createBaseDataType(typeItem):
 
     dtRet = None
-    if type(typeItem) in (str, unicode):
+    if isinstance(typeItem, str):
         # should be one of the predefined types
         dtName = getNumpyTypename(typeItem)
         dtRet = np.dtype(dtName)
@@ -404,7 +397,7 @@ def createBaseDataType(typeItem):
             if typeItem["charSet"] == "H5T_CSET_ASCII":
                 dtRet = special_dtype(vlen=bytes)
             elif typeItem["charSet"] == "H5T_CSET_UTF8":
-                dtRet = special_dtype(vlen=unicode)
+                dtRet = special_dtype(vlen=str)
             else:
                 raise TypeError("unexpected 'charSet' value")
         else:
@@ -519,7 +512,7 @@ Create a numpy datatype given a json type
 
 def createDataType(typeItem):
     dtRet = None
-    if type(typeItem) in [six.string_types, six.text_type, six.binary_type]:
+    if isinstance(typeItem, (str, bytes)):
         # should be one of the predefined types
         dtName = getNumpyTypename(typeItem)
         dtRet = np.dtype(dtName)
@@ -550,19 +543,17 @@ def createDataType(typeItem):
             if "type" not in field:
                 raise KeyError("'type' missing from field")
             field_name = field["name"]
-            if type(field_name) == unicode:
+            if isinstance(field_name, str):
                 # verify the field name is ascii
                 try:
-                    ascii_name = field_name.encode("ascii")
+                    field_name.encode("ascii")
                 except UnicodeDecodeError:
                     raise TypeError("non-ascii field name not allowed")
-                if not six.PY3:
-                    field["name"] = ascii_name
 
             dt = createDataType(field["type"])  # recursive call
             if dt is None:
                 raise Exception("unexpected error")
-            subtypes.append((field["name"], dt))  # append tuple
+            subtypes.append((field_name, dt))  # append tuple
 
         dtRet = np.dtype(subtypes)
 

@@ -14,20 +14,17 @@ import json
 import argparse
 import os.path as op
 import tempfile
-
 import logging
 import logging.handlers
-
 from h5json import Hdf5db
 from h5json import hdf5dtype
 
 
-"""
-DumpJson - return json representation of all objects within the given file
-"""
-
-
 class DumpJson:
+    """
+    DumpJson - return json representation of all objects within the given file
+    """
+
     def __init__(self, db, app_logger=None, options=None):
         self.options = options
         self.db = db
@@ -200,13 +197,11 @@ class DumpJson:
         print(json.dumps(self.json, sort_keys=True, indent=4))
 
 
-"""
-  Generate a temporary filename to avoid problems with trying to create a dbfile
-  in a read-only directory.  (See: https://github.com/HDFGroup/h5serv/issues/37)
-"""
-
-
 def getTempFileName():
+    """
+    Generate a temporary filename to avoid problems with trying to create a dbfile
+    in a read-only directory.  (See: https://github.com/HDFGroup/h5serv/issues/37)
+    """
     f = tempfile.NamedTemporaryFile(delete=False)
     f.close()
     return f.name

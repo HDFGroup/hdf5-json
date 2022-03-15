@@ -9,12 +9,6 @@
 # distribution tree.  If you do not have access to this file, you may        #
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
-import six
-
-if six.PY3:
-    unicode = str
-
-import sys
 import json
 import argparse
 import h5py
@@ -109,7 +103,7 @@ class Writeh5:
     def createAttribute(self, attr_json, col_name, uuid):
         attr_name = attr_json["name"]
         datatype = attr_json["type"]
-        if type(datatype) in (str, unicode) and datatype.startswith("datatypes/"):
+        if isinstance(datatype, str) and datatype.startswith("datatypes/"):
             # committed datatype, just pass in the UUID part
             datatype = datatype[len("datatypes/") :]
 

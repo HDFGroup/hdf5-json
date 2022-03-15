@@ -38,7 +38,7 @@ setup(
     ],
     python_requires=">=3.7",
     install_requires=["numpy>=1.16.6", "h5py>=3.0", "jsonschema>=4.4.0"],
-    setup_requires=["pkgconfig", "six"],
+    setup_requires=["pkgconfig"],
     zip_safe=False,
     extras_require={
         "dev": ["check-manifest"],
