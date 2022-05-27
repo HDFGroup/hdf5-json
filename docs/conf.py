@@ -1,3 +1,4 @@
+from datetime import date
 import h5json
 
 # -- General configuration ------------------------------------------------
@@ -24,7 +25,7 @@ master_doc = "index"
 
 # General information about the project.
 project = "HDF5/JSON"
-copyright = "2014, The HDF Group"
+copyright = f"2014 - {date.today().year}, The HDF Group"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -98,7 +99,7 @@ html_theme = "sphinx_book_theme"
 
 # The name for this set of Sphinx documents.  If None, it defaults to
 # "<project> v<release> documentation".
-# html_title = None
+html_title = f"{project} {release}"
 
 # A shorter title for the navigation bar.  Default is the same as html_title.
 # html_short_title = None
