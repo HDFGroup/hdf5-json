@@ -1,91 +1,103 @@
 {
-    "apiVersion": "1.0.0", 
+    "apiVersion": "1.0.0",
     "datasets": {
         "9fa5814c-83f8-11e5-8820-3c15c2da029e": {
             "alias": [
                 "/DS1"
-            ], 
+            ],
             "creationProperties": {
-                "allocTime": "H5D_ALLOC_TIME_LATE", 
-                "fillTime": "H5D_FILL_TIME_IFSET", 
+                "allocTime": "H5D_ALLOC_TIME_LATE",
+                "fillTime": "H5D_FILL_TIME_IFSET",
                 "layout": {
                     "class": "H5D_CONTIGUOUS"
                 }
-            }, 
+            },
             "shape": {
-                "class": "H5S_SIMPLE", 
+                "class": "H5S_SIMPLE",
                 "dims": [
-                    4, 
+                    4,
                     7
                 ]
-            }, 
+            },
             "type": {
                 "base": {
-                    "base": "H5T_STD_I16BE", 
+                    "base": "H5T_STD_I16BE",
                     "class": "H5T_INTEGER"
-                }, 
-                "class": "H5T_ENUM", 
-                "mapping": {
-                    "GAS": 2, 
-                    "LIQUID": 1, 
-                    "PLASMA": 3, 
-                    "SOLID": 0
-                }
-            }, 
+                },
+                "class": "H5T_ENUM",
+                "members": [
+                    {
+                        "name": "GAS",
+                        "value": 2
+                    },
+                    {
+                        "name": "LIQUID",
+                        "value": 1
+                    },
+                    {
+                        "name": "PLASMA",
+                        "value": 3
+                    },
+                    {
+                        "name": "SOLID",
+                        "value": 0
+                    }
+                ]
+            },
             "value": [
                 [
-                    0, 
-                    0, 
-                    0, 
-                    0, 
-                    0, 
-                    0, 
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
                     0
-                ], 
+                ],
                 [
-                    0, 
-                    1, 
-                    2, 
-                    3, 
-                    0, 
-                    1, 
+                    0,
+                    1,
+                    2,
+                    3,
+                    0,
+                    1,
                     2
-                ], 
+                ],
                 [
-                    0, 
-                    2, 
-                    0, 
-                    2, 
-                    0, 
-                    2, 
+                    0,
+                    2,
+                    0,
+                    2,
+                    0,
+                    2,
                     0
-                ], 
+                ],
                 [
-                    0, 
-                    3, 
-                    2, 
-                    1, 
-                    0, 
-                    3, 
+                    0,
+                    3,
+                    2,
+                    1,
+                    0,
+                    3,
                     2
                 ]
             ]
         }
-    }, 
+    },
     "groups": {
         "9fa476bd-83f8-11e5-99f7-3c15c2da029e": {
             "alias": [
                 "/"
-            ], 
+            ],
             "links": [
                 {
-                    "class": "H5L_TYPE_HARD", 
-                    "collection": "datasets", 
-                    "id": "9fa5814c-83f8-11e5-8820-3c15c2da029e", 
+                    "class": "H5L_TYPE_HARD",
+                    "collection": "datasets",
+                    "id": "9fa5814c-83f8-11e5-8820-3c15c2da029e",
                     "title": "DS1"
                 }
             ]
         }
-    }, 
+    },
     "root": "9fa476bd-83f8-11e5-99f7-3c15c2da029e"
 }

@@ -1,0 +1,45 @@
+{
+    "apiVersion": "1.1.0",
+    "groups": {
+        "a58ed768-0370-11e7-926f-3c15c2da029e": {
+            "alias": [
+                "/"
+            ],
+            "attributes": [
+                {
+                    "name": "attr1",
+                    "shape": {
+                        "class": "H5S_SIMPLE",
+                        "dims": [
+                            4
+                        ]
+                    },
+                    "type": {
+                        "base": {
+                            "base": "H5T_STD_I8LE",
+                            "class": "H5T_INTEGER"
+                        },
+                        "class": "H5T_ENUM",
+                        "members": [
+                            {
+                                "name": "FALSE",
+                                "value": 0
+                            },
+                            {
+                                "name": "TRUE",
+                                "value": 1
+                            }
+                        ]
+                    },
+                    "value": [
+                        false,
+                        true,
+                        false,
+                        true
+                    ]
+                }
+            ]
+        }
+    },
+    "root": "a58ed768-0370-11e7-926f-3c15c2da029e"
+}

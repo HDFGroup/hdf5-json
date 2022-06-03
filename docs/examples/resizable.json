@@ -1,5 +1,5 @@
 {
-    "apiVersion": "0.0.0",
+    "apiVersion": "1.0.0",
     "datasets": {
         "a36df1ba-7bf7-11e4-b0ea-3c15c2da029e": {
             "dcpl": {
@@ -54,7 +54,7 @@
             "shape": {
                 "class": "H5S_SIMPLE",
                 "dims": [10],
-                "maxdims": [H5S_UNLIMITED]
+                "maxdims": ["H5S_UNLIMITED"]
             }, 
             "type": {
                 "base": "H5T_STD_I64LE", 
@@ -66,7 +66,7 @@
             "shape": {
                 "class": "H5S_SIMPLE", 
                 "dims": [10, 10],
-                "maxdims": [10, H5S_UNLIMITED]
+                "maxdims": [10, "H5S_UNLIMITED"]
             }, 
             "type": {
                 "base": "H5T_STD_I64LE", 

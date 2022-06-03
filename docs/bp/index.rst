@@ -1,2 +1,0 @@
-Recommendations and Best Practices
-==================================

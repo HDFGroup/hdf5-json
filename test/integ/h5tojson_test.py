@@ -11,20 +11,16 @@
 ##############################################################################
 import sys
 import os
-import stat
-from shutil import copyfile
-
-
 
 
 """
 main
 """
-top_dir = os.path.abspath(os.path.join("..",".."))
+top_dir = os.path.abspath(os.path.join("..", ".."))
 
-data_dir = os.path.join(top_dir, "data","hdf5")
+data_dir = os.path.join(top_dir, "data", "hdf5")
 
-out_dir = os.path.join(top_dir, "test","integ","json_out")
+out_dir = os.path.join(top_dir, "test", "integ", "json_out")
 
 test_files = (
     "array_dset.h5",
@@ -32,11 +28,14 @@ test_files = (
     # bitfields not supported yet
     # "bitfield_attr.h5",
     # "bitfield_dset.h5",
+    "bool_attr.h5",
+    "bool_dset.h5",
     "committed_type.h5",
+    "comp_complex.h5",
     "compound.h5",
     "compound_array.h5",
     "compound_array_attr.h5",
-    #"compound_array_vlen_string.h5",  # crashes python w/ Linux!
+    # "compound_array_vlen_string.h5",  # crashes python w/ Linux!
     "compound_array_dset.h5",
     "compound_attr.h5",
     "compound_committed.h5",
@@ -80,6 +79,7 @@ test_files = (
     "resizable.h5",
     "sample.h5",
     "scalar.h5",
+    "scalar_array_dset.h5",
     "scalar_attr.h5",
     "tall.h5",
     "tall_with_udlink.h5",
@@ -92,11 +92,11 @@ test_files = (
     "vlen_dset.h5",
     "vlen_string_attr.h5",
     "vlen_string_dset.h5",
-    # "vlen_string_dset_utc.h5",
+    "vlen_string_dset_utc.h5",
     "vlen_string_nullterm_attr.h5",
     "vlen_string_nullterm_dset.h5",
     "vlen_unicode_attr.h5",
-    "zerodim.h5"
+    "zerodim.h5",
 )
 
 # mkdir for output files
@@ -106,21 +106,23 @@ if not os.path.exists(out_dir):
 # delete any output files from previous run
 for out_file in os.listdir(out_dir):
     split_ext = os.path.splitext(out_file)
-    if split_ext[1] == '.json':
+    if split_ext[1] == ".json":
         os.unlink(os.path.join(out_dir, out_file))
 
-
-
-# convert test files to json
+# convert test files to json and validate
 for test_file in test_files:
     split_ext = os.path.splitext(test_file)
     file_path = os.path.join(data_dir, test_file)
     out_file = os.path.join(out_dir, split_ext[0] + ".json")
     if not os.path.exists(file_path):
         sys.exit("file: " + file_path + " not found")
-    cmd = "python ../../h5tojson/h5tojson.py " + file_path + " >" + out_file
+    cmd = "python ../../h5json/h5tojson/h5tojson.py " + file_path + " >" + out_file
     print("cmd:", cmd)
-    
     rc = os.system(cmd)
     if rc != 0:
         sys.exit("h5tojson failed converting: " + test_file)
+
+    cmd = "python ../../h5json/validator/validator.py " + out_file
+    print("cmd:", cmd)
+    if rc != 0:
+        sys.exit("HDF5/JSON validation failed for: " + out_file)

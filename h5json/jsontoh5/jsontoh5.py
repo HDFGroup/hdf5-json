@@ -9,12 +9,6 @@
 # distribution tree.  If you do not have access to this file, you may        #
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
-import six
-
-if six.PY3:
-    unicode = str
-    
-import sys
 import json
 import argparse
 import h5py
@@ -30,6 +24,7 @@ Writeh5 - return json representation of all objects within the given file
         h5writer.writeFile()
 """
 
+
 class Writeh5:
     def __init__(self, db, json, options=None):
         self.options = options
@@ -43,13 +38,13 @@ class Writeh5:
     def createLink(self, link_obj, parent_uuid):
         title = link_obj["title"]
         link_class = link_obj["class"]
-        if link_class == 'H5L_TYPE_HARD':
+        if link_class == "H5L_TYPE_HARD":
             child_uuid = link_obj["id"]
             self.db.linkObject(parent_uuid, child_uuid, title)
-        elif link_class == 'H5L_TYPE_SOFT':
+        elif link_class == "H5L_TYPE_SOFT":
             h5path = link_obj["h5path"]
             self.db.createSoftLink(parent_uuid, h5path, title)
-        elif link_class == 'H5L_TYPE_EXTERNAL':
+        elif link_class == "H5L_TYPE_EXTERNAL":
             h5path = link_obj["h5path"]
             link_file = link_obj["file"]
             self.db.createExternalLink(parent_uuid, link_file, h5path, title)
@@ -60,19 +55,19 @@ class Writeh5:
     # Create HDF5 dataset object and write data values
     #
     def createDataset(self, uuid, body):
-        datatype = body['type']
-        if type(datatype) in (str, unicode) and datatype.startswith("datatypes/"):
-            #committed datatype, just pass in the UUID part
-            datatype = datatype[len("datatypes/"):]
+        datatype = body["type"]
+        if isinstance(datatype, str) and datatype.startswith("datatypes/"):
+            # committed datatype, just pass in the UUID part
+            datatype = datatype[len("datatypes/") :]
         dims = ()  # if no space in body, default to scalar
-        max_shape=None
-        fill_value=None
-        creation_props=None
-        if 'creationProperties' in body:
-            creation_props = body['creationProperties']
+        max_shape = None
+        fill_value = None
+        creation_props = None
+        if "creationProperties" in body:
+            creation_props = body["creationProperties"]
         if "shape" in body:
             shape = body["shape"]
-            if shape["class"] == 'H5S_SIMPLE':
+            if shape["class"] == "H5S_SIMPLE":
                 dims = shape["dims"]
                 if type(dims) == int:
                     # convert int to array
@@ -81,18 +76,23 @@ class Writeh5:
                 if "maxdims" in shape:
                     max_shape = shape["maxdims"]
                     if type(max_shape) == int:
-                        #convert to array
+                        # convert to array
                         dim1 = max_shape
                         max_shape = [dim1]
                     # convert H5S_UNLIMITED's to None's
                     for i in range(len(max_shape)):
-                        if max_shape[i] == 'H5S_UNLIMITED':
+                        if max_shape[i] == "H5S_UNLIMITED":
                             max_shape[i] = None
-            elif shape["class"] == 'H5S_NULL':
+            elif shape["class"] == "H5S_NULL":
                 dims = None
 
-        self.db.createDataset(datatype, dims, max_shape=max_shape, creation_props=creation_props,
-            obj_uuid=uuid)
+        self.db.createDataset(
+            datatype,
+            dims,
+            max_shape=max_shape,
+            creation_props=creation_props,
+            obj_uuid=uuid,
+        )
 
         if "value" in body:
             data = body["value"]
@@ -103,9 +103,9 @@ class Writeh5:
     def createAttribute(self, attr_json, col_name, uuid):
         attr_name = attr_json["name"]
         datatype = attr_json["type"]
-        if type(datatype) in (str, unicode) and datatype.startswith("datatypes/"):
-            #committed datatype, just pass in the UUID part
-            datatype = datatype[len("datatypes/"):]
+        if isinstance(datatype, str) and datatype.startswith("datatypes/"):
+            # committed datatype, just pass in the UUID part
+            datatype = datatype[len("datatypes/") :]
 
         attr_value = None
         if "value" in attr_json:
@@ -113,22 +113,21 @@ class Writeh5:
         dims = None
         if "shape" in attr_json:
             shape = attr_json["shape"]
-            if shape["class"] == 'H5S_SIMPLE':
+            if shape["class"] == "H5S_SIMPLE":
                 dims = shape["dims"]
                 if type(dims) == int:
                     # convert int to array
                     dim1 = shape
                     dims = [dim1]
-            elif shape["class"] == 'H5S_SCALAR':
+            elif shape["class"] == "H5S_SCALAR":
                 dims = ()  # empty tuple for scalar
         self.db.createAttribute(col_name, uuid, attr_name, dims, datatype, attr_value)
-
 
     #
     # create committed datatype HDF5 object
     #
     def createDatatype(self, uuid, body):
-        datatype = body['type']
+        datatype = body["type"]
         self.db.createCommittedType(datatype, obj_uuid=uuid)
 
     #
@@ -160,7 +159,6 @@ class Writeh5:
             for uuid in datasets:
                 json_obj = datasets[uuid]
                 self.createDataset(uuid, json_obj)
-
 
     #
     # Create all the attributes for HDF5 objects defined in the JSON file
@@ -198,7 +196,9 @@ class Writeh5:
                         if attribute["name"] == "DIMENSION_LIST":
                             # defer dimension list creation until after we've created all other
                             # attributes (otherwsie attach_scale may fail)
-                            dimension_list_attrs.append({"attribute": attribute, "uuid": uuid})
+                            dimension_list_attrs.append(
+                                {"attribute": attribute, "uuid": uuid}
+                            )
                         else:
                             self.createAttribute(attribute, "datasets", uuid)
 
@@ -223,20 +223,21 @@ class Writeh5:
                     for link in links:
                         self.createLink(link, uuid)
 
-
     def writeFile(self):
 
         self.root_uuid = self.json["root"]
 
-        self.createObjects()    # create datasets, groups, committed datatypes
-        self.createAttributes() # create attributes for objects
-        self.createLinks()      # link it all together
+        self.createObjects()  # create datasets, groups, committed datatypes
+        self.createAttributes()  # create attributes for objects
+        self.createLinks()  # link it all together
+
 
 def main():
-    
-    parser = argparse.ArgumentParser(usage='%(prog)s [-h] <json_file> <h5_file>')
-    parser.add_argument('in_filename', nargs='+', help='JSon file to be converted to h5')
-    parser.add_argument('out_filename', nargs='+', help='name of HDF5 output file')
+    parser = argparse.ArgumentParser(usage="%(prog)s [-h] <json_file> <h5_file>")
+    parser.add_argument(
+        "in_filename", nargs="+", help="JSon file to be converted to h5"
+    )
+    parser.add_argument("out_filename", nargs="+", help="name of HDF5 output file")
     args = parser.parse_args()
 
     # create logger
@@ -244,13 +245,13 @@ def main():
     # log.setLevel(logging.WARN)
     log.setLevel(logging.INFO)
     # add log handler
-    handler = logging.FileHandler('./jsontoh5.log')
+    handler = logging.FileHandler("./jsontoh5.log")
 
     # add handler to logger
     log.addHandler(handler)
 
     text = open(args.in_filename[0]).read()
-     
+
     # parse the json file
     h5json = json.loads(text)
 
@@ -259,17 +260,19 @@ def main():
     root_uuid = h5json["root"]
 
     filename = args.out_filename[0]
-     
-    # create the file, will raise IOError if there's a problem
-    Hdf5db.createHDF5File(filename) 
 
-    with Hdf5db(filename, root_uuid=root_uuid, update_timestamps=False, app_logger=log) as db:
+    # create the file, will raise IOError if there's a problem
+    Hdf5db.createHDF5File(filename)
+
+    with Hdf5db(
+        filename, root_uuid=root_uuid, update_timestamps=False, app_logger=log
+    ) as db:
         h5writer = Writeh5(db, h5json)
         h5writer.writeFile()
 
     # open with h5py and remove the _db_ group
     # Note: this will delete any anonymous (un-linked) objects
-    f = h5py.File(filename, 'a')
+    f = h5py.File(filename, "a")
     if "__db__" in f:
         del f["__db__"]
     f.close()
@@ -277,4 +280,5 @@ def main():
     print("done!")
 
 
-main()
+if __name__ == "__main__":
+    main()

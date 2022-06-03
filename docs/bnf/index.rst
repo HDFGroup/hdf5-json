@@ -1,5 +1,7 @@
-Production Rules
-================
+Backus-Naur Grammar
+===================
+
+HDF5/JSON specification in the Backus-Naur form.
 
 .. toctree::
 

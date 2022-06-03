@@ -1,34 +1,77 @@
 {
+    "apiVersion": "1.1.0",
     "datasets": {
         "ce2cfb40-cf76-11e5-ac33-3c15c2da029e": {
-           "type": {
-               "fields": [
-                   {"type": {"class": "H5T_INTEGER", "base": "H5T_STD_U64BE"}, "name": "VALUE1"}, 
-                   {"type": {"class": "H5T_FLOAT", "base": "H5T_IEEE_F64BE"}, "name": "VALUE2"}, 
-                   {"type": {"class": "H5T_ARRAY", "dims": [8], "base": 
-                         {"class": "H5T_STRING", "charSet": "H5T_CSET_ASCII",
-                          "strPad": "H5T_STR_NULLTERM", "length": "H5T_VARIABLE"}}, "name": "VALUE3"}], 
-                  "class": "H5T_COMPOUND"}, 
-                  "creationProperties": {"layout": {"class": "H5D_CONTIGUOUS"}}, "description": "", 
-                  "shape": {"maxims": [15], "class": "H5S_SIMPLE", "dims": [10]}, 
-                  "attributes": []}}, 
+            "alias": [
+                "/dset"
+            ],
+            "type": {
+                "fields": [
+                    {
+                        "type": {
+                            "class": "H5T_INTEGER",
+                            "base": "H5T_STD_U64BE"
+                        },
+                        "name": "VALUE1"
+                    },
+                    {
+                        "type": {
+                            "class": "H5T_FLOAT",
+                            "base": "H5T_IEEE_F64BE"
+                        },
+                        "name": "VALUE2"
+                    },
+                    {
+                        "type": {
+                            "class": "H5T_ARRAY",
+                            "dims": [
+                                8
+                            ],
+                            "base": {
+                                "class": "H5T_STRING",
+                                "charSet": "H5T_CSET_ASCII",
+                                "strPad": "H5T_STR_NULLTERM",
+                                "length": "H5T_VARIABLE"
+                            }
+                        },
+                        "name": "VALUE3"
+                    }
+                ],
+                "class": "H5T_COMPOUND"
+            },
+            "creationProperties": {
+                "layout": {
+                    "class": "H5D_CONTIGUOUS"
+                }
+            },
+            "description": "",
+            "shape": {
+                "maxdims": [
+                    15
+                ],
+                "class": "H5S_SIMPLE",
+                "dims": [
+                    10
+                ]
+            },
+            "attributes": []
+        }
+    },
     "groups": {
         "ee0b8f12-cf76-11e5-ae05-3c15c2da029e": {
             "alias": [
                 "/"
-            ], 
-            "attributes": [
-               
-            ], 
+            ],
+            "attributes": [],
             "links": [
                 {
-                    "class": "H5L_TYPE_HARD", 
-                    "collection": "datasets", 
-                    "id": "ce2cfb40-cf76-11e5-ac33-3c15c2da029e", 
+                    "class": "H5L_TYPE_HARD",
+                    "collection": "datasets",
+                    "id": "ce2cfb40-cf76-11e5-ac33-3c15c2da029e",
                     "title": "dset"
                 }
             ]
         }
-    }, 
+    },
     "root": "ee0b8f12-cf76-11e5-ae05-3c15c2da029e"
 }

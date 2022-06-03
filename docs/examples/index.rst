@@ -1,6 +1,8 @@
 Examples
 ========
 
+File content examples in HDF5/JSON.
+
 .. toctree::
 
    classic

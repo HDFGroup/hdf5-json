@@ -1,8 +1,8 @@
 The "Classic"
 =============
 
-This example is equivalent to the one in section 4 of
-`DDL in BNF for HDF5 <http://www.hdfgroup.org/HDF5/doc/ddl.html>`_.
+This example is equivalent to the one in Section 4 of
+`DDL in BNF for HDF5 <https://portal.hdfgroup.org/display/HDF5/DDL+in+BNF+for+HDF5-1.12+and+above>`_.
 
 .. literalinclude:: sample.json
-   :language: javascript
+   :language: json
