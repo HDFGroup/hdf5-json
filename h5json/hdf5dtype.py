@@ -345,11 +345,11 @@ def getNumpyTypename(hdf5TypeName, typeClass=None):
         endian = ">"
 
     if key in predefined_int_types and (
-        typeClass == None or typeClass == "H5T_INTEGER"
+        typeClass is None or typeClass == "H5T_INTEGER"
     ):
         return endian + predefined_int_types[key]
     if key in predefined_float_types and (
-        typeClass == None or typeClass == "H5T_FLOAT"
+        typeClass is None or typeClass == "H5T_FLOAT"
     ):
         return endian + predefined_float_types[key]
     raise TypeError("Type Error: invalid type")
@@ -429,7 +429,7 @@ def createBaseDataType(typeItem):
             raise TypeError("'size' must be non-negative")
         dtRet = np.dtype("V" + str(nSize))
     elif typeClass == "H5T_ARRAY":
-        if not "dims" in typeItem:
+        if "dims" not in typeItem:
             raise KeyError("'dims' must be provided for array types")
         if "base" not in typeItem:
             raise KeyError("'base' not provided")
