@@ -79,6 +79,7 @@ class Hdf5dbTest(unittest.TestCase):
         filepath = "/tmp/thisisnotafile.h5"
         try:
             with Hdf5db(filepath, app_logger=self.log) as db:
+                self.log.error(f"Unexpected Hdf5db ref: {db}")
                 self.assertTrue(False)  # shouldn't get here
         except IOError as e:
             self.assertEqual(e.errno, errno.ENXIO)
@@ -88,6 +89,7 @@ class Hdf5dbTest(unittest.TestCase):
         filepath = getFile("notahdf5file.h5", "notahdf5file.h5")
         try:
             with Hdf5db(filepath, app_logger=self.log) as db:
+                self.log.error(f"Unexpected Hdf5db ref: {db}")
                 self.assertTrue(False)  # shouldn't get here
         except IOError as e:
             self.assertEqual(e.errno, errno.EINVAL)
@@ -104,6 +106,7 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(obj.name, "/g1")
             for name in obj:
                 g = obj[name]
+                self.log.debug(f"got obj: {g}")
             g1links = db.getLinkItems(g1Uuid)
             self.assertEqual(len(g1links), 2)
             for item in g1links:
@@ -236,7 +239,6 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertTrue("ctime" in item)
 
     def testGetNumLinks(self):
-        items = None
         filepath = getFile("tall.h5", "getnumlinks.h5")
         with Hdf5db(filepath, app_logger=self.log) as db:
             g1 = db.getObjByPath("/g1")
@@ -341,8 +343,6 @@ class Hdf5dbTest(unittest.TestCase):
 
     def testReadDatasetBinary(self):
         filepath = getFile("tall.h5", "readdatasetbinary.h5")
-        d111_values = None
-        d112_values = None
         with Hdf5db(filepath, app_logger=self.log) as db:
             d111Uuid = db.getUUIDByPath("/g1/g1.1/dset1.1.1")
             self.assertEqual(len(d111Uuid), UUID_LEN)
@@ -451,6 +451,7 @@ class Hdf5dbTest(unittest.TestCase):
         filepath = getFile("empty.h5", "createcommittedtypedataset.h5")
         with Hdf5db(filepath, app_logger=self.log) as db:
             root_uuid = db.getUUIDByPath("/")
+            self.assertTrue(len(root_uuid) >= 36)
 
             datatype = {
                 "charSet": "H5T_CSET_ASCII",
@@ -473,6 +474,7 @@ class Hdf5dbTest(unittest.TestCase):
         filepath = getFile("empty.h5", "createcommittedcompoundtypedataset.h5")
         with Hdf5db(filepath, app_logger=self.log) as db:
             root_uuid = db.getUUIDByPath("/")
+            self.assertTrue(len(root_uuid) >= 36)
 
             datatype = {"class": "H5T_COMPOUND", "fields": []}
 
@@ -548,6 +550,7 @@ class Hdf5dbTest(unittest.TestCase):
             rootUuid = db.getUUIDByPath("/")
             self.assertEqual(len(rootUuid), UUID_LEN)
             item = db.getAttributeItem("groups", rootUuid, "attr1")
+            self.assertTrue(item is not None)
 
     def testWriteScalarAttribute(self):
         # getAttributeItemByUuid
@@ -779,7 +782,7 @@ class Hdf5dbTest(unittest.TestCase):
                 "strPad": "H5T_STR_NULLTERM",
                 "length": "H5T_VARIABLE",
             }
-            value = u"\u6b22\u8fce\u63d0\u4ea4\u5fae\u535a\u641c\u7d22\u4f7f\u7528\u53cd\u9988\uff0c\u8bf7\u76f4\u63a5"
+            value = "\u6b22\u8fce\u63d0\u4ea4\u5fae\u535a\u641c\u7d22\u4f7f\u7528\u53cd\u9988\uff0c\u8bf7\u76f4\u63a5"
             db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
             item = db.getAttributeItem("groups", root_uuid, "A1")
 
@@ -974,6 +977,7 @@ class Hdf5dbTest(unittest.TestCase):
         filepath = getFile("empty.h5", "writecommittedtype.h5")
         with Hdf5db(filepath, app_logger=self.log) as db:
             root_uuid = db.getUUIDByPath("/")
+            self.assertTrue(len(root_uuid) >= 36)
             datatype = {
                 "charSet": "H5T_CSET_ASCII",
                 "class": "H5T_STRING",
@@ -1001,6 +1005,8 @@ class Hdf5dbTest(unittest.TestCase):
         filepath = getFile("empty.h5", "writecommittedcompoundtype.h5")
         with Hdf5db(filepath, app_logger=self.log) as db:
             root_uuid = db.getUUIDByPath("/")
+            self.assertTrue(len(root_uuid) >= 36)
+
             datatype = {"class": "H5T_COMPOUND", "fields": []}
 
             fixed_str_type = {
@@ -1283,12 +1289,12 @@ class Hdf5dbTest(unittest.TestCase):
         fields = ("date", "wind", "temp")
         filepath = getFile("empty.h5", "badquery.h5")
         with Hdf5db(filepath, app_logger=self.log) as db:
-
             for query in queries:
                 try:
                     eval_str = db._getEvalStr(query, fields)
+                    self.log.error(f"got eval_str: {eval_str}")
                     self.assertTrue(False)  # shouldn't get here
-                except IOError as e:
+                except IOError:
                     pass  # ok
 
     def testInjectionBlock(self):
@@ -1303,6 +1309,7 @@ class Hdf5dbTest(unittest.TestCase):
             for query in queries:
                 try:
                     eval_str = db._getEvalStr(query, fields)
+                    self.log.error(f"got eval_str: {eval_str}")
                     self.assertTrue(False)  # shouldn't get here
                 except IOError:
                     pass  # ok

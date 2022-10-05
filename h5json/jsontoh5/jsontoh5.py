@@ -61,7 +61,6 @@ class Writeh5:
             datatype = datatype[len("datatypes/") :]
         dims = ()  # if no space in body, default to scalar
         max_shape = None
-        fill_value = None
         creation_props = None
         if "creationProperties" in body:
             creation_props = body["creationProperties"]

@@ -11,8 +11,6 @@
 ##############################################################################
 import sys
 import os
-import stat
-from shutil import copyfile
 from h5py.version import hdf5_version_tuple
 
 

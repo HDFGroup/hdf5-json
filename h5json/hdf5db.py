@@ -2723,11 +2723,10 @@ class Hdf5db:
             obj_uuid = str(uuid.uuid1())
         dt = None
         item = {}
+        fillvalue = None
 
         # h5py.createdataset fields
         kwargs = {}  # key word arguments for h5py dataset creation
-
-        fillvalue = None
 
         if creation_props is None:
             creation_props = {}  # create empty list for convience
