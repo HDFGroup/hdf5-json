@@ -47,4 +47,6 @@ jobs:
       - name: Run integration tests
         shell: bash
         run: |
+          mkdir test/integ/json_out
+          mkdir test/integ/h5_out
           pytest test/integ
