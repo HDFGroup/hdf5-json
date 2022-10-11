@@ -99,6 +99,9 @@ test_files = (
     "zerodim.h5",
 )
 
+# debug top_dir
+print(f"top_dir: {top_dir}")
+
 # mkdir for output files
 if not os.path.exists(out_dir):
     os.mkdir(out_dir)
