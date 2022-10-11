@@ -40,14 +40,7 @@ jobs:
         shell: bash
         run: |
           pip install -e .
-      - name: Run unit tests
+      - name: Run tests
         shell: bash
         run: |
-          pytest test/unit/
-      - name: Run integration tests
-        shell: bash
-        run: |
-          cd hdf5-json/hdf5-json &&
-          mkdir test/integ/json_out &&
-          mkdir test/integ/h5_out && 
-          pytest --rootdir=hdf5-json/hdf5-json
+          python testall.py
