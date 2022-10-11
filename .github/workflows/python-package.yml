@@ -47,4 +47,7 @@ jobs:
       - name: Run integration tests
         shell: bash
         run: |
-          pytest test/integ
+          cd hdf5-json/hdf5-json &&
+          mkdir test/integ/json_out &&
+          mkdir test/integ/h5_out && 
+          pytest --rootdir=hdf5-json/hdf5-json
