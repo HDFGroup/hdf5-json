@@ -15,8 +15,8 @@ used to convert any HDF5 file to JSON or from a JSON file (using the
 specification described here) to HDF5.
 
 The package is also useful for any Python application that needs to translate between HDF5 objects and JSON
-serializations. In addition to the utilities provided, the package is used by the `HDF
-Server <https://www.hdfgroup.org/solutions/highly-scalable-data-service-hsds/>`_ (a RESTful web service for HDF5), and `HDF Product Designer <https://wiki.earthdata.nasa.gov/display/HPD/HDF+Product+Designer>`_ (an application for planning HDF5 file content).
+serializations. In addition to the utilities provided, the package is used by the [HDF
+Server](https://www.hdfgroup.org/solutions/highly-scalable-data-service-hsds/) (a RESTful web service for HDF5), and [HDF Product Designer](https://wiki.earthdata.nasa.gov/display/HPD/HDF+Product+Designer) (an application for planning HDF5 file content).
 
 ## Websites
 
@@ -29,4 +29,4 @@ Server <https://www.hdfgroup.org/solutions/highly-scalable-data-service-hsds/>`_
 
 Create new issues at http://github.com/HDFGroup/hdf5-json/issues for any problems you find.
 
-For general questions/feedback, please post on the `HDF Forum <https://forum.hdfgroup.org/c/hsds>`_.
+For general questions/feedback, please post on the [HDF Forum](https://forum.hdfgroup.org/c/hsds).
