@@ -11,15 +11,18 @@
 import sys
 import argparse
 from pathlib import Path
-import importlib.resources
 import json
 import jsonschema
 from h5json import schema
+try:
+    import importlib_resources as ilr
+except ImportError:
+    import importlib.resources as ilr
 
 
 def prepare_validator() -> jsonschema.Draft202012Validator:
     """Return a configured jsonschema.Draft202012Validator instance."""
-    with importlib.resources.open_text(schema, "hdf5.schema.json") as f:
+    with ilr.open_text(schema, "hdf5.schema.json") as f:
         h5schema = json.load(f)
 
     schema_store = dict()
@@ -32,7 +35,7 @@ def prepare_validator() -> jsonschema.Draft202012Validator:
         "dataset.schema.json",
     ]
     for sc in schema_components:
-        with importlib.resources.open_text(schema, sc) as f:
+        with ilr.open_text(schema, sc) as f:
             temp = json.load(f)
         schema_store[temp["$id"]] = temp
     resolver = jsonschema.RefResolver(h5schema["$id"], h5schema, store=schema_store)
