@@ -36,10 +36,9 @@ jobs:
         run: python -m pip install -r docs/requirements.txt
       - name: Build documentation
         run: sphinx-build -b html -a -W -T docs _pages
-      - name: Upload artifact
+      - name: Upload documentation files
         uses: actions/upload-pages-artifact@v3
         with:
-          # Upload entire repository
           path: ./_pages
 
   deploy:
