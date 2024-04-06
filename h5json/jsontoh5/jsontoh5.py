@@ -68,13 +68,13 @@ class Writeh5:
             shape = body["shape"]
             if shape["class"] == "H5S_SIMPLE":
                 dims = shape["dims"]
-                if type(dims) == int:
+                if isinstance(dims, int):
                     # convert int to array
                     dim1 = shape
                     dims = [dim1]
                 if "maxdims" in shape:
                     max_shape = shape["maxdims"]
-                    if type(max_shape) == int:
+                    if isinstance(max_shape, int):
                         # convert to array
                         dim1 = max_shape
                         max_shape = [dim1]
@@ -114,7 +114,7 @@ class Writeh5:
             shape = attr_json["shape"]
             if shape["class"] == "H5S_SIMPLE":
                 dims = shape["dims"]
-                if type(dims) == int:
+                if isinstance(dims, int):
                     # convert int to array
                     dim1 = shape
                     dims = [dim1]

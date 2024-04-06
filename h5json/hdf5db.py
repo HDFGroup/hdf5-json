@@ -1198,7 +1198,7 @@ class Hdf5db:
         # todo - don't include data for OPAQUE until JSON serialization
         # issues are addressed
 
-        if type(typeItem) == dict and typeItem["class"] in ("H5T_OPAQUE"):
+        if isinstance(typeItem, dict) and typeItem["class"] in ("H5T_OPAQUE"):
             includeData = False
 
         shape_json = self.getShapeItemByAttrObj(attrObj)
@@ -1461,7 +1461,7 @@ class Hdf5db:
                 strPad = None
                 strLength = 0
                 if (
-                    type(attr_type) == dict
+                    isinstance(attr_type, dict)
                     and attr_type["class"] == "H5T_STRING"
                     and "strPad" in attr_type
                 ):
@@ -1470,7 +1470,7 @@ class Hdf5db:
 
                 if (
                     rank == 0
-                    and type(strLength) == int
+                    and isinstance(strLength, int)
                     and strPad == "H5T_STR_NULLTERM"
                 ):
                     self.makeNullTermStringAttribute(obj, attr_name, strLength, value)
@@ -1693,7 +1693,7 @@ class Hdf5db:
             self.log.info(msg)
             raise IOError(errno.ENINVAL, msg)
 
-        if type(out) == list:
+        if isinstance(out, list):
             out = tuple(out)  # convert to tuple
         return out
 
@@ -1926,11 +1926,11 @@ class Hdf5db:
             else:
                 out = obj_ref
 
-        elif type(data) in (list, tuple):
+        elif isinstance(data, (list, tuple)):
             out = []
             for item in data:
                 out.append(self.listToRef(item))  # recursive call
-        elif type(data) == dict:
+        elif isinstance(data, dict):
             # assume region ref
             out = self.createRegionReference(data)
         else:
@@ -2096,7 +2096,7 @@ class Hdf5db:
                     self.log.info(msg)
                     raise IOError(errno.EINVAL, msg)
                 start = slab[0]
-                if type(start) == list:
+                if isinstance(start, list):
                     start = tuple(start)
                 if type(start) is not tuple or len(start) != rank:
                     msg = "selection value not valid, start element should have number "
@@ -2104,7 +2104,7 @@ class Hdf5db:
                     self.log.info(msg)
                     raise IOError(errno.EINVAL, msg)
                 stop = slab[1]
-                if type(stop) == list:
+                if isinstance(stop, list):
                     stop = tuple(stop)
                 if type(stop) is not tuple or len(stop) != rank:
                     msg = "selection value not valid, count element should have number "
@@ -2191,12 +2191,12 @@ class Hdf5db:
             if val is None:
                 self.log.warning("no value returned from scalar dataset")
 
-        if type(slices) != list and type(slices) != tuple and slices is not Ellipsis:
+        if not isinstance(slices, (list, tuple)) and slices is not Ellipsis:
             msg = "Unexpected error: getDatasetValuesByUuid: bad type for dim parameter"
             self.log.error(msg)
             raise IOError(errno.EIO, msg)
 
-        if (type(slices) == list or type(slices) == tuple) and len(slices) != rank:
+        if isinstance(slices, (list, tuple)) and len(slices) != rank:
             msg = "Unexpected error: getDatasetValuesByUuid: number of dims in selection not same as rank"
             self.log.error(msg)
             raise IOError(errno.EIO, msg)
@@ -2507,7 +2507,7 @@ class Hdf5db:
                 slices.append(s)
             slices = tuple(slices)
 
-        if type(slices) != tuple:
+        if not isinstance(slices, tuple):
             msg = "setDatasetValuesByUuid: bad type for dim parameter"
             self.log.error(msg)
             raise IOError(errno.EIO, msg)

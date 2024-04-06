@@ -59,7 +59,7 @@ def getTypeResponse(typeItem):
         response = {}  # otherwise, return full type
         for k in typeItem.keys():
             if k == "base":
-                if type(typeItem[k]) == dict:
+                if isinstance(typeItem[k], dict):
                     response[k] = getTypeResponse(typeItem[k])  # recursive call
                 else:
                     response[k] = typeItem[k]  # predefined type
@@ -89,7 +89,7 @@ def getItemSize(typeItem):
                     raise TypeError("Invalid Type")
         # none of the expect primative types mathched
         raise TypeError("Invalid Type")
-    if type(typeItem) != dict:
+    if not isinstance(typeItem, dict):
         raise TypeError("invalid type")
 
     item_size = 0
@@ -143,7 +143,7 @@ def getItemSize(typeItem):
             raise KeyError("no 'field' elements provided")
         # add up the size of each sub-field
         for field in fields:
-            if type(field) != dict:
+            if not isinstance(field, dict):
                 raise TypeError("Expected dictionary type for field")
             if "type" not in field:
                 raise KeyError("'type' missing from field")
@@ -210,7 +210,7 @@ def getTypeItem(dt):
         #
         # check for h5py variable length extension
         vlen_check = check_dtype(vlen=dt.base)
-        if vlen_check is not None and type(vlen_check) != np.dtype:
+        if vlen_check is not None and not isinstance(vlen_check, np.dtype):
             vlen_check = np.dtype(vlen_check)
         ref_check = check_dtype(ref=dt.base)
         if vlen_check == bytes:
@@ -364,7 +364,7 @@ def createBaseDataType(typeItem):
         dtRet = np.dtype(dtName)
         return dtRet  # return predefined type
 
-    if type(typeItem) != dict:
+    if not isinstance(typeItem, dict):
         raise TypeError("Type Error: invalid type")
 
     if "class" not in typeItem:
@@ -402,7 +402,7 @@ def createBaseDataType(typeItem):
                 raise TypeError("unexpected 'charSet' value")
         else:
             nStrSize = typeItem["length"]
-            if type(nStrSize) != int:
+            if not isinstance(nStrSize, int):
                 raise TypeError("expecting integer value for 'length'")
             type_code = None
             if typeItem["charSet"] == "H5T_CSET_ASCII":
@@ -449,7 +449,7 @@ def createBaseDataType(typeItem):
 
         dt_base = createDataType(arrayBaseType)
 
-        if type(typeItem["dims"]) == int:
+        if isinstance(typeItem["dims"], int):
             dims = typeItem["dims"]  # make into a tuple
         elif type(typeItem["dims"]) not in (list, tuple):
             raise TypeError("expected list or integer for dims")
@@ -518,7 +518,7 @@ def createDataType(typeItem):
         dtRet = np.dtype(dtName)
         return dtRet  # return predefined type
 
-    if type(typeItem) != dict:
+    if not isinstance(typeItem, dict):
         raise TypeError("invalid type")
 
     if "class" not in typeItem:
@@ -536,7 +536,7 @@ def createDataType(typeItem):
         subtypes = []
         for field in fields:
 
-            if type(field) != dict:
+            if not isinstance(field, dict):
                 raise TypeError("Expected dictionary type for field")
             if "name" not in field:
                 raise KeyError("'name' missing from field")
