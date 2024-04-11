@@ -12,7 +12,7 @@ import h5json
 extensions = ["sphinx.ext.autodoc", "sphinx.ext.todo"]
 
 # Add any paths that contain templates here, relative to this directory.
-templates_path = ["_templates"]
+# templates_path = ["_templates"]
 
 # The suffix of source filenames.
 source_suffix = ".rst"
@@ -92,7 +92,15 @@ html_theme = "sphinx_book_theme"
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-# html_theme_options = {}
+html_theme_options = {
+    "navigation_with_keys": False,
+    "repository_url": "https://github.com/HDFGroup/hdf5-json",
+    "use_repository_button": True,
+    "use_download_button": False,
+    "logo": {
+        "text": str(version)
+    }
+}
 
 # Add any paths that contain custom themes here, relative to this directory.
 # html_theme_path = []
@@ -106,7 +114,7 @@ html_title = f"{project} {release}"
 
 # The name of an image file (relative to this directory) to place at the top
 # of the sidebar.
-# html_logo = None
+html_logo = "_static/HDF-transparent.png"
 
 # The name of an image file (within the static path) to use as favicon of the
 # docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
