@@ -16,19 +16,12 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 authors = [{ "name" = "The HDF Group", "email" = "help@hdfgroup.org" }]
-keywords = [
-    "json",
-    "hdf5",
-    "numpy",
-    "multidimensional array",
-    "data",
-    "datacube",
-]
+keywords = ["json", "hdf5", "multidimensional array", "data", "datacube"]
 requires-python = ">=3.8"
 dependencies = [
-    "h5py>=3.10",
-    "numpy>=2.0",
-    "jsonschema>=4.4.0",
+    "h5py >=3.10",
+    "numpy >=1.20,<2.0.0",
+    "jsonschema >=4.4.0",
     "tomli; python_version<'3.11'",
 ]
 dynamic = ["version"]
