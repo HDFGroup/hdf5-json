@@ -12,8 +12,9 @@
 
 
 """
-    This is the h5json package, a mapping between HDF5 objects and JSON
+This is the h5json package, a mapping between HDF5 objects and JSON
 """
+
 from __future__ import absolute_import
 
 from .hdf5dtype import getTypeItem
@@ -21,7 +22,6 @@ from .hdf5dtype import getTypeResponse
 from .hdf5dtype import getItemSize
 from .hdf5dtype import createDataType
 from .hdf5db import Hdf5db
-
 from . import _version
 
-__version__ = _version.get_versions()["version"]
+__version__ = _version.__version__

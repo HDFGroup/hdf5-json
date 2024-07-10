@@ -1,0 +1,73 @@
+[project]
+name = "h5json"
+description = "HDF5/JSON Tools"
+readme = "README.md"
+license = { file = "COPYING" }
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Build Tools",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+authors = [{ "name" = "The HDF Group", "email" = "help@hdfgroup.org" }]
+keywords = [
+    "json",
+    "hdf5",
+    "numpy",
+    "multidimensional array",
+    "data",
+    "datacube",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "h5py>=3.10",
+    "numpy>=2.0",
+    "jsonschema>=4.4.0",
+    "tomli; python_version<'3.11'",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://hdf5-json.readthedocs.io"
+Documentation = "https://hdf5-json.readthedocs.io"
+Source = "https://github.com/HDFGroup/hdf5-json"
+"Bug Reports" = "https://github.com/HDFGroup/hdf5-json/issues"
+Social = "https://twitter.com/hdf5"
+Discussion = "https://forum.hdfgroup.org"
+
+[project.scripts]
+h5tojson = "h5json.h5tojson.h5tojson:main"
+jsontoh5 = "h5json.jsontoh5.jsontoh5:main"
+h5jvalidate = "h5json.validator.validator:main"
+
+[project.optional-dependencies]
+dev = ["check-manifest"]
+test = ["coverage"]
+
+[build-system]
+requires = ["setuptools", "setuptools_scm", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = [
+    "h5json",
+    "h5json.h5tojson",
+    "h5json.jsontoh5",
+    "h5json.schema",
+    "h5json.validator",
+]
+# package-data = { "h5json" = ["data/json/*", "data/hdf5/*"] }
+platforms = ["any"]
+zip-safe = false
+
+[tool.setuptools_scm]
+version_file = "h5json/_version.py"
+
+# [tool.distutils.bdist_wheel]
+# universal = true

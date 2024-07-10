@@ -1,2 +1,9 @@
-include versioneer.py
+global-exclude *~ *.py[cod]
+exclude .git* .readthedocs.yaml CONTRIBUTING.rst testall.py
+prune .github/
+prune Docker/
+prune docs/
+prune test/
+prune data/
+prune **/__pycache
 include h5json/_version.py
