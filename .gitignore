@@ -24,7 +24,7 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg?
-/h5json/_version.py
+src/h5json/_version.py
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

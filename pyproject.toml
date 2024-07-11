@@ -48,6 +48,7 @@ requires = ["setuptools", "setuptools_scm", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
+package-dir = { "" = "src" }
 packages = [
     "h5json",
     "h5json.h5tojson",
@@ -55,12 +56,12 @@ packages = [
     "h5json.schema",
     "h5json.validator",
 ]
-# package-data = { "h5json" = ["data/json/*", "data/hdf5/*"] }
+package-data = { "h5json.schema" = ["*.schema.json"] }
 platforms = ["any"]
 zip-safe = false
 
 [tool.setuptools_scm]
-version_file = "h5json/_version.py"
+version_file = "src/h5json/_version.py"
 
 # [tool.distutils.bdist_wheel]
 # universal = true

@@ -6,4 +6,4 @@ prune docs/
 prune test/
 prune data/
 prune **/__pycache
-include h5json/_version.py
+include src/h5json/_version.py
