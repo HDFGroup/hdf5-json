@@ -1,5 +1,5 @@
 # Attribute
 
-```{literalinclude} ../../h5json/schema/attribute.schema.json
+```{literalinclude} ../../src/h5json/schema/attribute.schema.json
 :language: json
 ```
