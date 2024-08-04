@@ -23,7 +23,7 @@ dependencies = [
     "numpy >= 2.0",
     "jsonschema >=4.4.0",
     "tomli; python_version<'3.11'",
-    "numpy >=1.20,<2.0.0; python_version='3.8'",
+    "numpy >=1.20,<2.0.0; python_version=='3.8'",
 ]
 dynamic = ["version"]
 
