@@ -20,9 +20,10 @@ keywords = ["json", "hdf5", "multidimensional array", "data", "datacube"]
 requires-python = ">=3.8"
 dependencies = [
     "h5py >=3.10",
-    "numpy >=1.20,<2.0.0",
+    "numpy >= 2.0",
     "jsonschema >=4.4.0",
     "tomli; python_version<'3.11'",
+    "numpy >=1.20,<2.0.0; python_version='3.8'",
 ]
 dynamic = ["version"]
 

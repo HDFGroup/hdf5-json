@@ -1177,7 +1177,7 @@ class Hdf5db:
             return None
 
         # get the attribute!
-        attrObj = h5py.h5a.open(obj.id, np.string_(name))
+        attrObj = h5py.h5a.open(obj.id, np.bytes_(name))
         attr = None
 
         item = {"name": name}
@@ -1578,7 +1578,6 @@ class Hdf5db:
         if isinstance(value, (np.ndarray, np.generic)):
             value = value.tolist()  # convert numpy object to list
         if typeClass == "H5T_COMPOUND":
-
             if type(value) not in (list, tuple):
                 msg = "Unexpected type for compound value"
                 self.log.error(msg)
@@ -1645,7 +1644,6 @@ class Hdf5db:
         out = None
         typeClass = typeItem["class"]
         if typeClass == "H5T_COMPOUND":
-
             if not isinstance(value, (list, tuple)):
                 msg = f"Unexpected type for compound value: {type(value)}"
                 self.log.error(msg)
@@ -1702,7 +1700,6 @@ class Hdf5db:
     """
 
     def toNumPyValue(self, typeItem, src, des):
-
         typeClass = "H5T_INTEGER"  # default to int type
         if type(typeItem) is dict:
             typeClass = typeItem["class"]
@@ -1763,7 +1760,6 @@ class Hdf5db:
     """
 
     def toNumPyArray(self, rank, typeItem, src, des):
-
         if rank == 0:
             msg = "unexpected rank value"
             self.log.error(msg)
@@ -2681,7 +2677,6 @@ class Hdf5db:
             # data = converted_data
 
         if format == "json":
-
             try:
                 i = 0
                 for point in points:
@@ -3373,7 +3368,6 @@ class Hdf5db:
         if linkClass == "HardLink":
             obj = parentGrp[link_name]
             if tgtObj is None or obj == tgtObj:
-
                 numlinks = self.getNumLinksToObject(obj)
                 if numlinks == 1:
                     # last link to this object - convert to anonymous object by
