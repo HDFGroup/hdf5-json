@@ -2204,7 +2204,7 @@ class Hdf5db:
                 raise IOError(errno.EINVAL, msg)
             # numpy object type - could be a vlen string or generic vlen
             h5t_check = h5py.h5t.check_dtype(vlen=dt)
-            if h5t_check == str or h5t_check == bytes:
+            if h5t_check is str or h5t_check is bytes:
                 values = self.bytesArrayToList(dset[slices])
             elif h5t_check is not None:
                 # other vlen data
