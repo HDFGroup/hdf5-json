@@ -1,4 +1,4 @@
-# JSON Schema
+# JSON Schema (**Normative**)
 
 HDF5/JSON specification as JSON Schema.
 

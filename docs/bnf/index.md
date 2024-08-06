@@ -1,4 +1,4 @@
-# Backus-Naur Grammar
+# Backus-Naur Grammar (Deprecated)
 
 HDF5/JSON specification in the Backus-Naur form.
 
