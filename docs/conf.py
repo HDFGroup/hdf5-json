@@ -32,7 +32,8 @@ master_doc = "index"
 
 # General information about the project.
 project = "HDF5/JSON"
-copyright = f"2014 - {date.today().year}, The HDF Group"
+author = "The HDF Group"
+copyright = f"2014 - {date.today().year}"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
