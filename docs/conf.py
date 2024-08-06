@@ -39,7 +39,7 @@ copyright = f"2014 - {date.today().year}, The HDF Group"
 # built documents.
 #
 # The short X.Y version.
-version = h5json.__version__[:3]
+version = h5json.__version__
 # The full version, including alpha/beta/rc tags.
 release = h5json.__version__
 
