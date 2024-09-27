@@ -1,4 +1,4 @@
-# An HDF5 variable-length String Datatype (Attribute)
+# An HDF5 Variable-Length String Datatype (Attribute)
 
 ```{literalinclude} vlen_string_attr.json
 :language: json

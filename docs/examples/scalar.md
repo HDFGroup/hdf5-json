@@ -1,4 +1,4 @@
-# HDF5 scalar Datasets and Attributes
+# HDF5 Scalar Datasets and Attributes
 
 ```{literalinclude} scalar.json
 :language: json

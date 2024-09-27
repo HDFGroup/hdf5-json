@@ -1,4 +1,4 @@
-# A resizable HDF5 Dataset
+# A Resizable HDF5 Dataset
 
 ```{literalinclude} resizable.json
 :language: json

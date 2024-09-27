@@ -1,4 +1,4 @@
-# A few HDF5 Groups
+# A Few HDF5 Groups
 
 ```{literalinclude} tgroup.json
 :language: json

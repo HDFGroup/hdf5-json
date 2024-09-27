@@ -1,4 +1,4 @@
-# A sample File
+# A Sample File
 
 ```{literalinclude} tall.json
 :language: json
