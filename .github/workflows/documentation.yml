@@ -1,0 +1,29 @@
+name: Build and push documentation to HDFG site
+
+# Triggers the workflow on demand
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Documentation version
+        type: string
+        default: latest
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: List S3 location
+        run: |
+          aws s3 ls s3://${{ secrets.AWS_S3_BUCKET }}/${{ vars.TARGET_PATH }}/ --recursive
