@@ -21,6 +21,14 @@ from .hdf5dtype import getTypeItem
 from .hdf5dtype import getTypeResponse
 from .hdf5dtype import getItemSize
 from .hdf5dtype import createDataType
+from .objid import createObjId
+from .objid import getCollectionForId
+from .objid import isObjId
+from .objid import isS3ObjKey
+from .objid import getS3Key
+from .objid import getObjId
+from .objid import isSchema2Id
+from .objid import isRootObjId
 from .hdf5db import Hdf5db
 from . import _version
 

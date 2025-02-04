@@ -19,6 +19,7 @@ import os
 import json
 import logging
 from .hdf5dtype import getTypeItem, createDataType, getItemSize
+from .objid import createObjId
 from .apiversion import _apiver
 
 
@@ -561,7 +562,7 @@ class Hdf5db:
 
         self.log.info("initializing file")
         if not self.root_uuid:
-            self.root_uuid = str(uuid.uuid1())
+            self.root_uuid = createObjId()
         self.dbGrp.attrs["rootUUID"] = self.root_uuid
         self.dbGrp.create_group("{groups}")
         self.dbGrp.create_group("{datasets}")
@@ -593,21 +594,21 @@ class Hdf5db:
             msg = "Unknown object type: " + __name__ + " found during scan of HDF5 file"
             self.log.error(msg)
             raise IOError(errno.EIO, msg)
-        uuid1 = uuid.uuid1()  # create uuid
-        id = str(uuid1)
+        obj_id = createObjId()  # create uuid
+
         addrGrp = self.dbGrp["{addr}"]
         if not self.readonly:
             # storing db in the file itself, so we can link to the object directly
-            col[id] = obj.ref  # save attribute ref to object
+            col[obj_id] = obj.ref  # save attribute ref to object
         else:
             # store path to object
-            col[id] = obj.name
+            col[obj_id] = obj.name
         addr = h5py.h5o.get_info(obj.id).addr
         # store reverse map as an attribute
-        addrGrp.attrs[str(addr)] = id
+        addrGrp.attrs[str(addr)] = obj_id
 
     #
-    # Get Datset creation properties
+    # Get Dataset creation properties
     #
     def getDatasetCreationProps(self, dset_uuid):
         prop_list = {}
@@ -1087,7 +1088,7 @@ class Hdf5db:
             raise IOError(errno.EPERM, msg)
         datatypes = self.dbGrp["{datatypes}"]
         if not obj_uuid:
-            obj_uuid = str(uuid.uuid1())
+            obj_uuid = createObjId()
         dt = self.createTypeFromItem(datatype)
 
         datatypes[obj_uuid] = dt
@@ -2715,7 +2716,7 @@ class Hdf5db:
             raise IOError(errno.EPERM, msg)
         datasets = self.dbGrp["{datasets}"]
         if not obj_uuid:
-            obj_uuid = str(uuid.uuid1())
+            obj_uuid = createObjId()
         dt = None
         item = {}
         fillvalue = None
@@ -3490,7 +3491,7 @@ class Hdf5db:
             raise IOError(errno.EPERM, msg)
         groups = self.dbGrp["{groups}"]
         if not obj_uuid:
-            obj_uuid = str(uuid.uuid1())
+            obj_uuid = createObjId()
         newGroup = groups.create_group(obj_uuid)
         # store reverse map as an attribute
         addr = h5py.h5o.get_info(newGroup.id).addr
