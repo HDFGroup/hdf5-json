@@ -13,7 +13,6 @@ import errno
 import time
 import h5py
 import numpy as np
-import uuid
 import os.path as op
 import os
 import json
@@ -1902,7 +1901,7 @@ class Hdf5db:
             # object reference should be in the form: <collection_name>/<uuid>
             for prefix in ("datasets", "groups", "datatypes"):
                 if data.startswith(prefix):
-                    uuid_ref = data[len(prefix) :]
+                    uuid_ref = data[len(prefix):]
                     if len(uuid_ref) == (UUID_LEN + 1) and uuid_ref.startswith("/"):
                         obj = self.getObjectByUuid(prefix, uuid_ref[1:])
                         if obj:

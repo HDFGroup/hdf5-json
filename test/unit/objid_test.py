@@ -10,7 +10,6 @@
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
 import unittest
-import sys
 
 from h5json.objid import isRootObjId, isValidUuid, validateUuid
 from h5json.objid import createObjId, getCollectionForId

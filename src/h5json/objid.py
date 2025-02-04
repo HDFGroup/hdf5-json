@@ -24,7 +24,6 @@ AZURE_URI = "blob.core.windows.net/"  # preceded with "https://"
 UUID_LEN = 36  # length for uuid strings
 
 
-
 def _getStorageProtocol(uri):
     """ returns 's3://', 'file://', or 'https://...net/' prefix if present.
     If the prefix is in the form: https://myaccount.blob.core.windows.net/mycontainer
@@ -55,7 +54,8 @@ def _getBaseName(uri):
         return uri
     else:
         return uri[len(protocol):]
-    
+
+
 def _getPrefixForCollection(collection):
     """ Return prefix character for given collection type """
     collection = collection.lower()
@@ -146,16 +146,15 @@ def getRootObjId(id):
 
 
 def createObjId(obj_type=None, root_id=None):
-    """ create a new objid 
-    
+    """ create a new objid
+
         if obj_type is None, return just a bare uuid.
         Otherwise a hsds v2 schema obj_id will be created.
         In this case obj_type should be one of "groups",
         "datasets", "datatypes", "chunks".  If rootid is
-        None, a root group obj_id will be created.  Otherwise the 
+        None, a root group obj_id will be created.  Otherwise the
         obj_id will be a an id that has root_id as it's root.  """
 
-    
     prefix = None
     if obj_type is None:
         # just return a regular uuid
@@ -374,7 +373,7 @@ def getCollectionForId(obj_id):
 
 
 def validateUuid(id, obj_class=None):
-    """ verify the UUID is well-formed 
+    """ verify the UUID is well-formed
         schema can be:
            None: expecting ordinary UUID
            "v1": expecting HSDS v1 format
@@ -388,7 +387,7 @@ def validateUuid(id, obj_class=None):
     if len(id) == UUID_LEN:
         if obj_class:
             # expected a prefix
-            raise ValueError(f"obj_id: {id} not valid for collection: {obj_class}") 
+            raise ValueError(f"obj_id: {id} not valid for collection: {obj_class}")
     else:
         # does this have a v1 schema hash tag?
         # e.g.: "a49be-g-314d61b8-9954-11e6-a733-3c15c2da029e",
@@ -480,6 +479,3 @@ def getUuidFromId(id):
         return id[2:]
     else:
         raise ValueError(f"Unexpected obj_id: {id}")
-    
- 
-  
