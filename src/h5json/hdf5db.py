@@ -17,7 +17,7 @@ import os.path as op
 import os
 import json
 import logging
-from .hdf5dtype import getTypeItem, createDataType, getItemSize
+from .hdf5dtype import getTypeItem, createDataType, getItemSize, Reference, RegionReference
 from .objid import createObjId
 from .apiversion import _apiver
 
@@ -71,6 +71,43 @@ _H5PY_FILTERS = {
 }
 
 _H5PY_COMPRESSION_FILTERS = ("gzip", "lzf", "szip")
+
+
+def convert_dtype(srcdt):
+    """Return a dtype based on input dtype, converting any Reference types from
+    h5json style to h5py.
+    """
+
+    if len(srcdt) > 0:
+        fields = []
+        for name in srcdt.fields:
+            item = srcdt.fields[name]
+            # item is a tuple of dtype and integer offset
+            field_dt = convert_dtype(item[0])
+            fields.append((name, field_dt))
+        tgt_dt = np.dtype(fields)
+    else:
+        # check if this a "special dtype"
+        if srcdt.metadata and "ref" in srcdt.metadata:
+            if srcdt.metadata['ref'] is Reference:
+                tgt_dt = h5py.special_dtype(ref=h5py.Reference)
+            elif srcdt.metadata['ref'] is RegionReference:
+                tgt_dt = h5py.special_dtype(ref=h5py.RegionReference)
+            else:
+                raise TypeError(f"Unexpected ref type: {srcdt}")
+        elif srcdt.metadata and "vlen" in srcdt.metadata:
+            src_vlen = srcdt.metadata["vlen"]
+            if isinstance(src_vlen, np.dtype):
+                tgt_base = convert_dtype(src_vlen)
+            else:
+                tgt_base = src_vlen
+            tgt_dt = h5py.special_dtype(vlen=tgt_base)
+        elif srcdt.kind == "U":
+            # use vlen for unicode strings
+            tgt_dt = h5py.special_dtype(vlen=str)
+        else:
+            tgt_dt = srcdt  # no conversion needed
+    return tgt_dt
 
 
 def visitObj(path, obj):
@@ -1476,6 +1513,7 @@ class Hdf5db:
                     self.makeNullTermStringAttribute(obj, attr_name, strLength, value)
                 else:
                     typeItem = getTypeItem(dt)
+                    dt = convert_dtype(dt)
                     value = self.toRef(rank, typeItem, value)
 
                     # create numpy array
@@ -1725,6 +1763,7 @@ class Hdf5db:
             baseType = typeItem["base"]
 
             dt = self.createTypeFromItem(baseType)
+            dt = convert_dtype(dt)
             des = np.array(src, dtype=dt)
 
         elif typeClass == "H5T_REFERENCE":
@@ -2193,7 +2232,8 @@ class Hdf5db:
             raise IOError(errno.EIO, msg)
 
         if isinstance(slices, (list, tuple)) and len(slices) != rank:
-            msg = "Unexpected error: getDatasetValuesByUuid: number of dims in selection not same as rank"
+            msg = "Unexpected error: getDatasetValuesByUuid: "
+            msg += "number of dims in selection not same as rank"
             self.log.error(msg)
             raise IOError(errno.EIO, msg)
 

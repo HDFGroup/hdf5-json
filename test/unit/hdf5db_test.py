@@ -841,7 +841,6 @@ class Hdf5dbTest(unittest.TestCase):
             ]
             db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
             item = db.getAttributeItem("groups", root_uuid, "A1")
-
             attr_type = item["type"]
             self.assertEqual(attr_type["class"], "H5T_REFERENCE")
             self.assertEqual(attr_type["base"], "H5T_STD_REF_OBJ")
@@ -1275,7 +1274,6 @@ class Hdf5dbTest(unittest.TestCase):
             for query in queries.keys():
                 eval_str = db._getEvalStr(query, fields)
                 self.assertEqual(eval_str, queries[query])
-                # print(query, "->", eval_str)
 
     def testBadQuery(self):
         queries = (
