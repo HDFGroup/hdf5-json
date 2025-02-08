@@ -682,10 +682,10 @@ class Hdf5dtypeTest(unittest.TestCase):
                               "charSet": "H5T_CSET_ASCII",
                               "strPad": "H5T_STR_NULLTERM",
                               "length": "H5T_VARIABLE"
-                            }
+                            } # noqa: E126
                           },
                  "name": "VALUE3"}
-                ],
+                ], # noqa: E123
             "class": "H5T_COMPOUND"
         }
         typeSize = hdf5dtype.getItemSize(typeItem)
