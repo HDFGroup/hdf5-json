@@ -735,9 +735,13 @@ def createBaseDataType(typeItem):
         if base_json["class"] != "H5T_INTEGER":
             msg = "Only integer base types can be used with enum type"
             raise TypeError(msg)
-        if "mapping" not in typeItem:
+        if "mapping" in typeItem:
+            mapping = typeItem["mapping"]
+        elif "members" in typeItem:
+            mapping = typeItem["members"]  # backward-compatibility for hdf5-json
+        else:
             raise KeyError("'mapping' not provided for enum type")
-        mapping = typeItem["mapping"]
+
         if len(mapping) == 0:
             raise KeyError("empty enum map")
 

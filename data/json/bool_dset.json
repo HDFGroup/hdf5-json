@@ -24,7 +24,7 @@
                     "class": "H5T_INTEGER"
                 },
                 "class": "H5T_ENUM",
-                "mapping": [
+                "members": [
                     {
                         "name": "FALSE",
                         "value": 0

@@ -797,7 +797,7 @@ class Hdf5db:
     def getObjectByUuid(self, col_type, obj_uuid):
         # col_type should be either "datasets", "groups", or "datatypes"
         if col_type not in ("datasets", "groups", "datatypes"):
-            msg = "Unexpectd error, invalid col_type: [" + col_type + "]"
+            msg = "Unexpected error, invalid col_type: [" + col_type + "]"
             self.log.error(msg)
             raise IOError(errno.EIO, msg)
         if col_type == "groups" and obj_uuid == self.dbGrp.attrs["rootUUID"]:
