@@ -84,6 +84,8 @@ def isSchema2Id(id):
     """return true if this is a v2 id"""
     # v1 ids are in the standard UUID format: 8-4-4-4-12
     # v2 ids are in the non-standard: 8-8-4-6-6
+    if not isValidUuid(id):
+        return False
     parts = id.split("-")
     if len(parts) != 6:
         raise ValueError(f"Unexpected id formation for uuid: {id}")

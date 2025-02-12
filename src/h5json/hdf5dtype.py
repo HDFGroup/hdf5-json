@@ -14,6 +14,9 @@ import weakref
 import numpy as np
 
 
+numpy_integer_types = (np.int8, np.uint8, np.int16, np.int16, np.int32, np.uint32, np.int64, np.uint64)
+numpy_float_types = (np.float16, np.float32, np.float64)
+
 class Reference:
     """
     Represents an HDF5 object reference
@@ -148,6 +151,58 @@ def special_dtype(**kwds):
     raise TypeError(f'Unknown special type "{name}"')
 
 
+
+def find_item_type(data):
+    """Find the item type of a simple object or collection of objects.
+
+    E.g. [[['a']]] -> str
+
+    The focus is on collections where all items have the same type; we'll return
+    None if that's not the case.
+
+    The aim is to treat numpy arrays of Python objects like normal Python
+    collections, while treating arrays with specific dtypes differently.
+    We're also only interested in array-like collections - lists and tuples,
+    possibly nested - not things like sets or dicts.
+    """
+    if isinstance(data, np.ndarray):
+        if (
+            data.dtype.kind == 'O' and not check_dtype(vlen=data.dtype)
+        ):
+            item_types = {type(e) for e in data.flat}
+        else:
+            return None
+    elif isinstance(data, (list, tuple)):
+        item_types = {find_item_type(e) for e in data}
+    else:
+        return type(data)
+
+    if len(item_types) != 1:
+        return None
+    return item_types.pop()
+
+def guess_dtype(data):
+    """ Attempt to guess an appropriate dtype for the object, returning None
+    if nothing is appropriate (or if it should be left up the the array
+    constructor to figure out)
+    """
+
+    # todo - handle RegionReference, Reference
+    item_type = find_item_type(data)
+    if item_type is bytes:
+        return special_dtype(vlen=bytes)
+    if item_type is str:
+        return special_dtype(vlen=str)
+
+    return None
+
+def is_float16_dtype(dt):
+    if dt is None:
+        return False
+
+    dt = np.dtype(dt)  # normalize strings -> np.dtype objects
+    return dt.kind == 'f' and dt.itemsize == 2
+
 def check_dtype(**kwds):
     """Check a dtype for h5py special type "hint" information.  Only one
     keyword may be given.
@@ -222,7 +277,7 @@ def getTypeResponse(typeItem):
         for k in typeItem.keys():
             if k == "base":
                 if isinstance(typeItem[k], dict):
-                    response[k] = getTypeResponse(typeItem[k])  # recurse call
+                    response[k] = getTypeResponse(typeItem[k])  # recursive call
                 else:
                     response[k] = typeItem[k]  # predefined type
             elif k not in ("size", "base_size"):
@@ -251,6 +306,9 @@ def getTypeItem(dt, metadata=None):
         "float32": "H5T_IEEE_F32",
         "float64": "H5T_IEEE_F64",
     }
+    
+    dt = np.dtype(dt)  # convert 'int32', np.int32, etc. to a dtype
+
     if not metadata and dt.metadata:
         metadata = dt.metadata
 
@@ -419,6 +477,23 @@ def getTypeItem(dt, metadata=None):
         raise TypeError(f"unexpected dtype kind: {dt.kind}")
 
     return type_info
+
+
+def isVlen(dt):
+    """
+    Return True if the type contains variable length elements
+    """
+    is_vlen = False
+    if len(dt) > 1:
+        names = dt.names
+        for name in names:
+            if isVlen(dt[name]):
+                is_vlen = True
+                break
+    else:
+        if dt.metadata and "vlen" in dt.metadata:
+            is_vlen = True
+    return is_vlen
 
 
 def getItemSize(typeItem):
