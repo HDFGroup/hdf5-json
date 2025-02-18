@@ -17,11 +17,12 @@ from .array_util import jsonToArray, bytesArrayToList
 from .dset_util import make_new_dset, resize_dataset
 from .objid import createObjId, getCollectionForId
 from .apiversion import _apiver
+from .h5reader import H5Reader
 
 
 class Hdf5db:
     """
-    This class is used to manage UUID lookup tables for primary HDF objects (Groups, Datasets,
+    This class is used to manage id lookup tables for primary HDF objects (Groups, Datasets,
     and Datatypes).  By default all data is held in-memory.  Initialize with h5_reader to read from
     an HDF5 compatible storage pool, and or, h5_writer to write to an HDF5 compatible storage pool.
     """
@@ -34,7 +35,7 @@ class Hdf5db:
 
     def __init__(
         self,
-        h5_reader = None,
+        h5_reader: H5Reader = None,
         h5_writer = None,
         app_logger = None,
     ):
@@ -49,18 +50,28 @@ class Hdf5db:
         self._writer = h5_writer
     
         if self._reader:
-            root_id = self._reader.get_objid("/")
-            kwargs = {"include_attrs": True, "include_links": True}
-            group_json = self._reader.get_obj(root_id, **kwargs)
+            root_id = self._reader.get_root_id()
+            group_json = self._reader.getObjectById(root_id)
         else:
+            root_id = createObjId(obj_type="groups")
             # create a root group
             group_json = {"links": {}, "attributes": {}, "cpl": {}}
             group_json["created"] = time.time()
-            root_id = createObjId(obj_type="groups")
-            self._db[root_id] = group_json
         
+        self._db[root_id] = group_json
         self._root_id = root_id
            
+    def close(self):
+        """ close reader and writer handles """
+        self.log.info("Hdf5db __close")
+        if self._writer:
+            self._writer.flush()
+            self._writer.close()
+        if self._reader:
+            self._reader.close()
+        self._root_id = None
+        self._db = {}
+
     def __enter__(self):
         """ called on package init """
         self.log.info("Hdf5db __enter")
@@ -69,18 +80,15 @@ class Hdf5db:
     def __exit__(self, type, value, traceback):
         """ called on package exit """
         self.log.info("Hdf5db __exit")
-        if self._writer:
-            self._writer.flush()
-            self._writer.close()
+        self.close()
          
 
     def getObjectById(self, obj_id):
-        """ return objecct with given id """
+        """ return object with given id """
         if obj_id not in self._db:
             if self._reader:
                 # load the obj from the reader
-                kwargs = {"include_attrs": True, "include_links": True}
-                obj_json = self._reader.get_obj(obj_id, **kwargs)
+                obj_json = self._reader.getObjectById(obj_id)
                 self._db[obj_id] = obj_json
             else:
                 raise KeyError(f"obj_id: {obj_id} not found")
@@ -152,7 +160,7 @@ class Hdf5db:
     
     def getObjectByPath(self, path):
         """ Get Object JSON at given path """
-        obj_id = self.getObjectDByPath(path)
+        obj_id = self.getObjectIDByPath(path)
         obj_json = self.getObjectById(obj_id)
         return obj_json    
 
@@ -166,7 +174,6 @@ class Hdf5db:
             raise TypeError(f"{obj_id} does not have a datatype")
         type_json = obj_json["type"]
         
-        # TBD: what about datasets using a committed type?
         dtype = createDataType(type_json)
         return dtype
  
@@ -253,7 +260,8 @@ class Hdf5db:
             if ctype_id not in self._db:
                 raise KeyError(f"ctype: {ctype_id} not found")
             ctype_json = self.getObjectById(ctype_id)
-            type_json = ctype_json["type"]
+            type_json = ctype_json["type"].copy()
+            type_json["id"] = ctype_id
             dtype = createDataType(type_json)
 
         # First, make sure we have a NumPy array.   
@@ -352,11 +360,6 @@ class Hdf5db:
         #TBD
       
 
-    """
-    createDataset - creates new dataset given shape and datatype
-    Returns obj_id
-    """
-
     def createDataset(
         self,
         shape=None,
@@ -369,6 +372,10 @@ class Hdf5db:
         fillvalue=None,
         cpl=None,
     ):
+        """
+        createDataset - creates new dataset given shape and datatype
+        Returns obj_id
+        """
         
         kwds = {}
         if chunks:

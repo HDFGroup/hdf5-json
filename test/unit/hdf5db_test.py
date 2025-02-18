@@ -18,10 +18,6 @@ from h5json.objid import isRootObjId, isValidUuid, isSchema2Id
 from h5json.hdf5dtype import special_dtype, Reference
 
 
-UUID_LEN = 36  # length for uuid strings
-
-
-
 class Hdf5dbTest(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(Hdf5dbTest, self).__init__(*args, **kwargs)
