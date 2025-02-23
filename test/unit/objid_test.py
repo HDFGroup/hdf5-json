@@ -12,7 +12,7 @@
 import unittest
 
 from h5json.objid import isRootObjId, isValidUuid, validateUuid
-from h5json.objid import createObjId, getCollectionForId
+from h5json.objid import createObjId, getCollectionForId, stripId
 from h5json.objid import isObjId, isS3ObjKey, getS3Key, getObjId, isSchema2Id
 
 
@@ -134,6 +134,7 @@ class IdUtilTest(unittest.TestCase):
         self.assertEqual(getCollectionForId(group_id), "groups")
         self.assertEqual(getCollectionForId(dataset_id), "datasets")
         self.assertEqual(getCollectionForId(ctype_id), "datatypes")
+        self.assertEqual(stripId(group_id), "314d61b8-9954-11e6-a733-3c15c2da029e")
         try:
             getCollectionForId(bad_id)
             self.assertTrue(False)

@@ -10,13 +10,13 @@
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
 from abc import ABC, abstractmethod
-
+import weakref
 import logging
 
 
-class H5Reader(ABC):
+class H5Writer(ABC):
     """
-    This abstract class defines properties and methods that the Hdf5db class uses for reading from an HDF5 
+    This abstract class defines properties and methods that the Hdf5db class uses for writing to an HDF5 
     compatible storage medium.  
     """
 
@@ -24,43 +24,36 @@ class H5Reader(ABC):
     def __init__(
         self,
         filepath,
+        append=False,
         app_logger=None
     ):
         self._filepath = filepath
+        self._append = append
+        self._filepath = filepath
+        self._db_ref = None
         if app_logger:
             self.log = app_logger
         else:
             self.log = logging.getLogger()
-       
-    @abstractmethod
-    def get_root_id(self):
-        """ Return root id """
-        pass
 
-    @abstractmethod 
-    def getObjectById(self, obj_id, include_attrs=True, include_links=True):
-        """ return object with given id """
+    
+    def set_db(self, db):
+        #TBD - use weak ref?
+        self._db_ref = weakref.ref(db)
+
+    @property
+    def db(self):
+        if not self._db_ref:
+            raise ValueError("db not available")
+        return self._db_ref()
+
+    @abstractmethod
+    def flush(self):
+        """ Write dirty items """
         pass
   
     @abstractmethod
-    def getAttribute(self, obj_id, name, includeData=True):
-        """
-        Get attribute given an object id and name
-        returns: JSON object
-        """
-        pass
-
-    @abstractmethod
-    def getDatasetValues(self, obj_id, slices=Ellipsis, format="json"):
-        """
-        Get values from dataset identified by obj_id.
-        If a slices list or tuple is provided, it should have the same
-        number of elements as the rank of the dataset.
-        """
-        pass
-
-    @abstractmethod
     def close(self):
-        """ close any open handles to the storage """
+        """ close storage handle """
         pass
 

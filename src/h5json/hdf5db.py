@@ -18,6 +18,7 @@ from .dset_util import make_new_dset, resize_dataset
 from .objid import createObjId, getCollectionForId
 from .apiversion import _apiver
 from .h5reader import H5Reader
+from .h5writer import H5Writer
 
 
 class Hdf5db:
@@ -57,15 +58,23 @@ class Hdf5db:
             # create a root group
             group_json = {"links": {}, "attributes": {}, "cpl": {}}
             group_json["created"] = time.time()
+
+        if self._writer:
+            self._writer.set_db(self)
         
         self._db[root_id] = group_json
         self._root_id = root_id
+
+    def flush(self):
+        """ write out any changes """
+        if self._writer:
+            self._writer.flush()
            
     def close(self):
         """ close reader and writer handles """
         self.log.info("Hdf5db __close")
-        if self._writer:
-            self._writer.flush()
+        self.flush()
+        if self._writer:                         
             self._writer.close()
         if self._reader:
             self._reader.close()
@@ -227,6 +236,17 @@ class Hdf5db:
             attr_json["value"] = attr_json  # this will update the _db
         
         return attr_json
+    
+    def getAttributes(self, obj_id):
+        """
+        Get attributes given an object id and name
+        returns: JSON object
+        """
+
+        obj_json = self.getObjectById(obj_id)
+        attrs = obj_json["attributes"]
+         
+        return attrs
     
     def getAttributeValue(self, obj_id, name):
         """ Return NDArray of the given attribute value """
@@ -424,7 +444,8 @@ class Hdf5db:
         grp_json = self.getObjectById(grp_id)
         if "links" not in grp_json:
             raise KeyError(f"No links - {grp_id} not a group?")
-        return grp_json["links"]
+        links = grp_json["links"]
+        return links
       
     def getLink(self, grp_id, name):
         """ Get the given link """
@@ -493,11 +514,18 @@ class Hdf5db:
             group_json["cpl"] = cpl
         else:
             group_json["cpl"] = {}
-        group_json["created"] = time.time
+        group_json["created"] = time.time()
         group_json["modified"] = None
         self._db[grp_id] = group_json
         return grp_id
+   
 
+    def getCollection(self, col_type=None):
+        obj_ids = []
+        for obj_id in self._db:
+            if not col_type or getCollectionForId(obj_id) == col_type:
+                obj_ids.append(obj_id)
+        return obj_ids
 
     def __len__(self):
         # return the number of objects

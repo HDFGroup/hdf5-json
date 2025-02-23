@@ -113,13 +113,42 @@ def hexRot(ch):
     return format((int(ch, base=16) + 8) % 16, "x")
 
 
+def getCollectionForId(obj_id):
+    """return groups/datasets/datatypes based on id"""
+    if not isinstance(obj_id, str):
+        raise ValueError("invalid object id")
+    
+    collection = None
+    if obj_id.startswith("g-"):
+        collection = "groups"
+    elif obj_id.startswith("d-"):
+        collection = "datasets"
+    elif obj_id.startswith("t-"):
+        collection = "datatypes"
+    else:
+        raise ValueError(f"{obj_id} not a collection id")
+    return collection
+
+def stripId(obj_id):
+    """ return just the base id without any prefix (e.g. 'g-') """
+    if len(obj_id) == UUID_LEN:
+        return obj_id  # just return as is
+    if len(obj_id) == UUID_LEN + 2:
+        return obj_id[2:]
+    else:
+        raise ValueError("unexpected obj_id: {obj_id}")
+
+
 def isRootObjId(id):
     """returns true if this is a root id (only for v2 schema)"""
     if not isSchema2Id(id):
         raise ValueError("isRootObjId can only be used with v2 ids")
     validateUuid(id)  # will throw ValueError exception if not a objid
-    if id[0] != "g":
-        return False  # not a group
+    try:
+        if getCollectionForId(id) != "groups":
+            return False  # not a group
+    except ValueError:
+        return False
     token = getIdHexChars(id)
     # root ids will have last 16 chars rotated version of the first 16
     is_root = True
@@ -356,22 +385,6 @@ def isS3ObjKey(s3key):
     except ValueError:
         pass  # ignore
     return valid
-
-
-def getCollectionForId(obj_id):
-    """return groups/datasets/datatypes based on id"""
-    if not isinstance(obj_id, str):
-        raise ValueError("invalid object id")
-    collection = None
-    if obj_id.startswith("g-"):
-        collection = "groups"
-    elif obj_id.startswith("d-"):
-        collection = "datasets"
-    elif obj_id.startswith("t-"):
-        collection = "datatypes"
-    else:
-        raise ValueError("not a collection id")
-    return collection
 
 
 def validateUuid(id, obj_class=None):

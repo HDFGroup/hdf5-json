@@ -9,8 +9,6 @@
 # distribution tree.  If you do not have access to this file, you may        #
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
-import logging
-
 import h5py
 import numpy as np
 
@@ -42,13 +40,16 @@ class H5pyReader(H5Reader):
         filepath,
         app_logger=None
     ):
+        self._id_map = {}
+        self._addr_map = {}
+        """
         if app_logger:
             self.log = app_logger
         else:
             self.log = logging.getLogger()
-        self._id_map = {}
-        self._addr_map = {}
         self._filepath = filepath
+        """
+        super().__init__(filepath, app_logger=app_logger)
         f = h5py.File(self._filepath)
         self._f = f
         self._root_id = createObjId(obj_type="groups")
@@ -182,7 +183,7 @@ class H5pyReader(H5Reader):
         return items
 
     def _getGroup(self, grp, include_links=True):
-        self.log.info("_getGroup alias: [{grp.name}]")
+        self.log.info(f"_getGroup alias: [{grp.name}]")
 
         item = {"alias": grp.name}
 
@@ -192,7 +193,7 @@ class H5pyReader(H5Reader):
         return item
     
     def _getDatatype(self, ctype, include_attrs=True):
-        self.log.info("getDatatype alias: ]{ctype.name}")
+        self.log.info(f"getDatatype alias: ]{ctype.name}")
         item = {"alias": ctype.name}
         item["type"] = getTypeItem(ctype.dtype)
 
@@ -200,7 +201,7 @@ class H5pyReader(H5Reader):
 
     
     def _getDataset(self, dset):     
-        self.log.info("getDataset alias: [{dset.name}]")
+        self.log.info(f"getDataset alias: [{dset.name}]")
 
         item = {"alias": dset.name}
 

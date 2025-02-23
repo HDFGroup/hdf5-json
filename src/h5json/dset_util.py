@@ -94,7 +94,7 @@ def make_new_dset(
     
 
     # TBD - other properties
-    dset_json = {"shape": shape_json, "type": type_json, "cpl": cpl}
+    dset_json = {"shape": shape_json, "type": type_json, "cpl": cpl, "attributes": {}}
     dset_json["created"] = time.time()
     dset_json["modified"] = None
 
