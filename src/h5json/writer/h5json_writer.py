@@ -13,14 +13,13 @@
 import json
 
 from .h5writer import H5Writer
-from .objid import stripId, getCollectionForId
+from ..objid import stripId, getCollectionForId
 
 class H5JsonWriter(H5Writer):
     """
     This abstract class defines properties and methods that the Hdf5db class uses for writing to an HDF5 
     compatible storage medium.  
     """
-
 
     def __init__(
         self,

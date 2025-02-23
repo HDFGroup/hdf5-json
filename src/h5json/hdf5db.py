@@ -17,8 +17,8 @@ from .array_util import jsonToArray, bytesArrayToList
 from .dset_util import make_new_dset, resize_dataset
 from .objid import createObjId, getCollectionForId
 from .apiversion import _apiver
-from .h5reader import H5Reader
-from .h5writer import H5Writer
+from .reader.h5reader import H5Reader
+from .writer.h5writer import H5Writer
 
 
 class Hdf5db:
@@ -37,7 +37,7 @@ class Hdf5db:
     def __init__(
         self,
         h5_reader: H5Reader = None,
-        h5_writer = None,
+        h5_writer: H5Writer = None,
         app_logger = None,
     ):
         if app_logger:

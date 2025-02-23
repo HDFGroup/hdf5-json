@@ -12,10 +12,10 @@
 import h5py
 import numpy as np
 
-from .objid import createObjId
-from .hdf5dtype import getTypeItem
-from .array_util import bytesArrayToList
-from .h5reader import H5Reader
+from ..objid import createObjId
+from ..hdf5dtype import getTypeItem
+from ..array_util import bytesArrayToList
+from ..h5reader import H5Reader
 
 
 class H5pyReader(H5Reader):

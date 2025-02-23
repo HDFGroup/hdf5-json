@@ -23,7 +23,6 @@ dependencies = [
     "numpy >= 2.0; python_version>='3.9'",
     "jsonschema >=4.4.0",
     "tomli; python_version<'3.11'",
-    "numpy >=1.20,<2.0.0; python_version=='3.8'",
 ]
 
 dynamic = ["version"]
@@ -53,6 +52,8 @@ build-backend = "setuptools.build_meta"
 package-dir = { "" = "src" }
 packages = [
     "h5json",
+    "h5json.reader",
+    "h5json.writer",
     "h5json.h5tojson",
     "h5json.jsontoh5",
     "h5json.schema",
