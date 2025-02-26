@@ -47,12 +47,28 @@ class H5JsonWriter(H5Writer):
         """ close storage handle """
         self.dumpFile()
 
+    def getAliasList(self, obj_id):
+        """ return list of alias """
+        if obj_id not in self.alias_db:
+            self.alias_db[obj_id] = []
+        return self.alias_db[obj_id]
+         
+    
+    def updateAliasList(self):
+        """ update the alias list for each object """
+        # clear exiting aliases
+        obj_ids = self.db.getCollection()
+        for obj_id in obj_ids:
+            self.alias_db[obj_id] = []
+
+        self._setAlias(self._root_uuid, set(), "/")
+
      
     def _setAlias(self, obj_id, id_set, h5path):
         """ add the given h5path to the object's alias list
             If the object is a group, recurse through each hard link """
         obj_json = self.db.getObjectById(obj_id)
-        alias_list = self.alias_db[obj_id]
+        alias_list = self.getAliasList(obj_id)
         if h5path in alias_list:
             return  # nothing to do
         alias_list.append(h5path)
@@ -72,15 +88,6 @@ class H5JsonWriter(H5Writer):
                 else:
                     self._setAlias(tgt_id, id_set, h5path+link_name)
         id_set.remove(obj_id)
-
-    def getAliasList(self):
-        """ update the alias list for each object """
-        # clear exiting aliases
-        obj_ids = self.db.getCollection()
-        for obj_id in obj_ids:
-            self.alias_db[obj_id] = []
-
-        self._setAlias(self._root_uuid, set(), "/")
 
 
     def dumpAttribute(self, obj_id, attr_name):
@@ -133,7 +140,8 @@ class H5JsonWriter(H5Writer):
     def dumpGroup(self, obj_id):
         item = self.db.getObjectById(obj_id)
         response = {}
-        alias = self.alias_db[obj_id]
+
+        alias = self.getAliasList(obj_id)
         response["alias"] = alias
          
         if "cpl" in item:
@@ -220,7 +228,8 @@ class H5JsonWriter(H5Writer):
             datasets = {}
             for obj_id in obj_ids:
                 item = self.dumpDataset(obj_id)
-                datasets[obj_id] = item
+                obj_uuid = stripId(obj_id)
+                datasets[obj_uuid] = item
 
             self.json["datasets"] = datasets
 
@@ -242,7 +251,8 @@ class H5JsonWriter(H5Writer):
             datatypes = {}
             for obj_id in obj_ids:
                 item = self.dumpDatatype(obj_id)
-                datatypes[obj_id] = item
+                obj_uuid = stripId(obj_id)
+                datatypes[obj_uuid] = item
 
             self.json["datatypes"] = datatypes
 
@@ -254,12 +264,16 @@ class H5JsonWriter(H5Writer):
 
         self.json["apiVersion"] = db_version_info["hdf5-json-version"]
         self.json["root"] = stripId(self._root_uuid)
-        self.getAliasList()  # create alias_db with obj_id to alias list dict
+
+        self.updateAliasList()  # create alias_db with obj_id to alias list dict
+
         self.dumpGroups()
 
         self.dumpDatasets()
 
         self.dumpDatatypes()
+
+
 
         print(json.dumps(self.json, sort_keys=True, indent=4))
 

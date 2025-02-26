@@ -58,48 +58,6 @@ _H5PY_FILTERS = {
 _H5PY_COMPRESSION_FILTERS = ("gzip", "lzf", "szip")
 """
 
-def make_new_dset(
-        shape=None,
-        dtype=None,
-        chunks=None,
-        compression=None,
-        shuffle=None,
-        maxshape=None,
-        compression_opts=None,
-        fillvalue=None,
-        cpl=None
-    ):
-
-    type_json = getTypeItem(dtype)
-    if shape == "H5S_NULL":
-        shape_json = {"class": "H5S_NULL"}
-    else:
-        shape_json = {"class": "H5S_SIMPLE"}
-        shape_json["dims"] = list(shape)
-
-    if maxshape:
-        shape_json["maxshape"] = maxshape
-    if cpl is None:
-        cpl = {}
-    if chunks:
-        cpl["chunks"] = chunks
-    if compression:
-        cpl["compression"] = compression
-    if shuffle:
-        cpl["shuffle"] = shuffle
-    if compression_opts: 
-        cpl["compression_opts"] = compression_opts
-    if fillvalue:
-        cpl["fillvalue"] = fillvalue
-    
-
-    # TBD - other properties
-    dset_json = {"shape": shape_json, "type": type_json, "cpl": cpl, "attributes": {}}
-    dset_json["created"] = time.time()
-    dset_json["modified"] = None
-
-    return dset_json
-
 def resize_dataset(dset_json, shape):
     shape_json = dset_json["shape"]
     shape_class = shape_json["class"]

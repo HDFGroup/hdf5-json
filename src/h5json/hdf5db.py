@@ -14,7 +14,7 @@ import numpy as np
 import logging
 from .hdf5dtype import getTypeItem, createDataType, Reference, special_dtype
 from .array_util import jsonToArray, bytesArrayToList
-from .dset_util import make_new_dset, resize_dataset
+from .dset_util import resize_dataset
 from .objid import createObjId, getCollectionForId
 from . import selections
 from .apiversion import _apiver
@@ -242,31 +242,6 @@ class Hdf5db:
         return dtype
  
  
-    def createCommittedType(self, datatype, cpl=None):
-        """
-        createCommittedType - creates new named datatype
-        Returns item
-        """
-        self.log.info("createCommittedType")
-        if cpl is None:
-            cpl = {}
-         
-        ctype_id = createObjId(obj_type="datatypes", root_id=self.root_id)
-        if isinstance(datatype, np.dtype):
-            dt = datatype
-        else:
-            dt = createDataType(datatype)
-
-        type_json = getTypeItem(dt)  # get canonical json description of datatype
-
-        ctype_json = {"type": type_json, "attributes": {}, "cpl": cpl}
-        ctype_json["created"] = time.time()
-        ctype_json["modified"] = None
-        self.db[ctype_id] = ctype_json
-        self._new_objects.add(ctype_id)
-        return ctype_id
-  
-
     def getAttribute(self, obj_id, name, includeData=True):
         """
         Get attribute given an object id and name
@@ -519,45 +494,6 @@ class Hdf5db:
         updates.append((sel, arr.copy()))
         self.make_dirty(dset_id)
 
-    def createDataset(
-        self,
-        shape=None,
-        dtype=None,
-        chunks=None,
-        compression=None,
-        shuffle=None,
-        maxshape=None,
-        compression_opts=None,
-        fillvalue=None,
-        cpl=None,
-    ):
-        """
-        createDataset - creates new dataset given shape and datatype
-        Returns obj_id
-        """
-        
-        kwds = {}
-        if chunks:
-            kwds["chunks"] = chunks
-        if compression:
-            kwds["compression"] = compression
-        if shuffle:
-            kwds["shuffle"] = shuffle
-        if compression_opts:
-            kwds["compression_opts"] = compression_opts
-        if maxshape:
-            kwds["maxshape"] = maxshape
-        if fillvalue:
-            kwds["fillvalue"] = fillvalue
-        if cpl:
-            kwds["cpl"] = cpl
-        dset_json = make_new_dset(shape=shape, dtype=dtype, **kwds)
- 
-        dset_id = createObjId("datasets", root_id=self.root_id)   
-        self.db[dset_id] = dset_json 
-        self._new_objects.add(dset_id)
-        return dset_id
-
 
     def resizeDataset(self, dset_id, shape):
         """
@@ -668,7 +604,59 @@ class Hdf5db:
         self.db[grp_id] = group_json
         self._new_objects.add(grp_id)
         return grp_id
-   
+    
+
+    def createCommittedType(self, datatype, cpl=None):
+        """
+        createCommittedType - creates new named datatype
+        Returns item
+        """
+        self.log.info("createCommittedType")
+        if cpl is None:
+            cpl = {}
+         
+        ctype_id = createObjId(obj_type="datatypes", root_id=self.root_id)
+        if isinstance(datatype, np.dtype):
+            dt = datatype
+        else:
+            dt = createDataType(datatype)
+
+        type_json = getTypeItem(dt)  # get canonical json description of datatype
+
+        ctype_json = {"type": type_json, "attributes": {}, "cpl": cpl}
+        ctype_json["created"] = time.time()
+        self.db[ctype_id] = ctype_json
+        self._new_objects.add(ctype_id)
+        return ctype_id
+  
+    
+    def createDataset(
+        self,
+        shape=None,
+        dtype=None,
+        cpl=None,
+    ):
+        """
+        createDataset - creates new dataset given shape and datatype
+        Returns obj_id
+        """
+        type_json = getTypeItem(dtype)
+        if shape == "H5S_NULL":
+            shape_json = {"class": "H5S_NULL"}
+        else:
+            shape_json = {"class": "H5S_SIMPLE"}
+            shape_json["dims"] = list(shape)
+
+        dset_json = {"shape": shape_json, "type": type_json, "attributes": {}}
+        if cpl:
+            dset_json["cpl"] = cpl
+        else:
+            dset_json["cpl"] = {}
+ 
+        dset_id = createObjId("datasets", root_id=self.root_id)   
+        self.db[dset_id] = dset_json 
+        self._new_objects.add(dset_id)
+        return dset_id
 
     def getCollection(self, col_type=None):
         obj_ids = []

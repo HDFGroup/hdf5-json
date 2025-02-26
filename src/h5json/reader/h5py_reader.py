@@ -11,11 +11,55 @@
 ##############################################################################
 import h5py
 import numpy as np
+import logging
 
 from ..objid import createObjId
 from ..hdf5dtype import getTypeItem
 from ..array_util import bytesArrayToList
+from .. import selections
 from ..h5reader import H5Reader
+
+_HDF_FILTERS = {
+    1: {"class": "H5Z_FILTER_DEFLATE", "alias": "gzip", "options": ["level"]},
+    2: {"class": "H5Z_FILTER_SHUFFLE", "alias": "shuffle"},
+    3: {"class": "H5Z_FILTER_FLETCHER32", "alias": "fletcher32"},
+    4: {
+        "class": "H5Z_FILTER_SZIP",
+        "alias": "szip",
+        "options": ["bitsPerPixel", "coding", "pixelsPerBlock", "pixelsPerScanLine"],
+    },
+    5: {"class": "H5Z_FILTER_NBIT"},
+    6: {
+        "class": "H5Z_FILTER_SCALEOFFSET",
+        "alias": "scaleoffset",
+        "options": ["scaleType", "scaleOffset"],
+    },
+    32000: {"class": "H5Z_FILTER_LZF", "alias": "lzf"},
+}
+
+_HDF_FILTER_OPTION_ENUMS = {
+    "coding": {
+        h5py.h5z.SZIP_EC_OPTION_MASK: "H5_SZIP_EC_OPTION_MASK",
+        h5py.h5z.SZIP_NN_OPTION_MASK: "H5_SZIP_NN_OPTION_MASK",
+    },
+    "scaleType": {
+        h5py.h5z.SO_FLOAT_DSCALE: "H5Z_SO_FLOAT_DSCALE",
+        h5py.h5z.SO_FLOAT_ESCALE: "H5Z_SO_FLOAT_ESCALE",
+        h5py.h5z.SO_INT: "H5Z_SO_INT",
+    },
+}
+
+# h5py supported filters
+_H5PY_FILTERS = {
+    "gzip": 1,
+    "shuffle": 2,
+    "fletcher32": 3,
+    "szip": 4,
+    "scaleoffset": 6,
+    "lzf": 32000,
+}
+
+_H5PY_COMPRESSION_FILTERS = ("gzip", "lzf", "szip")
 
 
 class H5pyReader(H5Reader):
@@ -196,6 +240,97 @@ class H5pyReader(H5Reader):
 
         return item
 
+
+    def _getHDF5DatasetCreationProperties(self, dset, type_class):
+        """ Get dataset creation properties maintained by HDF5 library """
+
+        #
+        # Fill in creation properties
+        #
+        creationProps = {}
+        plist = h5py.h5d.DatasetID.get_create_plist(dset.id)
+
+        # alloc time
+        nAllocTime = plist.get_alloc_time()
+        if nAllocTime == h5py.h5d.ALLOC_TIME_DEFAULT:
+            creationProps["allocTime"] = "H5D_ALLOC_TIME_DEFAULT"
+        elif nAllocTime == h5py.h5d.ALLOC_TIME_LATE:
+            creationProps["allocTime"] = "H5D_ALLOC_TIME_LATE"
+        elif nAllocTime == h5py.h5d.ALLOC_TIME_EARLY:
+            creationProps["allocTime"] = "H5D_ALLOC_TIME_EARLY"
+        elif nAllocTime == h5py.h5d.ALLOC_TIME_INCR:
+            creationProps["allocTime"] = "H5D_ALLOC_TIME_INCR"
+        else:
+            self.log.warning(f"Unknown alloc time value: {nAllocTime}")
+
+        # fill time
+        nFillTime = plist.get_fill_time()
+        if nFillTime == h5py.h5d.FILL_TIME_ALLOC:
+            creationProps["fillTime"] = "H5D_FILL_TIME_ALLOC"
+        elif nFillTime == h5py.h5d.FILL_TIME_NEVER:
+            creationProps["fillTime"] = "H5D_FILL_TIME_NEVER"
+        elif nFillTime == h5py.h5d.FILL_TIME_IFSET:
+            creationProps["fillTime"] = "H5D_FILL_TIME_IFSET"
+        else:
+            self.log.warning(f"unknown fill time value: {nFillTime}")
+
+        if type_class == "H5T_OPAQUE":
+            # TBD: store opaque fill value as a hex string
+            self.log.warning("Opaque fill value not supported")
+        else:
+            if plist.fill_value_defined() == h5py.h5d.FILL_VALUE_USER_DEFINED:
+                creationProps["fillValue"] = bytesArrayToList(dset.fillvalue)
+
+        # layout
+        nLayout = plist.get_layout()
+        if nLayout == h5py.h5d.COMPACT:
+            creationProps["layout"] = {"class": "H5D_COMPACT"}
+        elif nLayout == h5py.h5d.CONTIGUOUS:
+            creationProps["layout"] = {"class": "H5D_CONTIGUOUS"}
+        elif nLayout == h5py.h5d.CHUNKED:
+            creationProps["layout"] = {"class": "H5D_CHUNKED", "dims": dset.chunks}
+        else:
+            self.log.warning(f"Unknown layout value: {nLayout}")
+
+        num_filters = plist.get_nfilters()
+        filter_props = []
+        if num_filters:
+            for n in range(num_filters):
+                filter_info = plist.get_filter(n)
+                opt_values = filter_info[2]
+                filter_prop = {}
+                filter_id = filter_info[0]
+                filter_prop["id"] = filter_id
+                if filter_info[3]:
+                    filter_prop["name"] = self.bytesArrayToList(filter_info[3])
+                if filter_id in _HDF_FILTERS:
+                    hdf_filter = _HDF_FILTERS[filter_id]
+                    filter_prop["class"] = hdf_filter["class"]
+                    if "options" in hdf_filter:
+                        filter_opts = hdf_filter["options"]
+                        for i in range(len(filter_opts)):
+                            if len(opt_values) <= i:
+                                break  # end of option values
+                            opt_value = opt_values[i]
+                            opt_value_enum = None
+                            option_name = filter_opts[i]
+                            if option_name in _HDF_FILTER_OPTION_ENUMS:
+                                option_enums = _HDF_FILTER_OPTION_ENUMS[option_name]
+                                if opt_value in option_enums:
+                                    opt_value_enum = option_enums[opt_value]
+                            if opt_value_enum:
+                                filter_prop[option_name] = opt_value_enum
+                            else:
+                                filter_prop[option_name] = opt_value
+                else:
+                    # custom filter
+                    filter_prop["class"] = "H5Z_FILTER_USER"
+                    if opt_values:
+                        filter_prop["parameters"] = opt_values
+                filter_props.append(filter_prop)
+            creationProps["filters"] = filter_props
+
+        return creationProps
     
     def _getDataset(self, dset):     
         self.log.info(f"getDataset alias: [{dset.name}]")
@@ -207,7 +342,7 @@ class H5pyReader(H5Reader):
             type_uuid = None
             addr = h5py.h5o.get_info(typeid).addr
             type_uuid = self.getObjIdByAddress(addr)
-            committedType = self.getObjectByid(type_uuid)
+            committedType = self.getObjectById(type_uuid)
             typeItem = committedType["type"]
             typeItem["id"] = type_uuid
         else:
@@ -237,7 +372,10 @@ class H5pyReader(H5Reader):
             if include_maxdims:
                 shapeItem["maxdims"] = maxshape
         item["shape"] = shapeItem
-        
+
+        item["cpl"] = self._getHDF5DatasetCreationProperties(dset, typeItem["class"])
+
+
         return item
     
     def getObjectById(self, obj_id, include_attrs=True, include_links=True):
@@ -261,7 +399,7 @@ class H5pyReader(H5Reader):
         return obj_json
 
 
-    def getDatasetValues(self, dset_id, selection):
+    def getDatasetValues(self, dset_id, sel):
         """
         Get values from dataset identified by obj_id.
         If a slices list or tuple is provided, it should have the same
@@ -272,7 +410,22 @@ class H5pyReader(H5Reader):
         if dset.shape is None:
             # TBD: return something like h5py.Empty in this case?
             return None
-        arr = dset[selection]
+        if sel.select_type == selections.H5S_SELECT_ALL:
+            arr = dset[...]
+        elif sel.select_type == selections.H5S_SELECT_HYPERSLABS:
+            rank = len(dset.shape)
+
+            slices = []
+            for dim in range(rank):
+                start = sel.start[dim]
+                stop = start + sel.count[dim]
+                step = sel.step[dim]
+                slices.append(slice(start, stop, step))
+            slices = tuple(slices)
+            arr = dset[slices]
+        else:
+            raise TypeError("selection type not supported")
+        
         return arr
 
        
