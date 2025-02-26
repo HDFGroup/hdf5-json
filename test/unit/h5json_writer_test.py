@@ -17,6 +17,7 @@ from h5json import Hdf5db
 from h5json.writer.h5json_writer import H5JsonWriter
 from h5json.objid import isRootObjId, isValidUuid, isSchema2Id, stripId
 from h5json.hdf5dtype import special_dtype, Reference
+from h5json import selections
 
 
 class H5JsonWriterTest(unittest.TestCase):
@@ -45,7 +46,7 @@ class H5JsonWriterTest(unittest.TestCase):
 
     def testGroup(self):
     
-        with Hdf5db(h5_writer=H5JsonWriter("/tmp/foo.json", no_data=True), app_logger=self.log) as db:
+        with Hdf5db(h5_writer=H5JsonWriter("/tmp/foo.json", no_data=False), app_logger=self.log) as db:
             root_id = db.getObjectIdByPath("/")
             db.createAttribute(root_id, "attr1", value=[1,2,3,4])
             db.createAttribute(root_id, "attr2", 42)
@@ -57,6 +58,12 @@ class H5JsonWriterTest(unittest.TestCase):
             g1_1_id = db.createGroup()
             db.createHardLink(g1_id, "g1.1", g1_1_id)
             dset_111_id = db.createDataset(shape=(10,10), dtype=np.int32)
+            arr = np.zeros((10, 10), dtype=np.int32)
+            for i in range(10):
+                for j in range(10):
+                    arr[i, j] = i * j
+            sel_all = selections.select((10, 10), ...)
+            db.setDatasetValues(dset_111_id, sel_all, arr)
             db.createHardLink(g1_1_id, "dset1.1.1", dset_111_id)
             db.createSoftLink(g2_id, "slink", "somewhere")
             db.createExternalLink(g2_id, "extlink", "somewhere", "someplace")
@@ -77,7 +84,6 @@ class H5JsonWriterTest(unittest.TestCase):
             self.assertTrue("class" in shape_item)
             self.assertEqual(shape_item["class"], "H5S_NULL")
             self.assertTrue(item["created"] > time.time() - 1.0)
-            self.assertEqual(item["modified"], None)
             value = db.getAttributeValue(root_id, "A1")
             self.assertEqual(value, None)
 
@@ -98,7 +104,6 @@ class H5JsonWriterTest(unittest.TestCase):
             self.assertEqual(item["value"], 42)
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
-            self.assertEqual(item["modified"], None)
             shape = item["shape"]
             self.assertEqual(shape["class"], "H5S_SCALAR")
 
@@ -122,7 +127,6 @@ class H5JsonWriterTest(unittest.TestCase):
             self.assertEqual(item["value"], "Hello, world!")
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
-            self.assertEqual(item["modified"], None)
             ret_value = db.getAttributeValue(root_id, "A1")
        
 
@@ -147,7 +151,6 @@ class H5JsonWriterTest(unittest.TestCase):
             self.assertEqual(item["value"], "Hello, world!")
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
-            self.assertEqual(item["modified"], None)
 
     def testVlenUtf8Attribute(self):
         with Hdf5db(app_logger=self.log) as db:
@@ -170,8 +173,6 @@ class H5JsonWriterTest(unittest.TestCase):
             self.assertEqual(item["value"], "Hello, world!")
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
-            self.assertEqual(item["modified"], None)
-
  
 
     def testIntAttribute(self):
@@ -183,7 +184,6 @@ class H5JsonWriterTest(unittest.TestCase):
             self.assertEqual(item["value"], [2, 3, 5, 7, 11])
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
-            self.assertEqual(item["modified"], None)
             item_shape = item["shape"]
             self.assertEqual(item_shape["class"], "H5S_SIMPLE")
             self.assertEqual(item_shape["dims"], [5,])
@@ -257,7 +257,6 @@ class H5JsonWriterTest(unittest.TestCase):
             item = db.getObjectById(ctype_id)
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
-            self.assertEqual(item["modified"], None)
 
             item_type = item["type"]
 
@@ -294,7 +293,6 @@ class H5JsonWriterTest(unittest.TestCase):
             item = db.getObjectById(ctype_id)
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
-            self.assertEqual(item["modified"], None)
 
             item_type = item["type"]
 

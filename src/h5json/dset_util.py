@@ -107,7 +107,9 @@ def resize_dataset(dset_json, shape):
         raise TypeError(f"dataset with shape class: {shape_class} cannot be resized")
     if len(shape_class["dims"]) != len(shape):
         raise ValueError("Resize shape parameter doesn't match dataset's rank")
-    # TBD: validate shape
+    if shape_json["dims"] == list(shape):
+        # no change, just return
+        return
     shape_json["dims"] = list(shape)
     dset_json["modified"] = time.time()
         

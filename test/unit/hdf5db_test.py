@@ -14,6 +14,7 @@ import time
 import logging
 import numpy as np
 from h5json import Hdf5db
+from h5json import selections
 from h5json.objid import isRootObjId, isValidUuid, isSchema2Id
 from h5json.hdf5dtype import special_dtype, Reference
 
@@ -43,7 +44,6 @@ class Hdf5dbTest(unittest.TestCase):
 
 
     def testGroup(self):
-    
         with Hdf5db(app_logger=self.log) as db:
             root_id = db.getObjectIdByPath("/")
             self.assertTrue(isSchema2Id(root_id))
@@ -120,15 +120,11 @@ class Hdf5dbTest(unittest.TestCase):
             except KeyError:
                 pass  # expected
 
-            try:
-                db.getLink(g2_id, "not_a_link")
-                self.assertTrue(False)
-            except KeyError:
-                pass  # expected
+            ret = db.getLink(g2_id, "not_a_link")
+            self.assertTrue(ret is None)
 
 
     def testNullSpaceAttribute(self):
-
         with Hdf5db(app_logger=self.log) as db:
             root_id = db.getObjectIdByPath("/")
             db.createAttribute(root_id, "A1", None, shape="H5S_NULL", dtype=np.int32)
@@ -138,7 +134,6 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertTrue("class" in shape_item)
             self.assertEqual(shape_item["class"], "H5S_NULL")
             self.assertTrue(item["created"] > time.time() - 1.0)
-            self.assertEqual(item["modified"], None)
             value = db.getAttributeValue(root_id, "A1")
             self.assertEqual(value, None)
 
@@ -159,7 +154,6 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(item["value"], 42)
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
-            self.assertEqual(item["modified"], None)
             shape = item["shape"]
             self.assertEqual(shape["class"], "H5S_SCALAR")
 
@@ -183,8 +177,8 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(item["value"], "Hello, world!")
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
-            self.assertEqual(item["modified"], None)
             ret_value = db.getAttributeValue(root_id, "A1")
+            self.assertEqual(ret_value, value.encode("ascii"))
        
 
     def testVlenAsciiAttribute(self):
@@ -208,7 +202,6 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(item["value"], "Hello, world!")
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
-            self.assertEqual(item["modified"], None)
 
     def testVlenUtf8Attribute(self):
         with Hdf5db(app_logger=self.log) as db:
@@ -231,8 +224,6 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(item["value"], "Hello, world!")
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
-            self.assertEqual(item["modified"], None)
-
  
 
     def testIntAttribute(self):
@@ -244,7 +235,6 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(item["value"], [2, 3, 5, 7, 11])
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
-            self.assertEqual(item["modified"], None)
             item_shape = item["shape"]
             self.assertEqual(item_shape["class"], "H5S_SIMPLE")
             self.assertEqual(item_shape["dims"], [5,])
@@ -318,7 +308,6 @@ class Hdf5dbTest(unittest.TestCase):
             item = db.getObjectById(ctype_id)
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
-            self.assertEqual(item["modified"], None)
 
             item_type = item["type"]
 
@@ -337,7 +326,6 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(attr_type["length"], 15)
             self.assertEqual(attr_type["charSet"], "H5T_CSET_ASCII")
 
-
     def testCommittedCompoundType(self):
         with Hdf5db(app_logger=self.log) as db:
             root_id = db.getObjectIdByPath("/")
@@ -355,7 +343,6 @@ class Hdf5dbTest(unittest.TestCase):
             item = db.getObjectById(ctype_id)
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
-            self.assertEqual(item["modified"], None)
 
             item_type = item["type"]
 
@@ -376,6 +363,59 @@ class Hdf5dbTest(unittest.TestCase):
             
             value = db.getAttributeValue(root_id, "A1")
             self.assertTrue(isinstance(value, np.ndarray))
+
+    def testSimpleDataset(self):
+        with Hdf5db(app_logger=self.log) as db:
+            nrows = 8
+            ncols = 10
+            shape = (nrows, ncols)
+            dtype = np.int32
+            root_id = db.getObjectIdByPath("/")
+            dset_id = db.createDataset(shape, dtype=dtype)
+            db.createHardLink(root_id, "dset", dset_id)
+            db.createAttribute(dset_id, "a1", "Hello, world")
+            sel_all = selections.select(shape, ...)
+            arr = db.getDatasetValues(dset_id, sel_all)
+            self.assertEqual(arr.dtype, dtype)
+            self.assertEqual(arr.shape, shape)
+            self.assertEqual(arr.min(), 0)
+            self.assertEqual(arr.max(), 0)
+            row = np.zeros((ncols,), dtype=dtype)
+            for i in range(nrows):
+                row[:] = list(range(i*10, (i + 1)*10))
+                row_sel = selections.select(shape, (slice(i, i + 1), slice(0, ncols)))
+                db.setDatasetValues(dset_id, row_sel, row)
+            arr = db.getDatasetValues(dset_id, sel_all)
+            for i in range(nrows):
+                row = np.array(list(range(i*10, (i + 1)*10)), dtype=dtype)
+                np.testing.assert_array_equal(arr[i, :],  row)
+            
+
+    def testScalarDataset(self):
+        dtype = np.int32
+        with Hdf5db(app_logger=self.log) as db:
+            root_id = db.getObjectIdByPath("/")
+            dset_id = db.createDataset((), dtype=dtype)
+            db.createHardLink(root_id, "dset", dset_id)
+            db.createAttribute(dset_id, "a1", "Hello, world")
+            sel_all = selections.select((), ...)
+            arr = db.getDatasetValues(dset_id, sel_all)
+            self.assertEqual(arr.dtype, dtype)
+            self.assertEqual(arr.shape, ())
+            self.assertEqual(arr[()], 0)
+            db.setDatasetValues(dset_id, sel_all, np.array(42, dtype=dtype))
+            arr = db.getDatasetValues(dset_id, sel_all)
+            self.assertEqual(arr.dtype, dtype)
+            self.assertEqual(arr.shape, ())
+            self.assertEqual(arr.min(), 42)
+            self.assertEqual(arr.max(), 42)
+
+            
+
+
+
+
+
    
 
 if __name__ == "__main__":

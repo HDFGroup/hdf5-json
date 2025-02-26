@@ -42,13 +42,10 @@ class H5pyReader(H5Reader):
     ):
         self._id_map = {}
         self._addr_map = {}
-        """
         if app_logger:
             self.log = app_logger
         else:
             self.log = logging.getLogger()
-        self._filepath = filepath
-        """
         super().__init__(filepath, app_logger=app_logger)
         f = h5py.File(self._filepath)
         self._f = f
@@ -264,11 +261,19 @@ class H5pyReader(H5Reader):
         return obj_json
 
 
-    def getDatasetValues(self, obj_id, slices=Ellipsis, format="json"):
+    def getDatasetValues(self, dset_id, selection):
         """
         Get values from dataset identified by obj_id.
         If a slices list or tuple is provided, it should have the same
         number of elements as the rank of the dataset.
         """
-        pass
+        dset = self._id_map[dset_id]
+        self.log.info(f"getDatasetValues: {dset_id}")
+        if dset.shape is None:
+            # TBD: return something like h5py.Empty in this case?
+            return None
+        arr = dset[selection]
+        return arr
+
+       
 

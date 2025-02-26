@@ -14,6 +14,8 @@ import json
 
 from .h5writer import H5Writer
 from ..objid import stripId, getCollectionForId
+from ..array_util import bytesArrayToList
+from .. import selections
 
 class H5JsonWriter(H5Writer):
     """
@@ -39,6 +41,7 @@ class H5JsonWriter(H5Writer):
         # json writer doesn't support incremental updates, so we'll wait
         # for close to write out database
         self.log.info("flush")
+        return False
   
     def close(self):
         """ close storage handle """
@@ -86,7 +89,7 @@ class H5JsonWriter(H5Writer):
         response = {"name": attr_name}
         response["type"] = item["type"]
         response["shape"] = item["shape"]
-        if True:  #not self.options.D:
+        if True:
             if "value" not in item:
                 self.log.warning("no value key in attribute: " + attr_name)
             else:
@@ -173,10 +176,18 @@ class H5JsonWriter(H5Writer):
         shape_rsp = {}
         num_elements = 1
         shape_rsp["class"] = shapeItem["class"]
-        if "dims" in shapeItem:
+        if shapeItem["class"] == "H5S_NULL":
+            dims = None
+            num_elements = 0
+        elif shapeItem["class"] == "H5S_SCALAR":
+            dims = ()
+            num_elements = 1
+        else:
             shape_rsp["dims"] = shapeItem["dims"]
-            for dim in shapeItem["dims"]:
-                num_elements *= dim
+            dims = tuple(shapeItem["dims"])
+            for extent in dims:
+                num_elements *= extent
+
         if "maxdims" in shapeItem:
             maxdims = []
             for dim in shapeItem["maxdims"]:
@@ -196,8 +207,9 @@ class H5JsonWriter(H5Writer):
 
         if not self._no_data:
             if num_elements > 0:
-                value = self.db.getDatasetValues(obj_id)
-                response["value"] = value  # dump values unless header flag was passed
+                sel_all = selections.select(dims, ...)
+                arr = self.db.getDatasetValues(obj_id, sel_all)
+                response["value"] = bytesArrayToList(arr)  # dump values unless header flag was passed
             else:
                 response["value"] = []  # empty list
         return response
