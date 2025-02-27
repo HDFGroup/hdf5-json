@@ -30,10 +30,9 @@ class H5JsonWriter(H5Writer):
         no_data=False,
         app_logger=None
     ):
-        super().__init__(filepath, append=append, app_logger=app_logger)
+        super().__init__(filepath, append=append, no_data=no_data, app_logger=app_logger)
         self.alias_db = {}
         self.json = {}
-        self._no_data = no_data
         self._root_uuid = None
        
     def flush(self):

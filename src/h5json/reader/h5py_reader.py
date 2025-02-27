@@ -108,6 +108,12 @@ class H5pyReader(H5Reader):
         """ Return root id """
         return self._root_id
     
+    def getObjIdByAddress(self, addr):
+        if addr in self._addr_map:
+            return self._addr_map[addr]
+        else:
+            return None
+    
     def getAttribute(self, obj_id, name, include_data=True):
         """ Return JSON for the given attribute """
 
@@ -130,7 +136,7 @@ class H5pyReader(H5Reader):
             type_uuid = None
             addr = h5py.h5o.get_info(typeid).addr
             type_uuid = self.getObjIdByAddress(addr)
-            committedType = self.getCommittedTypeItemByUuid(type_uuid)
+            committedType = self._id_map[type_uuid]
             type_item = committedType["type"].copy()
             type_item["id"] = type_uuid
         else:

@@ -25,10 +25,12 @@ class H5Writer(ABC):
         self,
         filepath,
         append=False,
+        no_data=False,
         app_logger=None
     ):
         self._filepath = filepath
         self._append = append
+        self._no_data = no_data
         self._filepath = filepath
         self._db_ref = None
         if app_logger:

@@ -10,7 +10,6 @@
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
 import sys
-import argparse
 import os.path as op
 import logging
 import logging.handlers
@@ -21,16 +20,18 @@ from h5json.reader.h5py_reader import H5pyReader
  
 
 def main():
-    parser = argparse.ArgumentParser(usage="%(prog)s [-h] [-D|-d] <hdf5_file>")
-    parser.add_argument("-D", action="store_true", help="suppress all data output")
-    parser.add_argument(
-        "-d",
-        action="store_true",
-        help="suppress data output for" + " datasets (but not attribute values)",
-    )
-    parser.add_argument("filename", nargs="+", help="HDF5 to be converted to json")
-    args = parser.parse_args()
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        print(f"usage: {sys.argv[0]} [-h] [--nodata] <hdf5_file>")
+        sys.exit(0)
 
+    no_data = False
+    filename = None
+    for i in range(1, len(sys.argv)):
+        if sys.argv[i] == "--nodata":
+            no_data = True
+        else:
+            filename = sys.argv[i]
+        
     # create logger
     log = logging.getLogger("h5tojson")
     # log.setLevel(logging.WARN)
@@ -41,7 +42,6 @@ def main():
     # add handler to logger
     log.addHandler(handler)
 
-    filename = args.filename[0]
     if not op.isfile(filename):
         sys.exit(f"Cannot find file: {filename}")
 
@@ -49,7 +49,7 @@ def main():
 
     kwargs = {"app_logger": log}
     
-    with Hdf5db(h5_reader=H5pyReader(filename, **kwargs), h5_writer=H5JsonWriter("/tmp/foo.json", no_data=False, **kwargs), **kwargs) as db:
+    with Hdf5db(h5_reader=H5pyReader(filename, **kwargs), h5_writer=H5JsonWriter(None, no_data=no_data, **kwargs), **kwargs) as db:
         pass
 
 if __name__ == "__main__":

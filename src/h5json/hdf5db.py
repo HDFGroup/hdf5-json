@@ -224,7 +224,7 @@ class Hdf5db:
     
     def getObjectByPath(self, path):
         """ Get Object JSON at given path """
-        obj_id = self.getObjectIDByPath(path)
+        obj_id = self.getObjectIdByPath(path)
         obj_json = self.getObjectById(obj_id)
         return obj_json    
 
