@@ -273,8 +273,6 @@ class H5JsonWriter(H5Writer):
 
         self.dumpDatatypes()
 
-
-
         print(json.dumps(self.json, sort_keys=True, indent=4))
 
 

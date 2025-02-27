@@ -11,17 +11,16 @@
 ##############################################################################
 import unittest
 import os
-
 import os.path as op
 import stat
 import logging
 import shutil
 from h5json import Hdf5db
-from h5json.reader.h5py_reader import H5pyReader
+from h5json.reader.h5json_reader import H5JsonReader
 
 
 def getFile(name, tgt, ro=False):
-    src = "data/hdf5/" + name
+    src = "data/json/" + name
     logging.info("copying file to this directory: " + src)
 
     filepath = "./out/" + tgt
@@ -57,7 +56,7 @@ class H5pyReaderTest(unittest.TestCase):
             lhStdout = None
 
         self.log.setLevel(logging.INFO)
-        handler = logging.FileHandler("./hdf5dbtest.log")
+        handler = logging.FileHandler("./h5json_reader_test.log")
         # add handler to logger
         self.log.addHandler(handler)
 
@@ -65,11 +64,12 @@ class H5pyReaderTest(unittest.TestCase):
             self.log.removeHandler(lhStdout)
 
     def testSimple(self):
-        filepath = getFile("tall.h5", "tall.h5", ro=True)
+        filepath = getFile("tall.json", "tall.json", ro=True)
         kwargs = {"app_logger": self.log}
-        with Hdf5db(h5_reader=H5pyReader(filepath, **kwargs), **kwargs) as db:
+        with Hdf5db(h5_reader=H5JsonReader(filepath, **kwargs), **kwargs) as db:
             root_id = db.getObjectIdByPath("/")
             root_json = db.getObjectById(root_id)
+            print("root_json:", root_json)
 
             root_attrs = root_json["attributes"]
             self.assertEqual(len(root_attrs), 2)

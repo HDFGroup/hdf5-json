@@ -399,7 +399,7 @@ class H5pyReader(H5Reader):
         return obj_json
 
 
-    def getDatasetValues(self, dset_id, sel):
+    def getDatasetValues(self, dset_id, sel=None):
         """
         Get values from dataset identified by obj_id.
         If a slices list or tuple is provided, it should have the same
@@ -410,21 +410,12 @@ class H5pyReader(H5Reader):
         if dset.shape is None:
             # TBD: return something like h5py.Empty in this case?
             return None
-        if sel.select_type == selections.H5S_SELECT_ALL:
+        if sel is None or sel.select_type == selections.H5S_SELECT_ALL:
             arr = dset[...]
-        elif sel.select_type == selections.H5S_SELECT_HYPERSLABS:
-            rank = len(dset.shape)
-
-            slices = []
-            for dim in range(rank):
-                start = sel.start[dim]
-                stop = start + sel.count[dim]
-                step = sel.step[dim]
-                slices.append(slice(start, stop, step))
-            slices = tuple(slices)
-            arr = dset[slices]
+        elif isinstance(sel, selections.SimpleSelection):
+            arr = dset[sel.slices]
         else:
-            raise TypeError("selection type not supported")
+            raise NotImplementedError("selection type not supported")
         
         return arr
 

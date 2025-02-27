@@ -51,7 +51,7 @@ class H5Reader(ABC):
         pass
 
     @abstractmethod
-    def getDatasetValues(self, obj_id, selection):
+    def getDatasetValues(self, obj_id, sel=None):
         """
         Get values from dataset identified by obj_id.
         If a slices list or tuple is provided, it should have the same

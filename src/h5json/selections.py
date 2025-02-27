@@ -468,6 +468,18 @@ class SimpleSelection(Selection):
                 sid.offset_simple(offset)
                 yield sid
 
+    @property
+    def slices(self):
+        """ return tuple of slices for this selection """
+        rank = len(self.shape)
+        slices = []
+        for dim in range(rank):
+            start = self.start[dim]
+            stop = start + self.count[dim]
+            step = self.step[dim]
+            slices.append(slice(start, stop, step))
+        return tuple(slices)
+
     def __repr__(self):
         s = f"SimpleSelection(shape:{self._shape}, start: {self._sel[0]},"
         s += f" count: {self._sel[1]}, step: {self._sel[2]}"
