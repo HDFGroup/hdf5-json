@@ -14,7 +14,7 @@ import h5py
 from ..objid import getCollectionForId
 from ..hdf5dtype import createDataType
 from ..array_util import jsonToArray
-
+from .. import filters
 from .h5writer import H5Writer
 
 
@@ -55,17 +55,109 @@ class H5pyWriter(H5Writer):
 
         type_item = dset_json["type"]
         dtype = createDataType(type_item)
-        kwds = {"dtype": dtype}
+        kwargs = {"dtype": dtype}
         shape_json = dset_json["shape"]
-        if shape_json["class"] == "H5S_NULL":
+        shape_class = shape_json["class"]
+        if shape_class == "H5S_NULL":
             # skip the shape keyword to create a null space dataset
             pass
-        elif shape_json["class"] == "H5S_SCALAR":
-            kwds["shape"] = ()
+        elif shape_class == "H5S_SCALAR":
+            kwargs["shape"] = ()
         else:
-            kwds["shape"] = shape_json["dims"]
-        parent.create_dataset(name, **kwds)
+            kwargs["shape"] = shape_json["dims"]
+        if "dcpl" in dset_json and shape_class != "H5S_NULL":
+            creation_props = dset_json["dcpl"]
+            if "fillValue" in creation_props:
+                fillvalue = creation_props["fillValue"]
+                if fillvalue and len(dtype) > 1 and type(fillvalue) in (list, tuple):
+                    # for compound types, need to convert from list to dataset compatible element
 
+                    if len(dtype) != len(fillvalue):
+                        msg = "fillvalue has incorrect number of elements"
+                        self.log.warning(msg)
+                        raise ValueError(msg)
+                    
+                    fillvalue = jsonToArray((), dtype, fillvalue)
+
+                kwargs["fillvalue"] = fillvalue
+
+            if "trackTimes" in creation_props:
+                kwargs["track_times"] = creation_props["trackTimes"]
+            if "layout" in creation_props:
+                layout = creation_props["layout"]
+                if "dims" in layout:
+                    kwargs["chunks"] = tuple(layout["dims"])
+            if "filters" in creation_props:
+                filter_props = creation_props["filters"]
+                for filter_prop in filter_props:
+                    if "id" not in filter_prop:
+                        self.log.warning("filter id not provided")
+                        continue
+                    filter_id = filter_prop["id"]
+                    if filter_id not in filters._HDF_FILTERS:
+                        self.log.warning(f"unknown filter id: {filter_id} ignoring")
+                        continue
+
+                    hdf_filter = filters._HDF_FILTERS[filter_id]
+
+                    self.log.info(f"got filter: {filter_id}")
+                    if "alias" not in hdf_filter:
+                        self.log.warning(f"unsupported filter id: {filter_id} ignoring")
+                        continue
+
+                    filter_alias = hdf_filter["alias"]
+                    if not h5py.h5z.filter_avail(filter_id):
+                        msg = "compression filter not available, filter: {filter_alias}, ignoring"
+                        self.log.warning(msg)
+                        continue
+                    if filter_alias in filters._H5PY_COMPRESSION_FILTERS:
+                        if kwargs.get("compression"):
+                            msg = f"compression filter already set for {filter_alias}, ignoring"
+                            self.log.info(msg)
+                            continue
+
+                        kwargs["compression"] = filter_alias
+                        self.log.info("setting compression filter to: {filter_alias}")
+                        if filter_alias == "gzip":
+                            # check for an optional compression value
+                            if "level" in filter_prop:
+                                kwargs["compression_opts"] = filter_prop["level"]
+                        elif filter_alias == "szip":
+                            bitsPerPixel = None
+                            coding = "nn"
+
+                            if "bitsPerPixel" in filter_prop:
+                                bitsPerPixel = filter_prop["bitsPerPixel"]
+                            if "coding" in filter_prop:
+                                if filter_prop["coding"] == "H5_SZIP_EC_OPTION_MASK":
+                                    coding = "ec"
+                                elif filter_prop["coding"] == "H5_SZIP_NN_OPTION_MASK":
+                                    coding = "nn"
+                                else:
+                                    self.log.warning("invalid szip option: 'coding'")
+                            # note: pixelsPerBlock, and pixelsPerScanline not supported by h5py,
+                            # so these options will be ignored
+                            if "pixelsPerBlock" in filter_props:
+                                self.log.info("ignoring szip option: 'pixelsPerBlock'")
+                            if "pixelsPerScanline" in filter_props:
+                                self.log.info("ignoring szip option: 'pixelsPerScanline'")
+                            if bitsPerPixel:
+                                kwargs["compression_opts"] = (coding, bitsPerPixel)
+                    else:
+                        if filter_alias == "shuffle":
+                            kwargs["shuffle"] = True
+                        elif filter_alias == "fletcher32":
+                            kwargs["fletcher32"] = True
+                        elif filter_alias == "scaleoffset":
+                            if "scaleOffset" not in filter_prop:
+                                msg = "No scale_offset provided for scale offset filter, ignoring"
+                                self.log(msg)
+                                continue
+                            kwargs["scaleoffset"] = filter_prop["scaleOffset"]
+                        else:
+                            self.log.info(f"Unexpected filter name: {filter_alias}, ignoring")
+                            
+        parent.create_dataset(name, **kwargs)
 
     def _createDatatype(self, parent, ctype_json, name=None):
         """ create a datatype object """

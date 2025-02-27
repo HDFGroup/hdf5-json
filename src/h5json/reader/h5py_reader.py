@@ -17,50 +17,9 @@ from ..objid import createObjId
 from ..hdf5dtype import getTypeItem
 from ..array_util import bytesArrayToList
 from .. import selections
-from ..h5reader import H5Reader
-
-_HDF_FILTERS = {
-    1: {"class": "H5Z_FILTER_DEFLATE", "alias": "gzip", "options": ["level"]},
-    2: {"class": "H5Z_FILTER_SHUFFLE", "alias": "shuffle"},
-    3: {"class": "H5Z_FILTER_FLETCHER32", "alias": "fletcher32"},
-    4: {
-        "class": "H5Z_FILTER_SZIP",
-        "alias": "szip",
-        "options": ["bitsPerPixel", "coding", "pixelsPerBlock", "pixelsPerScanLine"],
-    },
-    5: {"class": "H5Z_FILTER_NBIT"},
-    6: {
-        "class": "H5Z_FILTER_SCALEOFFSET",
-        "alias": "scaleoffset",
-        "options": ["scaleType", "scaleOffset"],
-    },
-    32000: {"class": "H5Z_FILTER_LZF", "alias": "lzf"},
-}
-
-_HDF_FILTER_OPTION_ENUMS = {
-    "coding": {
-        h5py.h5z.SZIP_EC_OPTION_MASK: "H5_SZIP_EC_OPTION_MASK",
-        h5py.h5z.SZIP_NN_OPTION_MASK: "H5_SZIP_NN_OPTION_MASK",
-    },
-    "scaleType": {
-        h5py.h5z.SO_FLOAT_DSCALE: "H5Z_SO_FLOAT_DSCALE",
-        h5py.h5z.SO_FLOAT_ESCALE: "H5Z_SO_FLOAT_ESCALE",
-        h5py.h5z.SO_INT: "H5Z_SO_INT",
-    },
-}
-
-# h5py supported filters
-_H5PY_FILTERS = {
-    "gzip": 1,
-    "shuffle": 2,
-    "fletcher32": 3,
-    "szip": 4,
-    "scaleoffset": 6,
-    "lzf": 32000,
-}
-
-_H5PY_COMPRESSION_FILTERS = ("gzip", "lzf", "szip")
-
+from .. import filters
+from .h5reader import H5Reader
+  
 
 class H5pyReader(H5Reader):
     """
@@ -309,8 +268,8 @@ class H5pyReader(H5Reader):
                 filter_prop["id"] = filter_id
                 if filter_info[3]:
                     filter_prop["name"] = self.bytesArrayToList(filter_info[3])
-                if filter_id in _HDF_FILTERS:
-                    hdf_filter = _HDF_FILTERS[filter_id]
+                if filter_id in filters._HDF_FILTERS:
+                    hdf_filter = filters._HDF_FILTERS[filter_id]
                     filter_prop["class"] = hdf_filter["class"]
                     if "options" in hdf_filter:
                         filter_opts = hdf_filter["options"]
@@ -320,8 +279,8 @@ class H5pyReader(H5Reader):
                             opt_value = opt_values[i]
                             opt_value_enum = None
                             option_name = filter_opts[i]
-                            if option_name in _HDF_FILTER_OPTION_ENUMS:
-                                option_enums = _HDF_FILTER_OPTION_ENUMS[option_name]
+                            if option_name in filters._HDF_FILTER_OPTION_ENUMS:
+                                option_enums = filters._HDF_FILTER_OPTION_ENUMS[option_name]
                                 if opt_value in option_enums:
                                     opt_value_enum = option_enums[opt_value]
                             if opt_value_enum:
