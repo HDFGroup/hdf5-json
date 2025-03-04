@@ -10,38 +10,9 @@
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
 import unittest
-import os
-import os.path as op
-import stat
 import logging
-import shutil
 from h5json import Hdf5db
 from h5json.reader.h5json_reader import H5JsonReader
-
-
-def getFile(name, tgt, ro=False):
-    src = "data/json/" + name
-    logging.info("copying file to this directory: " + src)
-
-    filepath = "./out/" + tgt
-
-    if op.isfile(filepath):
-        # make sure it's writable, before we copy over it
-        os.chmod(filepath, stat.S_IWRITE | stat.S_IREAD)
-    shutil.copyfile(src, filepath)
-    if ro:
-        logging.info("make read-only")
-        os.chmod(filepath, stat.S_IREAD)
-    return filepath
-
-
-def removeFile(name):
-    try:
-        os.stat(name)
-    except OSError:
-        return
-        # file does not exist
-    os.remove(name)
 
 
 class H5pyReaderTest(unittest.TestCase):
@@ -64,12 +35,11 @@ class H5pyReaderTest(unittest.TestCase):
             self.log.removeHandler(lhStdout)
 
     def testSimple(self):
-        filepath = getFile("tall.json", "tall.json", ro=True)
+        filepath = "data/json/tall.json"
         kwargs = {"app_logger": self.log}
         with Hdf5db(h5_reader=H5JsonReader(filepath, **kwargs), **kwargs) as db:
             root_id = db.getObjectIdByPath("/")
             root_json = db.getObjectById(root_id)
-            print("root_json:", root_json)
 
             root_attrs = root_json["attributes"]
             self.assertEqual(len(root_attrs), 2)

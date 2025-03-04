@@ -47,8 +47,7 @@ class H5pyWriter(H5Writer):
         grp = parent.create_group(name)
         if "links" in grp_json:
             grp_links = grp_json["links"]
-            self._createLinks(grp, grp_links)
-        
+            self._createObjects(grp, grp_links)
 
     def _createDataset(self, parent, dset_json, name=None):
         """ create a dataset object """
@@ -167,8 +166,8 @@ class H5pyWriter(H5Writer):
         parent[name] = dtype
 
 
-    def _createLinks(self, parent, links_json):
-        """ create links in the given group """
+    def _createObjects(self, parent, links_json):
+        """ create child object in the given group, recurse for any sub-groups """
         for title in links_json:
             if title in parent:
                 # TBD: this will do the wrong thing if the link tgt has changed
@@ -212,8 +211,27 @@ class H5pyWriter(H5Writer):
             else:
                 self.log.warning(f"unexpected link class: {link_class}")
 
+    def updateDatasetValues(self, dset_id, dset):
+        """ write any pending dataset values """
+        dset_json = self.db.getObjectById(dset_id)
+        if "updates" not in dset_json:
+            return
+        updates = dset_json["updates"]
+        for (sel, val) in updates:
+            slices = []
+            for dim in range(len(sel.shape)):
+                start = sel.start[dim]
+                stop = start + sel.count[dim]
+                step = sel.step[dim]
+                slices.append(slice(start, stop, step))
+            slices = tuple(slices)  
+            dset[slices] = val
+            self.log.debug(f"h5py_writer dset {dset.name} updated")
+
+
     def createAttribute(self, obj, name, attr_json):
         """ add the given attribute to obj """
+        print(f"h5py_writer.createAttribute {obj.name}: {name}")
 
         dtype = createDataType(attr_json["type"])
         shape_json = attr_json["shape"]
@@ -233,9 +251,11 @@ class H5pyWriter(H5Writer):
             obj.attrs[name] = arr
 
 
-    def createAttributes(self, obj, obj_json):
-        """ create attributes """
+    def updateAttributes(self, obj_id, obj):
+        """ create/replace any modified attributes """
 
+        obj_json = self.db.getObjectById(obj_id)
+        
         if "attributes" not in obj_json:
             # no attributes
             return
@@ -245,31 +265,31 @@ class H5pyWriter(H5Writer):
             attr_json = attrs[name]
             self.createAttribute(obj, name, attr_json)
 
-
-    def visitAttributes(self, path, obj):
-        name = obj.__class__.__name__
-        self.log.info(f"visit: {path} name: {name}")
-
-        obj_json = self.db.getObjectByPath(path)
-        self.createAttributes(obj, obj_json)
-
+ 
     def flush(self):
         """ Write dirty items """
         if not self.db:
             # no db set yet
-            return
-        
+            return False
+   
+        self.log.info("h5py_writer.flush()")
         root_id = self.db.root_id
         self._id_map[root_id] = "/"
         with h5py.File(self._filepath, mode=self._mode) as f:
             root_json = self.db.getObjectById(root_id)
             if "links" in root_json:
                 root_links = root_json["links"]
-                self._createLinks(f, root_links)
-            # update attributes
-            self.createAttributes(f, root_json)
-            f.visititems(self.visitAttributes)
+                self._createObjects(f, root_links)
+            # update attributes, dataset values
+            for obj_id in self._id_map:
+                if self.db.is_dirty(obj_id):
+                    h5path = self._id_map[obj_id]
+                    obj = f[h5path]
+                    self.updateAttributes(obj_id, obj)
+                    self.updateDatasetValues(obj_id, obj)
+
         self._mode = "a"  # use append mode for future updates
+        return True  # all objects written successfully
 
   
     def close(self):

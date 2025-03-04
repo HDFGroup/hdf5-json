@@ -20,31 +20,6 @@ from h5json import Hdf5db
 from h5json.reader.h5py_reader import H5pyReader
 
 
-def getFile(name, tgt, ro=False):
-    src = "data/hdf5/" + name
-    logging.info("copying file to this directory: " + src)
-
-    filepath = "./out/" + tgt
-
-    if op.isfile(filepath):
-        # make sure it's writable, before we copy over it
-        os.chmod(filepath, stat.S_IWRITE | stat.S_IREAD)
-    shutil.copyfile(src, filepath)
-    if ro:
-        logging.info("make read-only")
-        os.chmod(filepath, stat.S_IREAD)
-    return filepath
-
-
-def removeFile(name):
-    try:
-        os.stat(name)
-    except OSError:
-        return
-        # file does not exist
-    os.remove(name)
-
-
 class H5pyReaderTest(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(H5pyReaderTest, self).__init__(*args, **kwargs)
@@ -65,7 +40,7 @@ class H5pyReaderTest(unittest.TestCase):
             self.log.removeHandler(lhStdout)
 
     def testSimple(self):
-        filepath = getFile("tall.h5", "tall.h5", ro=True)
+        filepath = "data/hdf5/tall.h5"
         kwargs = {"app_logger": self.log}
         with Hdf5db(h5_reader=H5pyReader(filepath, **kwargs), **kwargs) as db:
             root_id = db.getObjectIdByPath("/")

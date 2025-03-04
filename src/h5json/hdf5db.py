@@ -111,8 +111,7 @@ class Hdf5db:
             # object deleted, just return
             return
         obj_json = self.db[obj_id]
-        now = time.time()
-        obj_json["lastModified"] = now
+        obj_json["lastModified"] = time.time()
         self._dirty_objects.add(obj_id)
 
 
@@ -120,10 +119,25 @@ class Hdf5db:
         """ write out any changes """
         if not self.writer:
             return  # nothing to do
-        if self.writer.flush():
-            # reset new and dirty sets
-            self._new_objects = set()
-            self._dirty_objects = set()
+        
+        print("self._new_objects:", self._new_objects)
+        print("self._dirty_objects:", self._dirty_objects)
+        obj_ids = self._new_objects.union(self._dirty_objects)
+        print(f"hdf5db_flush {len(obj_ids)} objects")
+
+        if not self.writer.flush():
+            # flush not successful, don't clear dirty set
+            return  
+
+
+        for obj_id in obj_ids:
+            obj_json = self._db[obj_id]
+            if "values" in obj_json:
+                obj_json["values"] = []
+
+        # reset new and dirty sets
+        self._new_objects = set()
+        self._dirty_objects = set()
            
     def close(self):
         """ close reader and writer handles """

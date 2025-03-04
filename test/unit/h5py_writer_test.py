@@ -12,6 +12,7 @@
 import unittest
 import time
 import logging
+import h5py
 import numpy as np
 from h5json import Hdf5db
 from h5json.writer.h5py_writer import H5pyWriter
@@ -46,12 +47,14 @@ class H5pyWriterTest(unittest.TestCase):
 
     def testGroup(self):
     
-        with Hdf5db(h5_writer=H5pyWriter("/tmp/foo2.h5", no_data=False), app_logger=self.log) as db:
+        filepath = "test/unit/out/h5py_writer_test_testGroup.h5"
+        with Hdf5db(h5_writer=H5pyWriter(filepath, no_data=False), app_logger=self.log) as db:
             root_id = db.getObjectIdByPath("/")
             db.createAttribute(root_id, "attr1", value=[1,2,3,4])
             db.createAttribute(root_id, "attr2", 42)
             g1_id = db.createGroup()
             db.createHardLink(root_id, "g1", g1_id)
+            db.createAttribute(g1_id, "a1", "hello")
             g2_id = db.createGroup()
             db.createHardLink(root_id, "g2", g2_id)
 
@@ -69,6 +72,24 @@ class H5pyWriterTest(unittest.TestCase):
             db.createExternalLink(g2_id, "extlink", "somewhere", "someplace")
             db.createCustomLink(g2_id, "cust", {"foo": "bar"})
             db.flush()
+            with h5py.File(filepath) as f:
+                self.assertTrue("attr1", f.attrs)
+                self.assertTrue("attr2", f.attrs)
+                self.assertTrue("g1" in f)
+                g1 = f["g1"]
+                self.assertTrue("a1" in g1.attrs)
+                self.assertTrue("g1.1" in g1)
+                g11 = g1["g1.1"]
+                self.assertTrue("dset1.1.1" in g11)
+                dset = g11["dset1.1.1"]
+                self.assertEqual(dset.shape, (10,10))
+                for i in range(10):
+                    for j in range(10):
+                        self.assertEqual(dset[i, j], i*j)
+                self.assertTrue("g2" in f)
+                g2 = f["g2"]
+                self.assertTrue("extlink" in g2)
+                self.assertTrue("slink" in g2)
             
 
 
