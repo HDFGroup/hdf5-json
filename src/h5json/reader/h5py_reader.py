@@ -96,7 +96,7 @@ class H5pyReader(H5Reader):
             addr = h5py.h5o.get_info(typeid).addr
             type_uuid = self.getObjIdByAddress(addr)
             committedType = self._id_map[type_uuid]
-            type_item = committedType["type"].copy()
+            type_item = getTypeItem(committedType.dtype)
             type_item["id"] = type_uuid
         else:
             type_item = getTypeItem(attrObj.dtype)
@@ -353,7 +353,7 @@ class H5pyReader(H5Reader):
         elif isinstance(h5obj, h5py.Dataset):
             obj_json = self._getDataset(h5obj)
         elif isinstance(h5obj, h5py.Datatype):
-            obj_json = self._getDataType(h5obj)
+            obj_json = self._getDatatype(h5obj)
         else:
             raise TypeError(f"unexpected object type: {type(h5obj)}")
         

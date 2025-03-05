@@ -99,6 +99,14 @@ class Hdf5db:
             return True
         return obj_id in self._dirty_objects
     
+    @property
+    def new_objects(self):
+        return self._new_objects
+    
+    @property
+    def dirty_objects(self):
+        return self._dirty_objects
+    
     def make_dirty(self, obj_id):
         """ Mark the object as dirty and update the lastModified timestamp """
         if self.is_new(obj_id):

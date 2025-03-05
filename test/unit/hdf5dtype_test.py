@@ -125,8 +125,10 @@ class Hdf5dtypeTest(unittest.TestCase):
         baseItem = typeItem["base"]
         self.assertEqual(baseItem["class"], "H5T_INTEGER")
         self.assertEqual(baseItem["base"], "H5T_STD_I8LE")
-        self.assertTrue("mapping" in typeItem)
-        self.assertEqual(typeItem["mapping"]["GREEN"], 1)
+        self.assertTrue("members" in typeItem)
+        members = typeItem["members"]
+        expected = [{'name': 'RED', 'value': 0}, {'name': 'GREEN', 'value': 1}, {'name': 'BLUE', 'value': 2}]
+        self.assertEqual(members, expected)
         self.assertEqual(typeSize, 1)
 
     def testBaseBoolTypeItem(self):
@@ -136,11 +138,11 @@ class Hdf5dtypeTest(unittest.TestCase):
         baseItem = typeItem["base"]
         self.assertEqual(baseItem["class"], "H5T_INTEGER")
         self.assertEqual(baseItem["base"], "H5T_STD_I8LE")
-        self.assertTrue("mapping" in typeItem)
-        mapping = typeItem["mapping"]
-        self.assertEqual(len(mapping), 2)
-        self.assertEqual(mapping["FALSE"], 0)
-        self.assertEqual(mapping["TRUE"], 1)
+        self.assertTrue("members" in typeItem)
+        members = typeItem["members"]
+        self.assertEqual(len(members), 2)
+        self.assertEqual(members[0], {"name": "FALSE", "value": 0})
+        self.assertEqual(members[1], {"name": "TRUE", "value": 1})
         self.assertEqual(typeSize, 1)
 
     def testBaseArrayTypeItem(self):
@@ -205,8 +207,12 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertEqual(typeItem["dims"], (2, 3))
         baseItem = typeItem["base"]
         self.assertEqual(baseItem["class"], "H5T_ENUM")
-        self.assertTrue("mapping" in baseItem)
-        self.assertEqual(baseItem["mapping"]["GREEN"], 1)
+        self.assertTrue("members" in baseItem)
+        members = baseItem["members"]
+        self.assertEqual(len(members), 3)
+        self.assertEqual(members[0], {"name": "RED", "value": 0})
+        self.assertEqual(members[1], {"name": "GREEN", "value": 1})
+        self.assertEqual(members[2], {"name": "BLUE", "value": 2})
         self.assertTrue("base" in baseItem)
         basePrim = baseItem["base"]
         self.assertEqual(basePrim["class"], "H5T_INTEGER")

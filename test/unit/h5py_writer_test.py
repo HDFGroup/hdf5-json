@@ -90,6 +90,44 @@ class H5pyWriterTest(unittest.TestCase):
                 g2 = f["g2"]
                 self.assertTrue("extlink" in g2)
                 self.assertTrue("slink" in g2)
+
+            db.createAttribute(g1_id, "a2", "bye-bye")
+            db.flush()
+
+            with h5py.File(filepath) as f:
+                g1 = f["g1"]
+                self.assertEqual(len(g1.attrs), 2)
+                self.assertTrue("a1" in g1.attrs)
+                self.assertTrue("a2" in g1.attrs)
+
+            print("create group /g2/g2.1")
+            g21 = db.createGroup()
+            db.createHardLink(g2_id, "g2.1", g21)
+            db.flush()
+
+            with h5py.File(filepath) as f:
+                g2 = f["g2"]
+                self.assertTrue("g2.1" in g2)
+            
+            sel = selections.select((10, 10), (slice(4, 5), slice(4, 5)))
+            arr = np.zeros((), dtype=np.int32)
+            arr[()] = 42
+            db.setDatasetValues(dset_111_id, sel, arr)
+            db.flush()
+
+            with h5py.File(filepath) as f:
+                dset = f["/g1/g1.1/dset1.1.1"]
+                for i in range(10):
+                    for j in range(10):
+                        if i == 4 and j == 4:
+                            # this is the one element that was updated
+                            expected = 42
+                        else:
+                            expected = i * j
+                        self.assertEqual(dset[i, j], expected)
+
+
+            
             
 
 

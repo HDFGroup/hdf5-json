@@ -424,9 +424,11 @@ def getTypeItem(dt, metadata=None):
         if dt.base.byteorder == ">":
             byteorder = "BE"
         # this mapping is an h5py convention for boolean support
-        mapping = {"FALSE": 0, "TRUE": 1}
+        bool_false = {"name": "FALSE", "value": 0}
+        bool_true = {"name": "TRUE", "value": 1}
+        members = [bool_false, bool_true]
         type_info["class"] = "H5T_ENUM"
-        type_info["mapping"] = mapping
+        type_info["members"] = members
         base_info = {"class": "H5T_INTEGER"}
         base_info["base"] = "H5T_STD_I8" + byteorder
         type_info["base"] = base_info
@@ -456,7 +458,13 @@ def getTypeItem(dt, metadata=None):
             # yes, this is an enum!
             mapping = metadata["enum"]
             type_info["class"] = "H5T_ENUM"
-            type_info["mapping"] = mapping
+            members = []
+            for name in mapping:
+                value = mapping[name]
+                item = {"name": name, "value": value}
+                members.append(item)
+            type_info["members"] = members
+            #type_info["mapping"] = mapping
             if dt.name not in predefined_int_types:
                 raise TypeError("Unexpected integer type: " + dt.name)
             # maps to one of the HDF5 predefined types

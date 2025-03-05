@@ -45,9 +45,8 @@ class H5pyWriter(H5Writer):
     def _createGroup(self, parent, grp_json, name=None):
         """ create the group and any links it contains """
         grp = parent.create_group(name)
-        if "links" in grp_json:
-            grp_links = grp_json["links"]
-            self._createObjects(grp, grp_links)
+        return grp
+
 
     def _createDataset(self, parent, dset_json, name=None):
         """ create a dataset object """
@@ -156,7 +155,8 @@ class H5pyWriter(H5Writer):
                         else:
                             self.log.info(f"Unexpected filter name: {filter_alias}, ignoring")
                             
-        parent.create_dataset(name, **kwargs)
+        dset = parent.create_dataset(name, **kwargs)
+        return dset
 
     def _createDatatype(self, parent, ctype_json, name=None):
         """ create a datatype object """
@@ -164,50 +164,76 @@ class H5pyWriter(H5Writer):
         type_item = ctype_json["type"]
         dtype = createDataType(type_item)
         parent[name] = dtype
+        return parent[name]
 
 
-    def _createObjects(self, parent, links_json):
+    def _createObjects(self, parent, links_json, visited=set()):
         """ create child object in the given group, recurse for any sub-groups """
+
         for title in links_json:
-            if title in parent:
-                # TBD: this will do the wrong thing if the link tgt has changed
-                continue
+            #if title in parent:
+            #    # TBD: this will do the wrong thing if the link tgt has changed
+            #    continue
             link_json = links_json[title]
             link_class = link_json["class"]
-            if link_class == "H5L_TYPE_SOFT":
+            if link_class == "H5L_TYPE_SOFT" and title not in parent:
                 h5path = link_json["h5path"]
                 parent[title] = h5py.SoftLink(h5path)
-            elif link_class == "H5L_TYPE_EXTERNAL":
+            elif link_class == "H5L_TYPE_EXTERNAL" and title not in parent:
                 h5path = link_json["h5path"]
                 filename = link_json["file"]
                 parent[title] = h5py.ExternalLink(filename, h5path)
-            elif link_class == "H5L_TYPE_USER_DEFINED":
+            elif link_class == "H5L_TYPE_USER_DEFINED" and title not in parent:
                 self.log.warning("unable to create user-defined link: {title}")
             elif link_class == "H5L_TYPE_HARD":
                 tgt_id = link_json["id"]
+                """
+                if tgt_id in visited:
+                    # we've already processed this object
+                    if title not in parent:
+                        if tgt_id in self._id_map:
+                            tgt_obj = self._id_map[tgt_id]
+                            parent[title] = tgt_obj
+                    else:
+                        self.log.warning("h5py_writer - expected to find {tgt_id} in id_map")
+                    continue
+                """
+                
+                collection = getCollectionForId(tgt_id)
+
+                obj_json = self.db.getObjectById(tgt_id)
+            
                 if tgt_id in self._id_map:
+                    # object has already been created
                     tgt_path = self._id_map[tgt_id]
                     tgt_obj = parent[tgt_path]
-                    parent[title] = tgt_obj
+                    if title not in parent:
+                        parent[title] = tgt_obj
+                    if collection == "groups" and tgt_id not in visited:
+                        # recurse over sub-objects to pick up any new links
+                        grp_links = obj_json["links"]
+                        visited.add(tgt_id)
+                        self._createObjects(tgt_obj, grp_links, visited=visited)
                 else:
-                    obj_json = self.db.getObjectById(tgt_id)
                     parent_path = parent.name
                     if parent_path[-1] != '/':
                         parent_path += '/'
                     self._id_map[tgt_id] = parent_path + title
-                    collection = getCollectionForId(tgt_id)
                     kwds = {"name": title}
                     if collection == "groups":
-                        tgt_obj = self._createGroup(parent, obj_json, **kwds)
+                        tgt_grp = self._createGroup(parent, obj_json, **kwds)
+                        if "links" in obj_json:
+                            grp_links = obj_json["links"]
+                            visited.add(tgt_id)
+                            self._createObjects(tgt_grp, grp_links, visited=visited)
                     elif collection == "datasets":
-                        tgt_obj = self._createDataset(parent, obj_json, **kwds)
+                        self._createDataset(parent, obj_json, **kwds)
                     elif collection == "datatypes":
-                        tgt_obj = self._createDatatype(parent, obj_json, **kwds)
+                        self._createDatatype(parent, obj_json, **kwds)
                     else:
                         self.log.warning(f"unexpected collection: {collection}")
-                        tgt_obj = None
-                    if tgt_obj:
-                        parent[title] = tgt_obj
+                visited.add(tgt_id)
+
             else:
                 self.log.warning(f"unexpected link class: {link_class}")
 
@@ -231,7 +257,6 @@ class H5pyWriter(H5Writer):
 
     def createAttribute(self, obj, name, attr_json):
         """ add the given attribute to obj """
-        print(f"h5py_writer.createAttribute {obj.name}: {name}")
 
         dtype = createDataType(attr_json["type"])
         shape_json = attr_json["shape"]
@@ -276,10 +301,11 @@ class H5pyWriter(H5Writer):
         root_id = self.db.root_id
         self._id_map[root_id] = "/"
         with h5py.File(self._filepath, mode=self._mode) as f:
-            root_json = self.db.getObjectById(root_id)
-            if "links" in root_json:
-                root_links = root_json["links"]
-                self._createObjects(f, root_links)
+            if self.db.new_objects:
+                root_json = self.db.getObjectById(root_id)
+                if "links" in root_json:
+                    root_links = root_json["links"]
+                    self._createObjects(f, root_links, visited=set(root_id))
             # update attributes, dataset values
             for obj_id in self._id_map:
                 if self.db.is_dirty(obj_id):
