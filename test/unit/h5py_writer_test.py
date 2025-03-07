@@ -45,10 +45,11 @@ class H5pyWriterTest(unittest.TestCase):
         self.log.info("init!")
 
 
-    def testGroup(self):
+    def testSimple(self):
     
-        filepath = "test/unit/out/h5py_writer_test_testGroup.h5"
-        with Hdf5db(h5_writer=H5pyWriter(filepath, no_data=False), app_logger=self.log) as db:
+        filepath = "test/unit/out/h5py_writer_test_testSimple.h5"
+        with Hdf5db(app_logger=self.log) as db:
+            db.writer = H5pyWriter(filepath, no_data=False)
             root_id = db.getObjectIdByPath("/")
             db.createAttribute(root_id, "attr1", value=[1,2,3,4])
             db.createAttribute(root_id, "attr2", 42)
@@ -126,15 +127,11 @@ class H5pyWriterTest(unittest.TestCase):
                             expected = i * j
                         self.assertEqual(dset[i, j], expected)
 
-
-            
-            
-
-
-
     def testNullSpaceAttribute(self):
 
+        filepath = "test/unit/out/h5py_writer_test_testNullSpaceAttribute.h5"
         with Hdf5db(app_logger=self.log) as db:
+            db.writer = H5pyWriter(filepath, no_data=False)
             root_id = db.getObjectIdByPath("/")
             db.createAttribute(root_id, "A1", None, shape="H5S_NULL", dtype=np.int32)
             item = db.getAttribute(root_id, "A1")
@@ -145,9 +142,17 @@ class H5pyWriterTest(unittest.TestCase):
             self.assertTrue(item["created"] > time.time() - 1.0)
             value = db.getAttributeValue(root_id, "A1")
             self.assertEqual(value, None)
+            db.flush()
+
+        with h5py.File(filepath) as f:
+            self.assertTrue("A1" in f.attrs)
+            self.assertEqual(f.attrs["A1"], h5py.Empty(dtype=np.int32))
 
     def testScalarAttribute(self):
+
+        filepath = "test/unit/out/h5py_writer_test_testNullScalarAttribute.h5"
         with Hdf5db(app_logger=self.log) as db:
+            db.writer = H5pyWriter(filepath, no_data=False)
             root_id = db.getObjectIdByPath("/")
             dims = ()
             value = 42
@@ -165,13 +170,21 @@ class H5pyWriterTest(unittest.TestCase):
             self.assertTrue(item["created"] > now - 1)
             shape = item["shape"]
             self.assertEqual(shape["class"], "H5S_SCALAR")
-
             self.assertEqual(item_type["class"], "H5T_INTEGER")
             self.assertEqual(item_type["base"], "H5T_STD_I32LE")
+
+        with h5py.File(filepath) as f:
+            self.assertTrue("A1" in f.attrs)
+            a1 = f.attrs["A1"]
+            self.assertTrue(isinstance(a1, np.int32))
+            self.assertEqual(a1, 42)
             
 
     def testFixedStringAttribute(self):
+
+        filepath = "test/unit/out/h5py_writer_test_testFixedStringAttribute.h5"
         with Hdf5db(app_logger=self.log) as db:
+            db.writer = H5pyWriter(filepath, no_data=False)
             root_id = db.getObjectIdByPath("/")
             value = "Hello, world!"
             db.createAttribute(root_id, "A1", value, dtype=np.dtype("S13"))  # dims, datatype, value)
@@ -186,14 +199,23 @@ class H5pyWriterTest(unittest.TestCase):
             self.assertEqual(item["value"], "Hello, world!")
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
-            ret_value = db.getAttributeValue(root_id, "A1")
+
+        with h5py.File(filepath) as f:
+            self.assertTrue("A1" in f.attrs)
+            a1 = f.attrs["A1"]
+            self.assertTrue(isinstance(a1, bytes))
+            self.assertEqual(a1, b'Hello, world!')
        
 
     def testVlenAsciiAttribute(self):
+
+        filepath = "test/unit/out/h5py_writer_test_testVlenAsciiAttribute.h5"
+        value = b"Hello, world!"
+
         with Hdf5db(app_logger=self.log) as db:
+            db.writer = H5pyWriter(filepath, no_data=False)
             root_id = db.getObjectIdByPath("/")
  
-            value = b"Hello, world!"
             dt = special_dtype(vlen=bytes)
 
             # write the attribute
@@ -211,11 +233,21 @@ class H5pyWriterTest(unittest.TestCase):
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
 
+        with h5py.File(filepath) as f:
+            self.assertTrue("A1" in f.attrs)
+            a1 = f.attrs["A1"]
+            self.assertTrue(isinstance(a1, str))
+            self.assertEqual(a1, value.decode("ascii"))
+
     def testVlenUtf8Attribute(self):
+
+        filepath = "test/unit/out/h5py_writer_test_testVlenUtf8Attribute.h5"
+        value = "one: \u4e00"
+
         with Hdf5db(app_logger=self.log) as db:
+            db.writer = H5pyWriter(filepath, no_data=False)
             root_id = db.getObjectIdByPath("/")
  
-            value = b"Hello, world!"
             dt = special_dtype(vlen=str)
 
             # write the attribute
@@ -229,15 +261,25 @@ class H5pyWriterTest(unittest.TestCase):
             self.assertEqual(item_type["strPad"], "H5T_STR_NULLTERM")
             self.assertEqual(item_type["length"], "H5T_VARIABLE")
             self.assertEqual(item_type["charSet"], "H5T_CSET_UTF8")
-            self.assertEqual(item["value"], "Hello, world!")
+            self.assertEqual(item["value"], value)
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
+
+        with h5py.File(filepath) as f:
+            self.assertTrue("A1" in f.attrs)
+            a1 = f.attrs["A1"]
+            self.assertTrue(isinstance(a1, str))
+            self.assertEqual(a1, value)
  
 
     def testIntAttribute(self):
+
+        filepath = "test/unit/out/h5py_writer_test_testIntAttribute.h5"
+        value = [2, 3, 5, 7, 11]
+
         with Hdf5db(app_logger=self.log) as db:
+            db.writer = H5pyWriter(filepath, no_data=False)
             root_id = db.getObjectIdByPath("/")
-            value = [2, 3, 5, 7, 11]
             db.createAttribute(root_id, "A1", value, dtype=np.int16)
             item = db.getAttribute(root_id, "A1")
             self.assertEqual(item["value"], [2, 3, 5, 7, 11])
@@ -250,8 +292,20 @@ class H5pyWriterTest(unittest.TestCase):
             self.assertEqual(item_type["class"], "H5T_INTEGER")
             self.assertEqual(item_type["base"], "H5T_STD_I16LE")
 
+        with h5py.File(filepath) as f:
+            self.assertTrue("A1" in f.attrs)
+            a1 = f.attrs["A1"]
+            self.assertTrue(isinstance(a1, np.ndarray))
+            self.assertEqual(a1.shape, (5,))
+            for i in range(5):
+                self.assertEqual(a1[i], value[i])
+ 
+
     def testCreateReferenceAttribute(self):
+
+        filepath = "test/unit/out/h5py_writer_test_testCreateReferenceAttribute.h5"
         with Hdf5db(app_logger=self.log) as db:
+            db.writer = H5pyWriter(filepath, no_data=False)
             root_id = db.getObjectIdByPath("/")
 
             dset_id = db.createDataset(shape=(), dtype=np.int32)                
@@ -262,19 +316,28 @@ class H5pyWriterTest(unittest.TestCase):
             ds1_ref = "datasets/" + dset_id
             value = [ds1_ref,]
             db.createAttribute(root_id, "A1", value, dtype=dt)
-            item = db.getAttribute(root_id, "A1")
             attr = db.getAttribute(root_id, "A1")
             self.assertTrue("shape" in attr)
             
             attr_type = attr["type"]
             self.assertEqual(attr_type["class"], "H5T_REFERENCE")
             self.assertEqual(attr_type["base"], "H5T_STD_REF_OBJ")
-            attr_value = item["value"]
+            attr_value = db.getAttributeValue(root_id, "A1")
             self.assertEqual(len(attr_value), 1)
-            self.assertEqual(attr_value[0], ds1_ref)
+            self.assertEqual(attr_value[0], ds1_ref.encode('ascii'))
+
+        with h5py.File(filepath) as f:
+            self.assertTrue("A1" in f.attrs)
+            a1 = f.attrs["A1"]
+            obj_ref = a1[0]
+            obj = f[obj_ref]
+            self.assertEqual(obj.name, "/DS1")
 
     def testCreateVlenReferenceAttribute(self):
+
+        filepath = "test/unit/out/h5py_writer_test_testVlenReferenceAttribute.h5"
         with Hdf5db(app_logger=self.log) as db:
+            db.writer = H5pyWriter(filepath, no_data=False)
             root_id = db.getObjectIdByPath("/")
             dset_id = db.createDataset(shape=(), dtype=np.int32)                
             db.createHardLink(root_id, "DS1", dset_id)
@@ -304,10 +367,24 @@ class H5pyWriterTest(unittest.TestCase):
 
             item_shape = item["shape"]
             self.assertEqual(item_shape["class"], "H5S_SCALAR")
+
+        print("open:", filepath)
+        with h5py.File(filepath) as f:
+            self.assertTrue("DS1" in f)
+            ds1 = f["DS1"]
+            self.assertTrue("G1" in f)
+            g1 = f["G1"]
+            self.assertTrue("A1" in f.attrs)
+            a1 = f.attrs["A1"]
+            ref_obj = f[a1[0]]
+            self.assertEqual(ref_obj.name, "/DS1")
             
 
     def testCommittedType(self):
+
+        filepath = "test/unit/out/h5py_writer_test_testCommittedType.h5"
         with Hdf5db(app_logger=self.log) as db:
+            db.writer = H5pyWriter(filepath, no_data=False)
             root_id = db.getObjectIdByPath("/")
             dt = np.dtype("S15")
              

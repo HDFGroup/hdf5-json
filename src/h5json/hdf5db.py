@@ -79,10 +79,28 @@ class Hdf5db:
         """ return reader instance """
         return self._reader
     
+    @reader.setter
+    def reader(self, value: H5Reader):
+        """ set the reader """
+        if self._reader:
+            self._reader.close()
+        self._reader = value
+        if self._reader:
+            self._reader.set_db(self)
+            
     @property
     def writer(self):
         """ return writer instance """
         return self._writer
+    
+    @writer.setter
+    def writer(self, value: H5Reader):
+        """ set the writer """
+        if self._writer:
+            self._writer.close()
+        self._writer = value
+        if self._writer:
+            self._writer.set_db(self)
     
     @property
     def root_id(self):
@@ -321,8 +339,12 @@ class Hdf5db:
         else:
             dims = shape_json["dims"]
         dtype = createDataType(attr_json["type"])
+        print("getAttributeValue dtype, metadata:", dtype.metadata)
+
         value = attr_json["value"]
         arr = jsonToArray(dims, dtype, value)
+        print("getAttributeValue returning arr.dtype, metadata:", arr.dtype.metadata)
+
         return arr
 
 

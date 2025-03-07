@@ -129,15 +129,6 @@ def getCollectionForId(obj_id):
         raise ValueError(f"{obj_id} not a collection id")
     return collection
 
-def stripId(obj_id):
-    """ return just the base id without any prefix (e.g. 'g-') """
-    if len(obj_id) == UUID_LEN:
-        return obj_id  # just return as is
-    if len(obj_id) == UUID_LEN + 2:
-        return obj_id[2:]
-    else:
-        raise ValueError("unexpected obj_id: {obj_id}")
-
 
 def isRootObjId(id):
     """returns true if this is a root id (only for v2 schema)"""
@@ -494,3 +485,13 @@ def getUuidFromId(id):
         return id[2:]
     else:
         raise ValueError(f"Unexpected obj_id: {id}")
+
+def stripId(obj_id):
+    """ return just the base id without any prefix (e.g. 'g-') """
+    if len(obj_id) == UUID_LEN:
+        return obj_id  # just return as is
+    if len(obj_id) == UUID_LEN + 2:
+        return obj_id[2:]
+    else:
+        raise ValueError("unexpected obj_id: {obj_id}")
+    

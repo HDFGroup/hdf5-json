@@ -10,9 +10,11 @@
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
 import h5py
+import numpy as np
 
-from ..objid import getCollectionForId
+from ..objid import getCollectionForId, isValidUuid
 from ..hdf5dtype import createDataType
+from ..h5py_util import is_reference, is_regionreference, has_reference, convert_dtype
 from ..array_util import jsonToArray
 from .. import filters
 from .h5writer import H5Writer
@@ -39,8 +41,107 @@ class H5pyWriter(H5Writer):
         else:
             self._mode = "w"
 
-        self._f = None
         self._id_map = {}
+
+    
+    def _copy_element(self, val, src_dt, tgt_dt, fout=None):
+        """ convert the given dataset or attribute element to h5py equivalent """
+
+        out = None
+        if len(src_dt) > 0:
+            out_fields = []
+            i = 0
+            for name in src_dt.fields:
+                field_src_dt = src_dt.fields[name][0]
+                field_tgt_dt = tgt_dt.fields[name][0]
+                field_val = val[i]
+                i += 1
+                out_field = self._copy_element(field_val, field_src_dt, field_tgt_dt)
+                out_fields.append(out_field)
+            out = tuple(out_fields)
+        elif src_dt.metadata and "ref" in src_dt.metadata:
+            if not tgt_dt.metadata or "ref" not in tgt_dt.metadata:
+                raise TypeError(f"Expected tgt dtype to be ref, but got: {tgt_dt}")
+            ref = tgt_dt.metadata["ref"]
+            if is_reference(ref):
+                # initialize out to null ref
+                out = h5py.Reference()  # null h5py ref
+             
+                if ref and val:
+                    if isinstance(val, bytes):
+                        val = val.decode("ascii")
+                    # strip out collection prefix if present
+                    parts = val.split("/")
+                    obj_uuid = parts[-1]
+                    if not isValidUuid(obj_uuid):
+                        msg = f"invalid uuid: {obj_uuid}"
+                        self.log.warning(msg)
+                    elif obj_uuid not in self._id_map:
+                        self.log.warning(f"ref object {obj_uuid} not found")
+                    else:
+                        h5path = self._id_map[obj_uuid]
+                        try:
+                            obj = fout[h5path]
+                            out = obj.ref
+                        except KeyError:
+                            self.log.warning(f"referenced object: {h5path} not found")
+
+            elif is_regionreference(ref):
+                self.log.warning("region reference not supported")
+                # TBD: just return a null region reference till we have support
+                out = h5py.RegionReference()
+            else:
+                raise TypeError(f"Unexpected ref type: {type(ref)}")
+        elif src_dt.metadata and "vlen" in src_dt.metadata:
+            if not isinstance(val, np.ndarray):
+                raise TypeError(f"Expecting ndarray or vlen element, but got: {type(val)}")
+            if not tgt_dt.metadata or "vlen" not in tgt_dt.metadata:
+                raise TypeError(f"Expected tgt dtype to be vlen, but got: {tgt_dt}")
+            src_vlen_dt = src_dt.metadata["vlen"]
+            tgt_vlen_dt = tgt_dt.metadata["vlen"]
+            if has_reference(src_vlen_dt):
+                if len(val.shape) == 0:
+                    # scalar array
+                    e = val[()]
+                    v = self._copy_element(e, src_vlen_dt, tgt_vlen_dt, fout=fout)
+                    out = np.array(v, dtype=tgt_dt)
+                else:
+                    out = np.zeros(val.shape, dtype=tgt_dt)
+                    for i in range(len(out)):
+                        e = val[i]
+                        out[i] = self._copy_element(e, src_vlen_dt, tgt_vlen_dt, fout=fout)
+            else:
+                # can just directly copy the array
+                out = np.zeros(val.shape, dtype=tgt_dt)
+                out[...] = val[...]
+        else:
+            out = val  # can just copy as is
+        return out
+
+    def _copy_array(self, src_arr, fout=None):
+        """Copy the numpy array to a new array.
+            Convert any reference type to point to item in the target's hierarchy.
+        """
+
+        if not isinstance(src_arr, np.ndarray):
+            raise TypeError(f"Expecting ndarray, but got: {src_arr}")
+        tgt_dt = convert_dtype(src_arr.dtype, to_h5py=True)
+        tgt_arr = np.zeros(src_arr.shape, dtype=tgt_dt)
+
+        if has_reference(src_arr.dtype):
+            # flatten array to simplify iteration
+            count = int(np.prod(src_arr.shape))
+            tgt_arr_flat = tgt_arr.reshape((count,))
+            src_arr_flat = src_arr.reshape((count,))
+            for i in range(count):
+                e = src_arr_flat[i]
+                element = self._copy_element(e, src_arr.dtype, tgt_dt, fout=fout)
+                tgt_arr_flat[i] = element
+            tgt_arr = tgt_arr_flat.reshape(src_arr.shape)
+        else:
+            # can just copy the entire array
+            tgt_arr[...] = src_arr[...]
+        return tgt_arr
 
     def _createGroup(self, parent, grp_json, name=None):
         """ create the group and any links it contains """
@@ -254,26 +355,28 @@ class H5pyWriter(H5Writer):
             dset[slices] = val
             self.log.debug(f"h5py_writer dset {dset.name} updated")
 
+    
 
     def createAttribute(self, obj, name, attr_json):
         """ add the given attribute to obj """
-
-        dtype = createDataType(attr_json["type"])
+    
+        src_dt = createDataType(attr_json["type"])
+         
+        # handle special case of null space attribute here   
         shape_json = attr_json["shape"]
         shape_class = shape_json["class"]
         if shape_class == "H5S_NULL":
-            dims = None
-        elif shape_class == "H5S_SCALAR":
+            obj.attrs[name] = h5py.Empty(convert_dtype(src_dt, to_h5py=True))
+            return
+        
+        if shape_class == "H5S_SCALAR":
             dims = ()
         else:
-            dims = tuple(shape_json["dims"])
-
-        if dims is None:
-            obj.attrs[name] = h5py.Empty(dtype)
-        else:
-            json_value = attr_json["value"]
-            arr = jsonToArray(dims, dtype, json_value)
-            obj.attrs[name] = arr
+            dims = shape_json["dims"]
+        src_arr = jsonToArray(dims, src_dt, attr_json["value"])
+        tgt_arr = self._copy_array(src_arr, fout=obj.file)
+            
+        obj.attrs[name] = tgt_arr
 
 
     def updateAttributes(self, obj_id, obj):

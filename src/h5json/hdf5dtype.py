@@ -17,6 +17,7 @@ import numpy as np
 numpy_integer_types = (np.int8, np.uint8, np.int16, np.int16, np.int32, np.uint32, np.int64, np.uint64)
 numpy_float_types = (np.float16, np.float32, np.float64)
 
+
 class Reference:
     """
     Represents an HDF5 object reference
@@ -743,7 +744,7 @@ def createBaseDataType(typeItem):
                 type_code = "S"
             elif typeItem["charSet"] == "H5T_CSET_UTF8":
                 # use the same type_code as ascii strings
-                # (othewise, numpy will reserve bytes for UTF32 representation)
+                # (otherwise, numpy will reserve bytes for UTF32 representation)
                 type_code = "S"
             else:
                 raise TypeError("unexpected 'charSet' value")
@@ -804,6 +805,7 @@ def createBaseDataType(typeItem):
             raise KeyError("'base' not provided")
         if typeItem["base"] == "H5T_STD_REF_OBJ":
             dtRet = special_dtype(ref=Reference)
+            print("special dtype, metadata:", dtRet.metadata)
         elif typeItem["base"] == "H5T_STD_REF_DSETREG":
             dtRet = special_dtype(ref=RegionReference)
         else:
