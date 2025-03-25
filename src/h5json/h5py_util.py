@@ -15,6 +15,7 @@ import numpy as np
 
 from . import hdf5dtype
 
+
 def is_reference(val):
     """ Return True if the type or value is a Reference """
 
@@ -22,8 +23,8 @@ def is_reference(val):
         return True
     elif isinstance(val, type) and val.__name__ == "Reference":
         return True
- 
-    return False
+    else:
+        return False
 
 
 def is_regionreference(val):
@@ -59,7 +60,7 @@ def has_reference(dtype):
 
 def convert_dtype(srcdt, to_h5py=True):
     """Return a dtype based on input dtype, converting any Reference types from
-    h5py style to h5pyd and vice-versa.
+    h5py style to h5json and vice-versa.
     """
 
     if len(srcdt) > 0:
@@ -96,7 +97,7 @@ def convert_dtype(srcdt, to_h5py=True):
             if to_h5py:
                 tgt_dt = h5py.special_dtype(vlen=tgt_base)
             else:
-                tgt_dt = h5pyd.special_dtype(vlen=tgt_base)
+                tgt_dt = hdf5dtype.special_dtype(vlen=tgt_base)
         elif srcdt.kind == "U":
             # use vlen for unicode strings
             if to_h5py:

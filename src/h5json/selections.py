@@ -115,6 +115,7 @@ def select(obj, args):
     sel[args]
     return sel
 
+
 def intersect(s1, s2):
     """ Return the intersection of two selections """
     # TBD: this is currently only working for simple selections with stride 1
@@ -129,7 +130,7 @@ def intersect(s1, s2):
         raise TypeError("Expected hyperslab selection for second arg")
     if s1.shape != s2.shape:
         raise ValueError("selections have incompatible shapes")
-    
+
     slices = []
     rank = len(s1.shape)
     for dim in range(rank):

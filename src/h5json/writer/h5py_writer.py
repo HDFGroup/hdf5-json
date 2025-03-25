@@ -20,12 +20,10 @@ from .. import filters
 from .h5writer import H5Writer
 
 
-
 class H5pyWriter(H5Writer):
     """
-    This class saves state from the Hdf5Db class into an HDF5 file.  
+    This class saves state from the Hdf5Db class into an HDF5 file.
     """
-
 
     def __init__(
         self,
@@ -43,7 +41,6 @@ class H5pyWriter(H5Writer):
 
         self._id_map = {}
 
-    
     def _copy_element(self, val, src_dt, tgt_dt, fout=None):
         """ convert the given dataset or attribute element to h5py equivalent """
 
@@ -66,7 +63,7 @@ class H5pyWriter(H5Writer):
             if is_reference(ref):
                 # initialize out to null ref
                 out = h5py.Reference()  # null h5py ref
-             
+
                 if ref and val:
                     if isinstance(val, bytes):
                         val = val.decode("ascii")
@@ -148,7 +145,6 @@ class H5pyWriter(H5Writer):
         grp = parent.create_group(name)
         return grp
 
-
     def _createDataset(self, parent, dset_json, name=None):
         """ create a dataset object """
 
@@ -175,7 +171,7 @@ class H5pyWriter(H5Writer):
                         msg = "fillvalue has incorrect number of elements"
                         self.log.warning(msg)
                         raise ValueError(msg)
-                    
+
                     fillvalue = jsonToArray((), dtype, fillvalue)
 
                 kwargs["fillvalue"] = fillvalue
@@ -255,7 +251,7 @@ class H5pyWriter(H5Writer):
                             kwargs["scaleoffset"] = filter_prop["scaleOffset"]
                         else:
                             self.log.info(f"Unexpected filter name: {filter_alias}, ignoring")
-                            
+
         dset = parent.create_dataset(name, **kwargs)
         return dset
 
@@ -267,14 +263,10 @@ class H5pyWriter(H5Writer):
         parent[name] = dtype
         return parent[name]
 
-
     def _createObjects(self, parent, links_json, visited=set()):
         """ create child object in the given group, recurse for any sub-groups """
 
         for title in links_json:
-            #if title in parent:
-            #    # TBD: this will do the wrong thing if the link tgt has changed
-            #    continue
             link_json = links_json[title]
             link_class = link_json["class"]
             if link_class == "H5L_TYPE_SOFT" and title not in parent:
@@ -299,11 +291,11 @@ class H5pyWriter(H5Writer):
                         self.log.warning("h5py_writer - expected to find {tgt_id} in id_map")
                     continue
                 """
-                
+
                 collection = getCollectionForId(tgt_id)
 
                 obj_json = self.db.getObjectById(tgt_id)
-            
+
                 if tgt_id in self._id_map:
                     # object has already been created
                     tgt_path = self._id_map[tgt_id]
@@ -351,55 +343,51 @@ class H5pyWriter(H5Writer):
                 stop = start + sel.count[dim]
                 step = sel.step[dim]
                 slices.append(slice(start, stop, step))
-            slices = tuple(slices)  
+            slices = tuple(slices)
             dset[slices] = val
             self.log.debug(f"h5py_writer dset {dset.name} updated")
 
-    
-
     def createAttribute(self, obj, name, attr_json):
         """ add the given attribute to obj """
-    
+
         src_dt = createDataType(attr_json["type"])
-         
-        # handle special case of null space attribute here   
+
+        # handle special case of null space attribute here
         shape_json = attr_json["shape"]
         shape_class = shape_json["class"]
         if shape_class == "H5S_NULL":
             obj.attrs[name] = h5py.Empty(convert_dtype(src_dt, to_h5py=True))
             return
-        
+
         if shape_class == "H5S_SCALAR":
             dims = ()
         else:
             dims = shape_json["dims"]
         src_arr = jsonToArray(dims, src_dt, attr_json["value"])
         tgt_arr = self._copy_array(src_arr, fout=obj.file)
-            
-        obj.attrs[name] = tgt_arr
 
+        obj.attrs[name] = tgt_arr
 
     def updateAttributes(self, obj_id, obj):
         """ create/replace any modified attributes """
 
         obj_json = self.db.getObjectById(obj_id)
-        
+
         if "attributes" not in obj_json:
             # no attributes
             return
-        
+
         attrs = obj_json["attributes"]
         for name in attrs:
             attr_json = attrs[name]
             self.createAttribute(obj, name, attr_json)
 
- 
     def flush(self):
         """ Write dirty items """
         if not self.db:
             # no db set yet
             return False
-   
+
         self.log.info("h5py_writer.flush()")
         root_id = self.db.root_id
         self._id_map[root_id] = "/"
@@ -420,8 +408,6 @@ class H5pyWriter(H5Writer):
         self._mode = "a"  # use append mode for future updates
         return True  # all objects written successfully
 
-  
     def close(self):
         """ close storage handle """
         self.flush()
-

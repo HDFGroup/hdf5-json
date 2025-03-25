@@ -16,10 +16,9 @@ import logging
 
 class H5Writer(ABC):
     """
-    This abstract class defines properties and methods that the Hdf5db class uses for writing to an HDF5 
-    compatible storage medium.  
+    This abstract class defines properties and methods that the Hdf5db class uses for writing to an HDF5
+    compatible storage medium.
     """
-
 
     def __init__(
         self,
@@ -38,9 +37,7 @@ class H5Writer(ABC):
         else:
             self.log = logging.getLogger()
 
-    
     def set_db(self, db):
-        #TBD - use weak ref?
         self._db_ref = weakref.ref(db)
 
     @property
@@ -53,9 +50,8 @@ class H5Writer(ABC):
     def flush(self):
         """ Write dirty items """
         pass
-  
+
     @abstractmethod
     def close(self):
         """ close storage handle """
         pass
-

@@ -17,10 +17,11 @@ from ..objid import stripId, getCollectionForId
 from ..array_util import bytesArrayToList
 from .. import selections
 
+
 class H5JsonWriter(H5Writer):
     """
-    This abstract class defines properties and methods that the Hdf5db class uses for writing to an HDF5 
-    compatible storage medium.  
+    This abstract class defines properties and methods that the Hdf5db class uses for writing to an HDF5
+    compatible storage medium.
     """
 
     def __init__(
@@ -34,14 +35,14 @@ class H5JsonWriter(H5Writer):
         self.alias_db = {}
         self.json = {}
         self._root_uuid = None
-       
+
     def flush(self):
         """ Write dirty items """
         # json writer doesn't support incremental updates, so we'll wait
         # for close to write out database
         self.log.info("flush")
         return False
-  
+
     def close(self):
         """ close storage handle """
         self.dumpFile()
@@ -51,8 +52,7 @@ class H5JsonWriter(H5Writer):
         if obj_id not in self.alias_db:
             self.alias_db[obj_id] = []
         return self.alias_db[obj_id]
-         
-    
+
     def updateAliasList(self):
         """ update the alias list for each object """
         # clear exiting aliases
@@ -62,7 +62,6 @@ class H5JsonWriter(H5Writer):
 
         self._setAlias(self._root_uuid, set(), "/")
 
-     
     def _setAlias(self, obj_id, id_set, h5path):
         """ add the given h5path to the object's alias list
             If the object is a group, recurse through each hard link """
@@ -83,11 +82,10 @@ class H5JsonWriter(H5Writer):
             if link_json["class"] == "H5L_TYPE_HARD":
                 tgt_id = link_json["id"]
                 if tgt_id in id_set:
-                    self.log.info(f"_setAlias - circular loop found")
+                    self.log.info("_setAlias - circular loop found")
                 else:
-                    self._setAlias(tgt_id, id_set, h5path+link_name)
+                    self._setAlias(tgt_id, id_set, f"{h5path}{link_name}")
         id_set.remove(obj_id)
-
 
     def dumpAttribute(self, obj_id, attr_name):
         self.log.info(f"dumpAttribute: [{attr_name}]")
@@ -95,12 +93,12 @@ class H5JsonWriter(H5Writer):
         response = {"name": attr_name}
         response["type"] = item["type"]
         response["shape"] = item["shape"]
-        if True:
-            if "value" not in item:
-                self.log.warning("no value key in attribute: " + attr_name)
-            else:
-                # dump values unless header -D was passed
-                response["value"] = item["value"]  
+
+        if "value" not in item:
+            self.log.warning(f"no value key in attribute: {attr_name}")
+        else:
+            # dump values unless header -D was passed
+            response["value"] = item["value"]
         return response
 
     def dumpAttributes(self, obj_id):
@@ -142,7 +140,7 @@ class H5JsonWriter(H5Writer):
 
         alias = self.getAliasList(obj_id)
         response["alias"] = alias
-         
+
         if "cpl" in item:
             item["creationProperties"] = item["cpl"]
         attributes = self.dumpAttributes(obj_id)
@@ -172,11 +170,8 @@ class H5JsonWriter(H5Writer):
         response = {}
         self.log.info("dumpDataset: " + obj_id)
         item = self.db.getObjectById(obj_id)
-        if "alias" in item:
-            alias = item["alias"]
-            if alias:
-                self.log.info(f"dumpDataset alias: [{alias[0]}]")
-            response["alias"] = item["alias"]
+        alias = self.getAliasList(obj_id)
+        response["alias"] = alias
 
         response["type"] = item["type"]
         shapeItem = item["shape"]
@@ -217,8 +212,6 @@ class H5JsonWriter(H5Writer):
                 sel_all = selections.select(dims, ...)
                 arr = self.db.getDatasetValues(obj_id, sel_all)
                 response["value"] = bytesArrayToList(arr)  # dump values unless header flag was passed
-            else:
-                response["value"] = []  # empty list
         return response
 
     def dumpDatasets(self):
@@ -235,7 +228,8 @@ class H5JsonWriter(H5Writer):
     def dumpDatatype(self, obj_id):
         response = {}
         item = self.db.getObjectById(obj_id)
-        response["alias"] = item["alias"]
+        alias = self.getAliasList(obj_id)
+        response["alias"] = alias
         response["type"] = item["type"]
         if "cpl" in item:
             response["creationProperties"] = item["cpl"]
@@ -255,7 +249,6 @@ class H5JsonWriter(H5Writer):
 
             self.json["datatypes"] = datatypes
 
-
     def dumpFile(self):
         self._root_uuid = self.db.getObjectIdByPath("/")
 
@@ -272,7 +265,10 @@ class H5JsonWriter(H5Writer):
 
         self.dumpDatatypes()
 
-        print(json.dumps(self.json, sort_keys=True, indent=4))
-
-
-
+        indent = 4
+        ensure_ascii = False
+        if self._filepath:
+            with open('data.json', 'w', encoding='utf-8') as f:
+                json.dump(self.json, f, ensure_ascii=ensure_ascii, indent=indent)
+        else:
+            print(json.dumps(self.json, sort_keys=True, ensure_ascii=ensure_ascii, indent=indent))

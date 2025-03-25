@@ -491,6 +491,7 @@ def arrayToBytes(arr, encoding=None):
         data = encodeData(data)
     return data
 
+
 def bytesToArray(data, dt, shape, encoding=None):
     """
     Create numpy array based on byte representation
@@ -522,7 +523,7 @@ def bytesToArray(data, dt, shape, encoding=None):
 
     return arr
 
-  
+
 def getNumpyValue(value, dt=None, encoding=None):
     """
     Return value as numpy type for given dtype and encoding

@@ -368,7 +368,6 @@ class H5pyWriterTest(unittest.TestCase):
             item_shape = item["shape"]
             self.assertEqual(item_shape["class"], "H5S_SCALAR")
 
-        print("open:", filepath)
         with h5py.File(filepath) as f:
             self.assertTrue("DS1" in f)
             ds1 = f["DS1"]
@@ -383,16 +382,19 @@ class H5pyWriterTest(unittest.TestCase):
     def testCommittedType(self):
 
         filepath = "test/unit/out/h5py_writer_test_testCommittedType.h5"
+        dt = np.dtype("S15")
+
         with Hdf5db(app_logger=self.log) as db:
             db.writer = H5pyWriter(filepath, no_data=False)
             root_id = db.getObjectIdByPath("/")
-            dt = np.dtype("S15")
              
             ctype_id = db.createCommittedType(dt)
             db.createHardLink(root_id, "ctype", ctype_id)
             item = db.getObjectById(ctype_id)
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
+            db.createHardLink(root_id, "T1", ctype_id)
+
 
             item_type = item["type"]
 
@@ -411,15 +413,30 @@ class H5pyWriterTest(unittest.TestCase):
             self.assertEqual(attr_type["length"], 15)
             self.assertEqual(attr_type["charSet"], "H5T_CSET_ASCII")
 
+        with h5py.File(filepath) as f:
+            self.assertTrue("T1" in f)
+            t1 = f["T1"]
+            self.assertTrue(isinstance(t1, h5py.Datatype))
+            self.assertEqual(t1.dtype, dt)
+
+            self.assertTrue("A1" in f.attrs)
+            a1 = f.attrs["A1"]
+            print("a1:", a1)
+            self.assertEqual(a1, b"hello, world!")
+
 
     def testCommittedCompoundType(self):
+
+        filepath = "test/unit/out/h5py_writer_test_testCommittedCompoundType.h5"
+
         with Hdf5db(app_logger=self.log) as db:
+            db.writer = H5pyWriter(filepath, no_data=False)
             root_id = db.getObjectIdByPath("/")
 
             dt_str = special_dtype(vlen=str)
             fields = []
             fields.append(("field_1", np.dtype(">i8")))
-            fields.append(("field_2", ">f8"))
+            fields.append(("field_2", np.dtype(">f8")))
             fields.append(("field_3", np.dtype("S15")))
             fields.append(("field_4", dt_str))
             dt = np.dtype(fields)
@@ -429,6 +446,7 @@ class H5pyWriterTest(unittest.TestCase):
             item = db.getObjectById(ctype_id)
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
+            db.createHardLink(root_id, "T1", ctype_id)
 
             item_type = item["type"]
 
@@ -449,6 +467,23 @@ class H5pyWriterTest(unittest.TestCase):
             
             value = db.getAttributeValue(root_id, "A1")
             self.assertTrue(isinstance(value, np.ndarray))
+
+        with h5py.File(filepath) as f:
+            self.assertTrue("T1" in f)
+            t1 = f["T1"]
+            self.assertTrue(isinstance(t1, h5py.Datatype))
+            print("dtype:", t1.dtype)
+            self.assertEqual(len(t1.dtype), 4)
+            sub_dt = t1.dtype["field_1"]
+            self.assertEqual(sub_dt, np.dtype(">i8"))
+            sub_dt = t1.dtype["field_2"]
+            self.assertEqual(sub_dt, np.dtype(">f8"))
+            sub_dt = t1.dtype["field_3"]
+            self.assertEqual(sub_dt, np.dtype("S15"))
+            sub_dt = t1.dtype["field_4"]
+            self.assertEqual(sub_dt, h5py.special_dtype(vlen=str))
+
+
    
 
 if __name__ == "__main__":

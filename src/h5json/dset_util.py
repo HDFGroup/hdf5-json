@@ -12,17 +12,31 @@
 
 import time
 
+
 def resize_dataset(dset_json, shape):
     shape_json = dset_json["shape"]
     shape_class = shape_json["class"]
     if shape_class != "H5S_SIMPLE":
         raise TypeError(f"dataset with shape class: {shape_class} cannot be resized")
-    if len(shape_class["dims"]) != len(shape):
+    if len(shape_json["dims"]) != len(shape):
         raise ValueError("Resize shape parameter doesn't match dataset's rank")
+    if "maxdims" not in shape_json:
+        raise ValueError("Dataset is not resizable")
+    dims = shape_json["dims"]
+    maxdims = shape_json["maxdims"]
+
     if shape_json["dims"] == list(shape):
         # no change, just return
         return
+    for i in range(len(dims)):
+        extent = shape[i]
+        if extent < 0:
+            raise ValueError("dimensions can't be negative")
+        if maxdims[i] == "H5S_UNLIMITED":
+            # any positive extent is ok
+            continue
+        if extent > maxdims[i]:
+            raise ValueError(f"extent for dimension {i} can't be larger than {maxdims[i]}")
+
     shape_json["dims"] = list(shape)
     dset_json["modified"] = time.time()
-        
-         

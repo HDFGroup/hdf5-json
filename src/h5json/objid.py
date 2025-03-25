@@ -117,7 +117,7 @@ def getCollectionForId(obj_id):
     """return groups/datasets/datatypes based on id"""
     if not isinstance(obj_id, str):
         raise ValueError("invalid object id")
-    
+
     collection = None
     if obj_id.startswith("g-"):
         collection = "groups"
@@ -486,6 +486,7 @@ def getUuidFromId(id):
     else:
         raise ValueError(f"Unexpected obj_id: {id}")
 
+
 def stripId(obj_id):
     """ return just the base id without any prefix (e.g. 'g-') """
     if len(obj_id) == UUID_LEN:
@@ -494,4 +495,3 @@ def stripId(obj_id):
         return obj_id[2:]
     else:
         raise ValueError("unexpected obj_id: {obj_id}")
-    

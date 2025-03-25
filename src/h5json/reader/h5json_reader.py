@@ -18,13 +18,12 @@ from ..hdf5dtype import createDataType
 from ..array_util import jsonToArray
 from .. import selections
 from ..h5reader import H5Reader
-  
+
 
 class H5JsonReader(H5Reader):
     """
     This class can be used by HDF5DB to read content from an hdf5-json file
     """
-
 
     def __init__(
         self,
@@ -55,7 +54,7 @@ class H5JsonReader(H5Reader):
     def get_root_id(self):
         """ Return root id """
         return self._root_id
-    
+
     def getObjectById(self, obj_id, include_attrs=True, include_links=True):
         """ return object with given id """
         collection = getCollectionForId(obj_id)
@@ -84,8 +83,14 @@ class H5JsonReader(H5Reader):
                     continue
                 name = item["name"]
                 attr = {}
-                for k in ("type", "shape", "value"):
-                    attr[k] = item[k]
+                if "type" not in item:
+                    raise KeyError(f"expected to find type key for attribute {name} of {obj_id}")
+                attr["type"] = item["type"]
+                if "shape" not in item:
+                    raise KeyError(f"expected to find shape key for attribute {name} of {obj_id}")
+                attr["shape"] = item["shape"]
+                if "value" in item:
+                    attr["value"] = item["value"]
                 attrs[name] = attr
             resp["attributes"] = attrs
 
@@ -122,7 +127,6 @@ class H5JsonReader(H5Reader):
 
         return resp
 
-  
     def getAttribute(self, obj_id, name, includeData=True):
         """
         Get attribute given an object id and name
@@ -140,7 +144,6 @@ class H5JsonReader(H5Reader):
             self.log.info(f"attr: [{name}] of {obj_id} not found")
             return None
         return attributes[name]
-        
 
     def getDatasetValues(self, obj_id, sel=None):
         """
@@ -175,12 +178,5 @@ class H5JsonReader(H5Reader):
             arr = arr[sel.slices]
         else:
             raise NotImplementedError("selection type not supported")
-        
+
         return arr
-            
-
-
-        
-  
-       
-

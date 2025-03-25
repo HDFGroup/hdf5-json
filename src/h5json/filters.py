@@ -9,7 +9,7 @@
 # distribution tree.  If you do not have access to this file, you may        #
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
- 
+
 import h5py
 
 _HDF_FILTERS = {
@@ -53,4 +53,3 @@ _H5PY_FILTERS = {
 }
 
 _H5PY_COMPRESSION_FILTERS = ("gzip", "lzf", "szip")
-

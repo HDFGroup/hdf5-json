@@ -410,6 +410,34 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(arr.min(), 42)
             self.assertEqual(arr.max(), 42)
 
+    def testResizableDataset(self):
+        with Hdf5db(app_logger=self.log) as db:
+            nrows = 8
+            ncols = 10
+            shape = (nrows, ncols)
+            dtype = np.int32
+            maxdims = (None, ncols*2)
+            root_id = db.getObjectIdByPath("/")
+            dset_id = db.createDataset(shape, maxdims=maxdims, dtype=dtype)
+            db.createHardLink(root_id, "dset", dset_id)
+            db.createAttribute(dset_id, "a1", "Hello, world")
+            
+            # resize limited dimension
+            db.resizeDataset(dset_id, (nrows, ncols*2))
+
+            # try to go beyond max extent
+            try:
+                db.resizeDataset(dset_id, (nrows, ncols*3))
+                self.assertTrue(False)
+            except ValueError:
+                pass  # expected
+
+            # resize unlimited dimension
+            db.resizeDataset(dset_id, (nrows*10, ncols))
+
+
+            
+
             
 
 

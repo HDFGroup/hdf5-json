@@ -28,7 +28,7 @@ class Hdf5db:
     and Datatypes).  By default all data is held in-memory.  Initialize with h5_reader to read from
     an HDF5 compatible storage pool, and or, h5_writer to write to an HDF5 compatible storage pool.
     """
-     
+
     @staticmethod
     def getVersionInfo():
         versionInfo = {}
@@ -39,7 +39,7 @@ class Hdf5db:
         self,
         h5_reader: H5Reader = None,
         h5_writer: H5Writer = None,
-        app_logger = None,
+        app_logger=None,
     ):
         if app_logger:
             self.log = app_logger
@@ -50,10 +50,10 @@ class Hdf5db:
 
         self._reader = h5_reader
         self._writer = h5_writer
-        
+
         self._new_objects = set()  # set of obj_id's
         self._dirty_objects = set()  # set of obj_id's
-    
+
         if self._reader:
             root_id = self._reader.get_root_id()
             group_json = self._reader.getObjectById(root_id)
@@ -65,7 +65,7 @@ class Hdf5db:
 
         if self._writer:
             self._writer.set_db(self)
-        
+
         self._db[root_id] = group_json
         self._root_id = root_id
 
@@ -73,12 +73,12 @@ class Hdf5db:
     def db(self):
         """ return object db dictionary """
         return self._db
-    
+
     @property
     def reader(self):
         """ return reader instance """
         return self._reader
-    
+
     @reader.setter
     def reader(self, value: H5Reader):
         """ set the reader """
@@ -87,44 +87,44 @@ class Hdf5db:
         self._reader = value
         if self._reader:
             self._reader.set_db(self)
-            
+
     @property
     def writer(self):
         """ return writer instance """
         return self._writer
-    
+
     @writer.setter
-    def writer(self, value: H5Reader):
+    def writer(self, value: H5Writer):
         """ set the writer """
         if self._writer:
             self._writer.close()
         self._writer = value
         if self._writer:
             self._writer.set_db(self)
-    
+
     @property
     def root_id(self):
         """ return root uuid """
         return self._root_id
-    
+
     def is_new(self, obj_id):
         """ return true if this is a new object (has not been persisted) """
         return obj_id in self._new_objects
-    
+
     def is_dirty(self, obj_id):
         """ return true if this object has been modified """
         if self.is_new(obj_id):
             return True
         return obj_id in self._dirty_objects
-    
+
     @property
     def new_objects(self):
         return self._new_objects
-    
+
     @property
     def dirty_objects(self):
         return self._dirty_objects
-    
+
     def make_dirty(self, obj_id):
         """ Mark the object as dirty and update the lastModified timestamp """
         if self.is_new(obj_id):
@@ -140,21 +140,16 @@ class Hdf5db:
         obj_json["lastModified"] = time.time()
         self._dirty_objects.add(obj_id)
 
-
     def flush(self):
         """ write out any changes """
         if not self.writer:
             return  # nothing to do
-        
-        print("self._new_objects:", self._new_objects)
-        print("self._dirty_objects:", self._dirty_objects)
+
         obj_ids = self._new_objects.union(self._dirty_objects)
-        print(f"hdf5db_flush {len(obj_ids)} objects")
 
         if not self.writer.flush():
             # flush not successful, don't clear dirty set
-            return  
-
+            return
 
         for obj_id in obj_ids:
             obj_json = self._db[obj_id]
@@ -164,12 +159,12 @@ class Hdf5db:
         # reset new and dirty sets
         self._new_objects = set()
         self._dirty_objects = set()
-           
+
     def close(self):
         """ close reader and writer handles """
         self.log.info("Hdf5db __close")
         self.flush()
-        if self.writer:                         
+        if self.writer:
             self.writer.close()
         if self.reader:
             self.reader.close()
@@ -185,7 +180,6 @@ class Hdf5db:
         """ called on package exit """
         self.log.info("Hdf5db __exit")
         self.close()
-         
 
     def getObjectById(self, obj_id):
         """ return object with given id """
@@ -210,7 +204,7 @@ class Hdf5db:
         if parent_id is None:
             parent_id = self.root_id
         self.log.debug(f"getObjectIdDByPath(h5path: {h5path} parent_id: {parent_id}")
-        
+
         obj_json = self.getObjectById(parent_id)
         if obj_json is None:
             self.log.warning("getObjectIdDByPath - parent_id not found")
@@ -261,12 +255,12 @@ class Hdf5db:
                 self.log.warning(f"get_bypath {h5path} not found")
                 raise KeyError(h5path)
         return obj_id
-    
+
     def getObjectByPath(self, path):
         """ Get Object JSON at given path """
         obj_id = self.getObjectIdByPath(path)
         obj_json = self.getObjectById(obj_id)
-        return obj_json    
+        return obj_json
 
     def getDtype(self, obj_id):
         """ Return numpy data type for given object id """
@@ -277,11 +271,10 @@ class Hdf5db:
             # group id?
             raise TypeError(f"{obj_id} does not have a datatype")
         type_json = obj_json["type"]
-        
+
         dtype = createDataType(type_json)
         return dtype
- 
- 
+
     def getAttribute(self, obj_id, name, includeData=True):
         """
         Get attribute given an object id and name
@@ -290,28 +283,20 @@ class Hdf5db:
 
         obj_json = self.getObjectById(obj_id)
         attrs = obj_json["attributes"]
-        
+
         if name not in attrs:
             msg = f"Attribute: [{name }] not found in object: {obj_id}"
             self.log.info(msg)
             return None
-        if attrs[name] == None:
+        if attrs[name] is None:
             msg = f"Attribute: [{name}] has been deleted"
             self.log.info(None)
             return None
-        
+
         attr_json = attrs[name]
 
-        if includeData and "value" not in attr_json:
-            # Reader may not have pre-loaded large attributes
-            # fetch it now
-            if not self.reader:
-                raise RuntimeError(f"Expected to find value for attribute {name} of {obj_id}")
-            attr_json = self.reader.get_attribute(obj_id, name)
-            attr_json["value"] = attr_json  # this will update the _db
-        
         return attr_json
-    
+
     def getAttributes(self, obj_id):
         """
         Get attributes given an object id and name
@@ -322,11 +307,11 @@ class Hdf5db:
         attrs = obj_json["attributes"]
         names = []
         for name in attrs:
-            if attrs[name] != None:
+            if attrs[name] is not None:
                 names.append(name)
-         
+
         return names
-    
+
     def getAttributeValue(self, obj_id, name):
         """ Return NDArray of the given attribute value """
         attr_json = self.getAttribute(obj_id, name)
@@ -339,20 +324,17 @@ class Hdf5db:
         else:
             dims = shape_json["dims"]
         dtype = createDataType(attr_json["type"])
-        print("getAttributeValue dtype, metadata:", dtype.metadata)
 
         value = attr_json["value"]
         arr = jsonToArray(dims, dtype, value)
-        print("getAttributeValue returning arr.dtype, metadata:", arr.dtype.metadata)
 
         return arr
-
 
     def createAttribute(self, obj_id, name, value, shape=None, dtype=None):
         """
         create an attribute - will override any existing attributes
         """
-        
+
         # TBD: if dtype is a committed ref type, fetch it first
         # TBD: also, check special case for complex types
 
@@ -367,7 +349,7 @@ class Hdf5db:
             type_json["id"] = ctype_id
             dtype = createDataType(type_json)
 
-        # First, make sure we have a NumPy array.   
+        # First, make sure we have a NumPy array
         if isinstance(value, Reference) and dtype is None:
             dtype = special_dtype(ref=Reference)
         if shape == "H5S_NULL":
@@ -383,7 +365,7 @@ class Hdf5db:
                 dtype = value.dtype
             else:
                 dtype = np.dtype(dtype)  # In case a string, e.g. 'i8' is passed
- 
+
         # Where a top-level array type is requested, we have to do some
         # fiddling around to present the data as a smaller array of
         # sub-arrays.
@@ -443,7 +425,6 @@ class Hdf5db:
         # mark object as dirty
         self.make_dirty(obj_id)
 
-
     def deleteAttribute(self, obj_id, name):
         """ delete the given attribute """
         obj_json = self.getObjectById(obj_id)
@@ -451,9 +432,8 @@ class Hdf5db:
         if name not in attrs_json:
             raise KeyError(f"attribute [{name}] not found in {obj_id}")
         attrs_json[name] = None  # mark key for deletion
-        
-        self.make_dirty(obj_id)
 
+        self.make_dirty(obj_id)
 
     def getDatasetValues(self, dset_id, sel):
         """
@@ -466,22 +446,23 @@ class Hdf5db:
         shape_json = dset_json["shape"]
         if not isinstance(sel, selections.Selection):
             raise TypeError("Expected Selection class")
-       
+
         if shape_json["class"] == "H5S_NULL":
             return None
 
         if shape_json["class"] == "H5S_SCALAR":
-            if sel.select_type != sel.H5S_SELECT_ALL:
+            if sel.select_type != selections.H5S_SELECT_ALL:
                 # TBD: support other selection types
                 raise ValueError("Only SELECT_ALL selections are supported for scalar datasets")
             if sel.shape != ():
                 raise ValueError("Selection shape does not match dataset shape")
+            rank = 0
         else:
             dims = tuple(shape_json["dims"])
             if sel.shape != dims:
                 raise ValueError("Selection shape does not match dataset shape")
-        rank = len(dims)  
-            
+            rank = len(dims)
+
         dtype = self.getDtype(dset_id)
         if self.reader:
             arr = self.reader.getDatasetValues(dset_id, sel)
@@ -506,7 +487,7 @@ class Hdf5db:
                 arr[slices] = update_val
 
         return arr
-    
+
     def setDatasetValues(self, dset_id, sel, arr):
         """
         Write the given ndarray to the dataset using the selection
@@ -538,17 +519,15 @@ class Hdf5db:
         updates.append((sel, arr.copy()))
         self.make_dirty(dset_id)
 
-
     def resizeDataset(self, dset_id, shape):
         """
         Resize existing Dataset
         """
         self.log.info(f"resizeDataset {dset_id}, {shape}")
-        
+
         dset_json = self.getObjectById(dset_id)  # will throw exception if not found
         if resize_dataset(dset_json, shape):
             self._dirty_objects.add(dset_id)
-         
 
     def deleteObject(self, obj_id):
         """ Delete the given object """
@@ -558,14 +537,13 @@ class Hdf5db:
         if obj_id == self.root_id:
             raise KeyError("Root group cannot be deleted")
         self.db[obj_id] = None
-        
+
         if obj_id in self._new_objects:
             self._new_objects.remove(obj_id)
 
         if obj_id in self._dirty_objects:
             self._dirty_objects.remove(obj_id)
 
-        
     def getLinks(self, grp_id):
         """ Get the links for the given group """
         grp_json = self.getObjectById(grp_id)
@@ -574,30 +552,30 @@ class Hdf5db:
         links = grp_json["links"]
         names = []
         for name in links:
-            if links[name] != None:
+            if links[name] is not None:
                 names.append(name)
         return names
-      
+
     def getLink(self, grp_id, name):
         """ Get the given link """
-        
+
         obj_json = self.getObjectById(grp_id)
         links = obj_json["links"]
         if name not in links:
             self.log.info(f"Link [{name}] not found in {grp_id}")
             return None
-        if links[name] == None:
+        if links[name] is None:
             self.log.info(f"Link {name} in {grp_id} has been deleted")
             return None
 
         return links[name]
-    
+
     def _addLink(self, grp_id, name, link_json):
         obj_json = self.getObjectById(grp_id)
         links = obj_json["links"]
         links[name] = link_json
         self.make_dirty(grp_id)
-    
+
     def createHardLink(self, grp_id, name, tgt_id):
         """ Create a new hardlink """
         link_json = {"class": "H5L_TYPE_HARD", "id": tgt_id}
@@ -622,7 +600,7 @@ class Hdf5db:
         link_json = {"class": "H5L_TYPE_EXTERNAL", "h5path": h5path, "file": filepath}
         link_json["created"] = time.time()
         self._addLink(grp_id, name, link_json)
- 
+
     def deleteLink(self, grp_id, name):
         """ Delete the given link """
         grp_json = self.getObjectById(grp_id)
@@ -633,7 +611,6 @@ class Hdf5db:
             raise KeyError(f"Link [{name}] not found in {grp_id}")
         links[name] = None  # mark for deletion
         self.make_dirty(grp_id)
- 
 
     def createGroup(self, cpl=None):
         """ Create a new group """
@@ -648,7 +625,6 @@ class Hdf5db:
         self.db[grp_id] = group_json
         self._new_objects.add(grp_id)
         return grp_id
-    
 
     def createCommittedType(self, datatype, cpl=None):
         """
@@ -658,7 +634,7 @@ class Hdf5db:
         self.log.info("createCommittedType")
         if cpl is None:
             cpl = {}
-         
+
         ctype_id = createObjId(obj_type="datatypes", root_id=self.root_id)
         if isinstance(datatype, np.dtype):
             dt = datatype
@@ -672,11 +648,11 @@ class Hdf5db:
         self.db[ctype_id] = ctype_json
         self._new_objects.add(ctype_id)
         return ctype_id
-  
-    
+
     def createDataset(
         self,
         shape=None,
+        maxdims=None,
         dtype=None,
         cpl=None,
     ):
@@ -687,25 +663,34 @@ class Hdf5db:
         type_json = getTypeItem(dtype)
         if shape == "H5S_NULL":
             shape_json = {"class": "H5S_NULL"}
+        elif shape == ():
+            shape_json = {"class": "H5S_SCALAR"}
         else:
             shape_json = {"class": "H5S_SIMPLE"}
             shape_json["dims"] = list(shape)
+
+        if maxdims:
+            if shape_json["class"] != "H5S_SIMPLE":
+                raise ValueError("only simple shapes can be resizable")
+            if len(shape) != len(maxdims):
+                raise ValueError("maxdims length not equal to shape rank")
+            shape_json["maxdims"] = ["H5S_UNLIMITED" if x is None else x for x in maxdims]
 
         dset_json = {"shape": shape_json, "type": type_json, "attributes": {}}
         if cpl:
             dset_json["cpl"] = cpl
         else:
             dset_json["cpl"] = {}
- 
-        dset_id = createObjId("datasets", root_id=self.root_id)   
-        self.db[dset_id] = dset_json 
+
+        dset_id = createObjId("datasets", root_id=self.root_id)
+        self.db[dset_id] = dset_json
         self._new_objects.add(dset_id)
         return dset_id
 
     def getCollection(self, col_type=None):
         obj_ids = []
         for obj_id in self.db:
-            if self.db[obj_id] == None:
+            if self.db[obj_id] is None:
                 # skip deleted objects
                 continue
             if not col_type or getCollectionForId(obj_id) == col_type:
@@ -717,7 +702,7 @@ class Hdf5db:
         count = 0
         for obj_id in self.db:
             # skip deleted objects
-            if self.db[obj_id] != None:
+            if self.db[obj_id] is not None:
                 count += 1
         return count
 
@@ -725,12 +710,11 @@ class Hdf5db:
         """ Iterate over object ids """
 
         for obj_id in self.db:
-            if self.db[obj_id] == None:
+            if self.db[obj_id] is None:
                 # skip deleted objects
                 continue
             yield obj_id
 
-
     def __contains__(self, obj_id):
         """ Test if a obj id  exists """
-        return obj_id in self.db and self.db[obj_id] != None
+        return obj_id in self.db and self.db[obj_id] is not None

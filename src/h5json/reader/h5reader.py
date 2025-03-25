@@ -16,10 +16,9 @@ import logging
 
 class H5Reader(ABC):
     """
-    This abstract class defines properties and methods that the Hdf5db class uses for reading from an HDF5 
-    compatible storage medium.  
+    This abstract class defines properties and methods that the Hdf5db class uses for reading from an HDF5
+    compatible storage medium.
     """
-
 
     def __init__(
         self,
@@ -31,17 +30,17 @@ class H5Reader(ABC):
             self.log = app_logger
         else:
             self.log = logging.getLogger()
-       
+
     @abstractmethod
     def get_root_id(self):
         """ Return root id """
         pass
 
-    @abstractmethod 
+    @abstractmethod
     def getObjectById(self, obj_id, include_attrs=True, include_links=True):
         """ return object with given id """
         pass
-  
+
     @abstractmethod
     def getAttribute(self, obj_id, name, includeData=True):
         """
@@ -63,4 +62,3 @@ class H5Reader(ABC):
     def close(self):
         """ close any open handles to the storage """
         pass
-

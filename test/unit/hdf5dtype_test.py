@@ -18,6 +18,7 @@ from h5json.hdf5dtype import special_dtype
 from h5json.hdf5dtype import check_dtype
 from h5json.hdf5dtype import Reference
 from h5json.hdf5dtype import RegionReference
+from h5json.hdf5dtype import isOpaqueDtype
 
 
 class Hdf5dtypeTest(unittest.TestCase):
@@ -287,6 +288,7 @@ class Hdf5dtypeTest(unittest.TestCase):
 
     def testOpaqueTypeItem(self):
         dt = np.dtype("V200")
+        self.assertTrue(isOpaqueDtype(dt))
         typeItem = hdf5dtype.getTypeItem(dt)
         typeSize = hdf5dtype.getItemSize(typeItem)
         self.assertEqual(typeItem["class"], "H5T_OPAQUE")

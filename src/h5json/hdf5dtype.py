@@ -152,7 +152,6 @@ def special_dtype(**kwds):
     raise TypeError(f'Unknown special type "{name}"')
 
 
-
 def find_item_type(data):
     """Find the item type of a simple object or collection of objects.
 
@@ -182,6 +181,7 @@ def find_item_type(data):
         return None
     return item_types.pop()
 
+
 def guess_dtype(data):
     """ Attempt to guess an appropriate dtype for the object, returning None
     if nothing is appropriate (or if it should be left up the the array
@@ -197,12 +197,14 @@ def guess_dtype(data):
 
     return None
 
+
 def is_float16_dtype(dt):
     if dt is None:
         return False
 
     dt = np.dtype(dt)  # normalize strings -> np.dtype objects
     return dt.kind == 'f' and dt.itemsize == 2
+
 
 def check_dtype(**kwds):
     """Check a dtype for h5py special type "hint" information.  Only one
@@ -307,7 +309,7 @@ def getTypeItem(dt, metadata=None):
         "float32": "H5T_IEEE_F32",
         "float64": "H5T_IEEE_F64",
     }
-    
+
     dt = np.dtype(dt)  # convert 'int32', np.int32, etc. to a dtype
 
     if not metadata and dt.metadata:
@@ -465,7 +467,6 @@ def getTypeItem(dt, metadata=None):
                 item = {"name": name, "value": value}
                 members.append(item)
             type_info["members"] = members
-            #type_info["mapping"] = mapping
             if dt.name not in predefined_int_types:
                 raise TypeError("Unexpected integer type: " + dt.name)
             # maps to one of the HDF5 predefined types
@@ -503,6 +504,17 @@ def isVlen(dt):
         if dt.metadata and "vlen" in dt.metadata:
             is_vlen = True
     return is_vlen
+
+
+def isOpaqueDtype(dt):
+    """
+    Return True if this is an opaque dtype
+    """
+    if dt.kind == "V" and len(dt) <= 1 and len(dt.shape) == 0 and not dt.names:
+        return True
+    if dt.metadata and dt.metadata.get('h5py_opaque'):
+        return True
+    return False
 
 
 def getItemSize(typeItem):
@@ -805,7 +817,6 @@ def createBaseDataType(typeItem):
             raise KeyError("'base' not provided")
         if typeItem["base"] == "H5T_STD_REF_OBJ":
             dtRet = special_dtype(ref=Reference)
-            print("special dtype, metadata:", dtRet.metadata)
         elif typeItem["base"] == "H5T_STD_REF_DSETREG":
             dtRet = special_dtype(ref=RegionReference)
         else:

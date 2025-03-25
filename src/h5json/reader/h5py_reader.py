@@ -13,30 +13,129 @@ import h5py
 import numpy as np
 import logging
 
-from ..objid import createObjId
-from ..hdf5dtype import getTypeItem
+from ..objid import createObjId, getCollectionForId
+from ..hdf5dtype import getTypeItem, isOpaqueDtype
 from ..array_util import bytesArrayToList
 from .. import selections
 from .. import filters
+
+from ..h5py_util import is_reference, is_regionreference, has_reference, convert_dtype
 from .h5reader import H5Reader
-  
+
 
 class H5pyReader(H5Reader):
     """
-    This class can be used by HDF5DB to read content from an HDF5 file (using h5py) 
+    This class can be used by HDF5DB to read content from an HDF5 file (using h5py)
     """
+
+    def _copy_element(self, val, src_dt, tgt_dt, fin=None):
+        """ convert the given dataset or attribute element from h5py to h5json equivalent """
+
+        out = None
+        if len(src_dt) > 0:
+            out_fields = []
+            i = 0
+            for name in src_dt.fields:
+                field_src_dt = src_dt.fields[name][0]
+                field_tgt_dt = tgt_dt.fields[name][0]
+                field_val = val[i]
+                i += 1
+                out_field = self._copy_element(field_val, field_src_dt, field_tgt_dt, fin=fin)
+                out_fields.append(out_field)
+            out = tuple(out_fields)
+        elif src_dt.metadata and "ref" in src_dt.metadata:
+            if not tgt_dt.metadata or "ref" not in tgt_dt.metadata:
+                raise TypeError(f"Expected tgt dtype to be ref, but got: {tgt_dt}")
+            ref = tgt_dt.metadata["ref"]
+            if is_reference(ref):
+                # initialize out to null ref
+                out = h5py.Reference()  # null h5py ref
+
+                if ref and val:
+                    try:
+                        fin_obj = fin[val]
+                    except AttributeError as ae:
+                        msg = f"Unable able to get obj for ref value: {ae}"
+                        self.log.error(msg)
+                        raise ValueError(msg)
+
+                    addr = h5py.h5o.get_info(fin_obj.id).addr
+                    if addr not in self._addr_map:
+                        msg = f"No object found for ref object: {fin_obj.name}"
+                        self.log.warning(msg)
+                        out = ""
+                    else:
+                        obj_id = self._addr_map[addr]
+                        collection = getCollectionForId(obj_id)
+                        out = f"{collection}/{obj_id}"
+
+            elif is_regionreference(ref):
+                self.log.warning("region reference not supported")
+                # TBD: just return a null region reference till we have support
+                out = ""
+            else:
+                raise TypeError(f"Unexpected ref type: {type(ref)}")
+        elif src_dt.metadata and "vlen" in src_dt.metadata:
+            if not isinstance(val, np.ndarray):
+                raise TypeError(f"Expecting ndarray or vlen element, but got: {type(val)}")
+            if not tgt_dt.metadata or "vlen" not in tgt_dt.metadata:
+                raise TypeError(f"Expected tgt dtype to be vlen, but got: {tgt_dt}")
+            src_vlen_dt = src_dt.metadata["vlen"]
+            tgt_vlen_dt = tgt_dt.metadata["vlen"]
+            if has_reference(src_vlen_dt):
+                if len(val.shape) == 0:
+                    # scalar array
+                    e = val[()]
+                    v = self._copy_element(e, src_vlen_dt, tgt_vlen_dt, fin=fin)
+                    out = np.array(v, dtype=tgt_dt)
+                else:
+                    out = np.zeros(val.shape, dtype=tgt_dt)
+                    for i in range(len(out)):
+                        e = val[i]
+                        out[i] = self._copy_element(e, src_vlen_dt, tgt_vlen_dt, fin=fin)
+            else:
+                # can just directly copy the array
+                out = np.zeros(val.shape, dtype=tgt_dt)
+                out[...] = val[...]
+        else:
+            out = val  # can just copy as is
+        return out
+
+    def _copy_array(self, src_arr, fin=None):
+        """Copy the numpy array to a new array.
+            Convert any reference type to point to item in the target's hierarchy.
+        """
+
+        if not isinstance(src_arr, np.ndarray):
+            raise TypeError(f"Expecting ndarray, but got: {src_arr}")
+        tgt_dt = convert_dtype(src_arr.dtype, to_h5py=False)
+        tgt_arr = np.zeros(src_arr.shape, dtype=tgt_dt)
+
+        if has_reference(src_arr.dtype):
+            # flatten array to simplify iteration
+            count = int(np.prod(src_arr.shape))
+            tgt_arr_flat = tgt_arr.reshape((count,))
+            src_arr_flat = src_arr.reshape((count,))
+            for i in range(count):
+                e = src_arr_flat[i]
+                element = self._copy_element(e, src_arr.dtype, tgt_dt, fin=fin)
+                tgt_arr_flat[i] = element
+            tgt_arr = tgt_arr_flat.reshape(src_arr.shape)
+        else:
+            # can just copy the entire array
+            tgt_arr[...] = src_arr[...]
+        return tgt_arr
 
     def visit(self, path, obj):
         name = obj.__class__.__name__
         self.log.info(f"visit: {path} name: {name}")
-        
+
         obj_id = createObjId(obj_type=name, root_id=self._root_id)  # create uuid
 
-        self._id_map[obj_id] = obj        
-        
+        self._id_map[obj_id] = obj
+
         addr = h5py.h5o.get_info(obj.id).addr
         self._addr_map[addr] = obj_id
-
 
     def __init__(
         self,
@@ -66,13 +165,13 @@ class H5pyReader(H5Reader):
     def get_root_id(self):
         """ Return root id """
         return self._root_id
-    
+
     def getObjIdByAddress(self, addr):
         if addr in self._addr_map:
             return self._addr_map[addr]
         else:
             return None
-    
+
     def getAttribute(self, obj_id, name, include_data=True):
         """ Return JSON for the given attribute """
 
@@ -117,7 +216,7 @@ class H5pyReader(H5Reader):
         item["shape"] = shape_item
         if shape_item["class"] == "H5S_NULL":
             include_data = False
-        elif isinstance(type_item, dict) and type_item["class"] in ("H5T_OPAQUE"):
+        elif isinstance(type_item, dict) and type_item["class"] == "H5T_OPAQUE":
             # TBD - don't include data for OPAQUE until JSON serialization
             # issues are addressed
             include_data = False
@@ -126,13 +225,18 @@ class H5pyReader(H5Reader):
 
         if include_data:
             try:
-                data = obj.attrs[name] 
+                data = obj.attrs[name]
+                # convert from h5py to h5json
+                data = self._copy_array(data, fin=obj.file)
             except TypeError:
                 self.log.warning("type error reading attribute")
 
         if include_data and data is not None:
-            item["value"] = bytesArrayToList(data)
-             
+            value = bytesArrayToList(data)
+            item["value"] = value
+        else:
+            pass  # no data
+
         # timestamps will be added by getAttributeItem()
         return item
 
@@ -146,7 +250,7 @@ class H5pyReader(H5Reader):
             items[name] = item
 
         return items
-    
+
     def _getLink(self, parent, link_name):
         if link_name not in parent:
             return None
@@ -178,7 +282,7 @@ class H5pyReader(H5Reader):
                 item["id"] = None
             else:
                 item["id"] = self._addr_map[addr]
-             
+
         return item
 
     def _getLinks(self, grp):
@@ -197,14 +301,13 @@ class H5pyReader(H5Reader):
             links = self._getLinks(grp)
             item["links"] = links
         return item
-    
+
     def _getDatatype(self, ctype, include_attrs=True):
         self.log.info(f"getDatatype alias: ]{ctype.name}")
         item = {"alias": ctype.name}
         item["type"] = getTypeItem(ctype.dtype)
 
         return item
-
 
     def _getHDF5DatasetCreationProperties(self, dset, type_class):
         """ Get dataset creation properties maintained by HDF5 library """
@@ -267,7 +370,7 @@ class H5pyReader(H5Reader):
                 filter_id = filter_info[0]
                 filter_prop["id"] = filter_id
                 if filter_info[3]:
-                    filter_prop["name"] = self.bytesArrayToList(filter_info[3])
+                    filter_prop["name"] = bytesArrayToList(filter_info[3])
                 if filter_id in filters._HDF_FILTERS:
                     hdf_filter = filters._HDF_FILTERS[filter_id]
                     filter_prop["class"] = hdf_filter["class"]
@@ -296,8 +399,8 @@ class H5pyReader(H5Reader):
             creationProps["filters"] = filter_props
 
         return creationProps
-    
-    def _getDataset(self, dset):     
+
+    def _getDataset(self, dset):
         self.log.info(f"getDataset alias: [{dset.name}]")
 
         item = {"alias": dset.name}
@@ -308,21 +411,21 @@ class H5pyReader(H5Reader):
             addr = h5py.h5o.get_info(typeid).addr
             type_uuid = self.getObjIdByAddress(addr)
             committedType = self.getObjectById(type_uuid)
-            typeItem = committedType["type"]
-            typeItem["id"] = type_uuid
+            type_item = committedType["type"]
+            type_item["id"] = type_uuid
         else:
-            typeItem = getTypeItem(dset.dtype)
-        item["type"] = typeItem
-        
-        shapeItem = {}
+            type_item = getTypeItem(dset.dtype)
+        item["type"] = type_item
+
+        shape_item = {}
         if dset.shape is None:
             # new with h5py 2.6, null space datasets will return None for shape
-            shapeItem["class"] = "H5S_NULL"
+            shape_item["class"] = "H5S_NULL"
         elif len(dset.shape) == 0:
-            shapeItem["class"] = "H5S_SCALAR"
+            shape_item["class"] = "H5S_SCALAR"
         else:
-            shapeItem["class"] = "H5S_SIMPLE"
-            shapeItem["dims"] = list(dset.shape)
+            shape_item["class"] = "H5S_SIMPLE"
+            shape_item["dims"] = list(dset.shape)
             maxshape = []
             include_maxdims = False
             for i in range(len(dset.shape)):
@@ -335,14 +438,13 @@ class H5pyReader(H5Reader):
                         include_maxdims = True
                 maxshape.append(extent)
             if include_maxdims:
-                shapeItem["maxdims"] = maxshape
-        item["shape"] = shapeItem
+                shape_item["maxdims"] = maxshape
+        item["shape"] = shape_item
 
-        item["cpl"] = self._getHDF5DatasetCreationProperties(dset, typeItem["class"])
-
+        item["cpl"] = self._getHDF5DatasetCreationProperties(dset, type_item["class"])
 
         return item
-    
+
     def getObjectById(self, obj_id, include_attrs=True, include_links=True):
         """ return object with given id """
         if obj_id not in self._id_map:
@@ -356,13 +458,12 @@ class H5pyReader(H5Reader):
             obj_json = self._getDatatype(h5obj)
         else:
             raise TypeError(f"unexpected object type: {type(h5obj)}")
-        
+
         if include_attrs:
             attributes = self.getAttributes(obj_id)
             obj_json["attributes"] = attributes
 
         return obj_json
-
 
     def getDatasetValues(self, dset_id, sel=None):
         """
@@ -370,10 +471,14 @@ class H5pyReader(H5Reader):
         If a slices list or tuple is provided, it should have the same
         number of elements as the rank of the dataset.
         """
+
         dset = self._id_map[dset_id]
         self.log.info(f"getDatasetValues: {dset_id}")
         if dset.shape is None:
             # TBD: return something like h5py.Empty in this case?
+            return None
+        if isOpaqueDtype(dset.dtype):
+            # TBD: Opaque data not supported yet
             return None
         if sel is None or sel.select_type == selections.H5S_SELECT_ALL:
             arr = dset[...]
@@ -381,8 +486,7 @@ class H5pyReader(H5Reader):
             arr = dset[sel.slices]
         else:
             raise NotImplementedError("selection type not supported")
-        
+
+        # convert any h5py references to h5json references
+        arr = self._copy_array(arr, fin=dset.file)
         return arr
-
-       
-
