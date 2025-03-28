@@ -264,7 +264,6 @@ class H5JsonWriter(H5Writer):
         self.dumpDatasets()
 
         self.dumpDatatypes()
-
         indent = 4
         ensure_ascii = False
         if self._filepath:

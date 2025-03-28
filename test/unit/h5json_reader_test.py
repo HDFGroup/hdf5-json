@@ -61,7 +61,7 @@ class H5pyReaderTest(unittest.TestCase):
             self.assertEqual(list(dset_attrs.keys()), ["attr1", "attr2"])
             dset_shape = dset_json["shape"]
             self.assertEqual(dset_shape["class"], "H5S_SIMPLE")
-            self.assertEqual(dset_shape["dims"], [10,10])
+            self.assertEqual(dset_shape["dims"], [10, 10])
 
             # try adding an attribute
             db.createAttribute(dset111_id, "attr3", value=42)
@@ -85,7 +85,3 @@ if __name__ == "__main__":
     # setup test files
 
     unittest.main()
-
-
-
-

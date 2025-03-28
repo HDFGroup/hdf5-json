@@ -42,7 +42,6 @@ class Hdf5dbTest(unittest.TestCase):
         # self.log.propagate = False  # prevent log out going to stdout
         self.log.info("init!")
 
-
     def testGroup(self):
         with Hdf5db(app_logger=self.log) as db:
             root_id = db.getObjectIdByPath("/")
@@ -105,13 +104,13 @@ class Hdf5dbTest(unittest.TestCase):
 
             links = db.getLinks(g2_id)
             self.assertEqual(len(links), 3)
-            for title in  "slink", "extlink", "cust":
+            for title in "slink", "extlink", "cust":
                 self.assertTrue(title in links)
 
             db.deleteLink(g2_id, "cust")
             links = db.getLinks(g2_id)
             self.assertEqual(len(links), 2)
-            for title in  "slink", "extlink":
+            for title in "slink", "extlink":
                 self.assertTrue(title in links)
 
             try:
@@ -122,7 +121,6 @@ class Hdf5dbTest(unittest.TestCase):
 
             ret = db.getLink(g2_id, "not_a_link")
             self.assertTrue(ret is None)
-
 
     def testNullSpaceAttribute(self):
         with Hdf5db(app_logger=self.log) as db:
@@ -159,7 +157,6 @@ class Hdf5dbTest(unittest.TestCase):
 
             self.assertEqual(item_type["class"], "H5T_INTEGER")
             self.assertEqual(item_type["base"], "H5T_STD_I32LE")
-            
 
     def testFixedStringAttribute(self):
         with Hdf5db(app_logger=self.log) as db:
@@ -179,12 +176,11 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertTrue(item["created"] > now - 1)
             ret_value = db.getAttributeValue(root_id, "A1")
             self.assertEqual(ret_value, value.encode("ascii"))
-       
 
     def testVlenAsciiAttribute(self):
         with Hdf5db(app_logger=self.log) as db:
             root_id = db.getObjectIdByPath("/")
- 
+
             value = b"Hello, world!"
             dt = special_dtype(vlen=bytes)
 
@@ -206,7 +202,7 @@ class Hdf5dbTest(unittest.TestCase):
     def testVlenUtf8Attribute(self):
         with Hdf5db(app_logger=self.log) as db:
             root_id = db.getObjectIdByPath("/")
- 
+
             value = b"Hello, world!"
             dt = special_dtype(vlen=str)
 
@@ -224,7 +220,6 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(item["value"], "Hello, world!")
             now = int(time.time())
             self.assertTrue(item["created"] > now - 1)
- 
 
     def testIntAttribute(self):
         with Hdf5db(app_logger=self.log) as db:
@@ -246,7 +241,7 @@ class Hdf5dbTest(unittest.TestCase):
         with Hdf5db(app_logger=self.log) as db:
             root_id = db.getObjectIdByPath("/")
 
-            dset_id = db.createDataset(shape=(), dtype=np.int32)                
+            dset_id = db.createDataset(shape=(), dtype=np.int32)
             db.createHardLink(root_id, "DS1", dset_id)
 
             dt = special_dtype(ref=Reference)
@@ -257,7 +252,7 @@ class Hdf5dbTest(unittest.TestCase):
             item = db.getAttribute(root_id, "A1")
             attr = db.getAttribute(root_id, "A1")
             self.assertTrue("shape" in attr)
-            
+
             attr_type = attr["type"]
             self.assertEqual(attr_type["class"], "H5T_REFERENCE")
             self.assertEqual(attr_type["base"], "H5T_STD_REF_OBJ")
@@ -268,14 +263,14 @@ class Hdf5dbTest(unittest.TestCase):
     def testCreateVlenReferenceAttribute(self):
         with Hdf5db(app_logger=self.log) as db:
             root_id = db.getObjectIdByPath("/")
-            dset_id = db.createDataset(shape=(), dtype=np.int32)                
+            dset_id = db.createDataset(shape=(), dtype=np.int32)
             db.createHardLink(root_id, "DS1", dset_id)
             grp_id = db.createGroup()
             db.createHardLink(root_id, "G1", grp_id)
 
             dt_base = special_dtype(ref=Reference)
             dt = special_dtype(vlen=dt_base)
-             
+
             ds1_ref = "datasets/" + dset_id
             grp_ref = "groups/" + grp_id
             ref_arr = np.zeros((2,), dtype=dt_base)
@@ -283,7 +278,7 @@ class Hdf5dbTest(unittest.TestCase):
             ref_arr[1] = grp_ref
             vlen_arr = np.zeros((), dtype=dt)
             vlen_arr[()] = ref_arr
-             
+
             db.createAttribute(root_id, "A1", vlen_arr)
             item = db.getAttribute(root_id, "A1")
 
@@ -296,13 +291,12 @@ class Hdf5dbTest(unittest.TestCase):
 
             item_shape = item["shape"]
             self.assertEqual(item_shape["class"], "H5S_SCALAR")
-            
 
     def testCommittedType(self):
         with Hdf5db(app_logger=self.log) as db:
             root_id = db.getObjectIdByPath("/")
             dt = np.dtype("S15")
-             
+
             ctype_id = db.createCommittedType(dt)
             db.createHardLink(root_id, "ctype", ctype_id)
             item = db.getObjectById(ctype_id)
@@ -360,7 +354,7 @@ class Hdf5dbTest(unittest.TestCase):
 
             attr_type = attr["type"]
             self.assertEqual(attr_type["class"], "H5T_COMPOUND")
-            
+
             value = db.getAttributeValue(root_id, "A1")
             self.assertTrue(isinstance(value, np.ndarray))
 
@@ -382,14 +376,13 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertEqual(arr.max(), 0)
             row = np.zeros((ncols,), dtype=dtype)
             for i in range(nrows):
-                row[:] = list(range(i*10, (i + 1)*10))
+                row[:] = list(range(i * 10, (i + 1) * 10))
                 row_sel = selections.select(shape, (slice(i, i + 1), slice(0, ncols)))
                 db.setDatasetValues(dset_id, row_sel, row)
             arr = db.getDatasetValues(dset_id, sel_all)
             for i in range(nrows):
-                row = np.array(list(range(i*10, (i + 1)*10)), dtype=dtype)
-                np.testing.assert_array_equal(arr[i, :],  row)
-            
+                row = np.array(list(range(i * 10, (i + 1) * 10)), dtype=dtype)
+                np.testing.assert_array_equal(arr[i, :], row)
 
     def testScalarDataset(self):
         dtype = np.int32
@@ -416,35 +409,25 @@ class Hdf5dbTest(unittest.TestCase):
             ncols = 10
             shape = (nrows, ncols)
             dtype = np.int32
-            maxdims = (None, ncols*2)
+            maxdims = (None, ncols * 2)
             root_id = db.getObjectIdByPath("/")
             dset_id = db.createDataset(shape, maxdims=maxdims, dtype=dtype)
             db.createHardLink(root_id, "dset", dset_id)
             db.createAttribute(dset_id, "a1", "Hello, world")
-            
+
             # resize limited dimension
-            db.resizeDataset(dset_id, (nrows, ncols*2))
+            db.resizeDataset(dset_id, (nrows, ncols * 2))
 
             # try to go beyond max extent
             try:
-                db.resizeDataset(dset_id, (nrows, ncols*3))
+                db.resizeDataset(dset_id, (nrows, ncols * 3))
                 self.assertTrue(False)
             except ValueError:
                 pass  # expected
 
             # resize unlimited dimension
-            db.resizeDataset(dset_id, (nrows*10, ncols))
+            db.resizeDataset(dset_id, (nrows * 10, ncols))
 
-
-            
-
-            
-
-
-
-
-
-   
 
 if __name__ == "__main__":
     # setup test files

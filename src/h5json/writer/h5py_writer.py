@@ -43,7 +43,6 @@ class H5pyWriter(H5Writer):
 
     def _copy_element(self, val, src_dt, tgt_dt, fout=None):
         """ convert the given dataset or attribute element to h5py equivalent """
-
         out = None
         if len(src_dt) > 0:
             out_fields = []
@@ -90,23 +89,24 @@ class H5pyWriter(H5Writer):
             else:
                 raise TypeError(f"Unexpected ref type: {type(ref)}")
         elif src_dt.metadata and "vlen" in src_dt.metadata:
-            if not isinstance(val, np.ndarray):
-                raise TypeError(f"Expecting ndarray or vlen element, but got: {type(val)}")
             if not tgt_dt.metadata or "vlen" not in tgt_dt.metadata:
                 raise TypeError(f"Expected tgt dtype to be vlen, but got: {tgt_dt}")
             src_vlen_dt = src_dt.metadata["vlen"]
             tgt_vlen_dt = tgt_dt.metadata["vlen"]
+
             if has_reference(src_vlen_dt):
-                if len(val.shape) == 0:
-                    # scalar array
-                    e = val[()]
-                    v = self._copy_element(e, src_vlen_dt, tgt_vlen_dt, fout=fout)
-                    out = np.array(v, dtype=tgt_dt)
-                else:
-                    out = np.zeros(val.shape, dtype=tgt_dt)
-                    for i in range(len(out)):
+                if isinstance(val, np.ndarray) and val.shape == ():
+                    val = val[()]
+                if isinstance(val, np.ndarray) or isinstance(val, list) or isinstance(val, tuple):
+                    count = len(val)
+                    out = np.zeros((count,), dtype=tgt_dt)
+                    for i in range(count):
                         e = val[i]
                         out[i] = self._copy_element(e, src_vlen_dt, tgt_vlen_dt, fout=fout)
+                else:
+                    # scalar array
+                    v = self._copy_element(val, src_vlen_dt, tgt_vlen_dt, fout=fout)
+                    out = np.array(v, dtype=tgt_dt)
             else:
                 # can just directly copy the array
                 out = np.zeros(val.shape, dtype=tgt_dt)
@@ -119,7 +119,6 @@ class H5pyWriter(H5Writer):
         """Copy the numpy array to a new array.
             Convert any reference type to point to item in the target's hierarchy.
         """
-
         if not isinstance(src_arr, np.ndarray):
             raise TypeError(f"Expecting ndarray, but got: {src_arr}")
         tgt_dt = convert_dtype(src_arr.dtype, to_h5py=True)
@@ -365,7 +364,6 @@ class H5pyWriter(H5Writer):
             dims = shape_json["dims"]
         src_arr = jsonToArray(dims, src_dt, attr_json["value"])
         tgt_arr = self._copy_array(src_arr, fout=obj.file)
-
         obj.attrs[name] = tgt_arr
 
     def updateAttributes(self, obj_id, obj):

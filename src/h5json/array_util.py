@@ -30,7 +30,7 @@ def bytesArrayToList(data):
         if len(data.shape) == 0:
             is_list = False
             data = data.tolist()  # tolist will return a scalar in this case
-            if type(data) in (list, tuple):
+            if type(data) in (list, tuple, np.ndarray):
                 is_list = True
             else:
                 is_list = False
@@ -40,7 +40,6 @@ def bytesArrayToList(data):
         is_list = True
     else:
         is_list = False
-
     if is_list:
         out = []
         for item in data:
@@ -71,8 +70,6 @@ def toTuple(rank, data):
         else:
             return tuple(toTuple(rank - 1, x) for x in data)
     else:
-        if isinstance(data, str):
-            data = data.encode("utf8")
         return data
 
 
@@ -124,12 +121,15 @@ def jsonToArray(data_shape, data_dtype, data_json):
     Return numpy array from the given json array.
     """
     def fillVlenArray(rank, data, arr, index):
-        for i in range(len(data)):
-            if rank > 1:
-                index = fillVlenArray(rank - 1, data[i], arr, index)
-            else:
-                arr[index] = data[i]
-                index += 1
+        if arr.shape == ():
+            arr[()] = data
+        else:
+            for i in range(len(data)):
+                if rank > 1:
+                    index = fillVlenArray(rank - 1, data[i], arr, index)
+                else:
+                    arr[index] = data[i]
+                    index += 1
         return index
 
     if data_json is None:
@@ -149,25 +149,26 @@ def jsonToArray(data_shape, data_dtype, data_json):
 
     if type(data_json) in (list, tuple):
         converted_data = []
-        if npoints == 1 and len(data_json) == len(data_dtype):
-            converted_data.append(toTuple(0, data_json))
+        if npoints == 1:
+            converted_data = toTuple(np_shape_rank, data_json)
         else:
             converted_data = toTuple(np_shape_rank, data_json)
         data_json = converted_data
-    else:
-        if isinstance(data_json, str):
-            data_json = data_json.encode("utf8")
-        data_json = [data_json,]  # listify
 
     if isVlen(data_dtype):
-        arr = np.zeros((npoints,), dtype=data_dtype)
+        if np_shape_rank == 0 and npoints == 1:
+            arr_shape = ()
+        else:
+            arr_shape = (npoints,)
+        arr = np.zeros(arr_shape, dtype=data_dtype)
         fillVlenArray(np_shape_rank, data_json, arr, 0)
     else:
         try:
             arr = np.array(data_json, dtype=data_dtype)
-        except UnicodeEncodeError as ude:
-            msg = "Unable to encode data"
-            raise ValueError(msg) from ude
+        except UnicodeEncodeError:
+            # Unable to encode data
+            # TBD: look into using surrogate encoding here
+            raise
     # raise an exception of the array shape doesn't match the selection shape
     # allow if the array is a scalar and the selection shape is one element,
     # numpy is ok with this

@@ -393,7 +393,9 @@ class Hdf5db:
 
                 # We need this to handle special string types.
                 value = np.asarray(value, dtype=dtype)
+
             value_json = bytesArrayToList(value)
+
         else:
             value_json = None
 

@@ -95,6 +95,9 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(nelements, 80)
 
     def testJsonToArray(self):
+       
+        # simple integer 
+
         dt = np.dtype("i4")
         shape = [4, ]
         data = [0, 2, 4, 6]
@@ -105,50 +108,40 @@ class ArrayUtilTest(unittest.TestCase):
         for i in range(4):
             self.assertEqual(out[i], i * 2)
 
-        # compound type
-        dt = np.dtype([("a", "i4"), ("b", "S5")])
-        shape = [2, ]
-        data = [[4, "four"], [5, "five"]]
+        shape = ()  # scalar
+        data = 42
         out = jsonToArray(shape, dt, data)
         self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, ())
+        self.assertEqual(out[()], 42)  
 
-        self.assertEqual(out.shape, (2,))
-        self.assertTrue(isinstance(out[0], np.void))
-        e0 = out[0].tolist()
-        self.assertEqual(e0, (4, b"four"))
-        self.assertTrue(isinstance(out[1], np.void))
-        e1 = out[1].tolist()
-        self.assertEqual(e1, (5, b"five"))
-
-        shape = [1, ]
-        data = [
-            [6, "six"],
-        ]
+        # VLEN Scalar str
+        dt = special_dtype(vlen=str)
+        data = "I'm a string!"
+        shape = []
         out = jsonToArray(shape, dt, data)
-        e0 = out[0].tolist()
-        self.assertEqual(e0, (6, b"six"))
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, ())
+        val = out[()]
+        self.assertEqual(val, data)
 
-        data = [6, "six"]
-        out = jsonToArray(shape, dt, data)
-        e0 = out[0].tolist()
-        self.assertEqual(e0, (6, b"six"))
-
-        # test ascii chars >127
-        dt = np.dtype("S26")
-        data = "extended ascii char 241: " + chr(241)
-        out = jsonToArray(shape, dt, data)
-        self.assertEqual(out[0], b'extended ascii char 241: \xc3')
-
-        dt = np.dtype("S12")
-        data = "eight: \u516b"
-        out = jsonToArray(shape, dt, data)
-        self.assertEqual(out[0], b'eight: \xe5\x85\xab')
+        # VLEN one element str
+        dt = special_dtype(vlen=str)
+        data = "I'm a string!"
+        shape = [1,]
+        out = jsonToArray(shape, dt, [data,])
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, (1,))
+        val = out[0]
+        self.assertEqual(val, data)
 
         # VLEN ascii
         dt = special_dtype(vlen=bytes)
         data = [b"one", b"two", b"three", b"four", b"five"]
         shape = [5, ]
         out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, (5,))
         self.assertTrue("vlen" in out.dtype.metadata)
         self.assertEqual(out.dtype.metadata["vlen"], bytes)
         self.assertEqual(out.dtype.kind, "O")
@@ -166,6 +159,7 @@ class ArrayUtilTest(unittest.TestCase):
         ]
         shape = [2,]
         out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
         self.assertTrue("vlen" in out.dtype.metadata)
         self.assertEqual(out.dtype.metadata["vlen"], str)
         self.assertEqual(out.dtype.kind, "O")
@@ -173,21 +167,40 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(out[0], tuple(data[0]))
         self.assertEqual(out[1], tuple(data[1]))
 
-        # VLEN Scalar str
-        dt = special_dtype(vlen=str)
-        data = "I'm a string!"
-        shape = [1, ]
-        out = jsonToArray(shape, dt, data)
-
+        
         # VLEN unicode
         dt = special_dtype(vlen=bytes)
         data = ["one", "two", "three", "four", "five"]
         shape = [5, ]
         out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
         self.assertTrue("vlen" in out.dtype.metadata)
         self.assertEqual(out.dtype.metadata["vlen"], bytes)
         self.assertEqual(out.dtype.kind, "O")
-        self.assertEqual(out[2], b"three")
+        self.assertEqual(out[2], "three")  
+
+        # test ascii chars >127
+        dt = np.dtype("S26")
+        shape = []
+        data = "extended ascii char 241: " + chr(241)
+        try:
+            jsonToArray(shape, dt, data)
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+          
+        dt = special_dtype(vlen=str)
+        out = jsonToArray(shape, dt, data)  # vlen str should be ok
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out[()], data)
+
+        dt = np.dtype("S12")
+        data = "eight: \u516b"
+        try:
+            jsonToArray(shape, dt, data)
+            self.assertTrue(False)
+        except UnicodeEncodeError:
+            pass  # expected
 
         # VLEN data
         dt = special_dtype(vlen=np.dtype("int32"))
@@ -269,6 +282,62 @@ class ArrayUtilTest(unittest.TestCase):
         e = out[2]
         self.assertTrue(isinstance(e, tuple))
         self.assertEqual(e, (id0, id1, id2))
+
+        # compound type
+        dt = np.dtype([("a", "i4"), ("b", "S5")])
+        shape = [2, ]
+        data = [[4, "four"], [5, "five"]]
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+
+        self.assertEqual(out.shape, (2,))
+        self.assertTrue(isinstance(out[0], np.void))
+        e0 = out[0].tolist()
+        self.assertEqual(e0, (4, b"four"))
+        self.assertTrue(isinstance(out[1], np.void))
+        e1 = out[1].tolist()
+        self.assertEqual(e1, (5, b"five"))
+
+        # compound with VLEN element
+         
+        dt_str = special_dtype(vlen=str)
+        dt = np.dtype([("a", "i4"), ("b", dt_str)])
+        shape = [1, ]
+        data = [[6, "six"],]
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, (1,))
+        e0 = out[0]
+
+        e0 = out[0].tolist()
+        self.assertEqual(e0, (6, "six"))
+        shape = []
+        data = [6, "six",]
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, ())
+        e0 = out[()]
+        self.assertEqual(len(e0), 2)
+        self.assertEqual(e0[0], 6)
+        self.assertEqual(e0[1], "six")
+
+        # one element compound
+        shape = [1, ]
+        data = [[6, "six"],]
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, (1,))
+        e0 = out[0].tolist()
+        self.assertEqual(e0, (6, "six"))
+        
+        # scalar compound
+        shape = []
+        data = [6, "six"]
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, ())
+        e0 = out[()].tolist()
+        self.assertEqual(e0, (6, "six")) 
 
         # compound type with array field
         dt = np.dtype([("a", ("i4", 3)), ("b", "S5")])
@@ -472,8 +541,8 @@ class ArrayUtilTest(unittest.TestCase):
         #
         dt_arr_str = np.dtype("(2,)O", metadata={"vlen": str})
         dt = np.dtype([("x", "i4"), ("tag", dt_arr_str)])
-        arr = np.zeros((4,), dtype=dt)
-        dt_str = np.dtype("O", metadata={"vlen": str})
+        arr = np.zeros((4,), dtype=dt)         
+        dt_str = special_dtype(vlen=str)
         arr[0] = (42, np.asarray(["hi", "bye"], dtype=dt_str))
         arr[3] = (84, np.asarray(["hi-hi", "bye-bye"], dtype=dt_str))
         buffer = arrayToBytes(arr)
@@ -499,7 +568,8 @@ class ArrayUtilTest(unittest.TestCase):
         dt_arr_str = np.dtype("(2,)O", metadata={"vlen": bytes})
         dt = np.dtype([("x", "i4"), ("tag", dt_arr_str)])
         arr = np.zeros((4,), dtype=dt)
-        dt_str = np.dtype("O", metadata={"vlen": bytes})
+         
+        dt_str = special_dtype(vlen=str)
         arr[0] = (42, np.asarray([b"hi", b"bye"], dtype=dt_str))
         arr[3] = (84, np.asarray([b"hi-hi", b"bye-bye"], dtype=dt_str))
         buffer = arrayToBytes(arr)
@@ -625,7 +695,8 @@ class ArrayUtilTest(unittest.TestCase):
         dt_arr_str = np.dtype("(2,)O", metadata={"vlen": str})
         dt = np.dtype([("x", "i4"), ("tag", dt_arr_str)])
         arr = np.zeros((4,), dtype=dt)
-        dt_str = np.dtype("O", metadata={"vlen": str})
+         
+        dt_str = special_dtype(vlen=str)
         arr[0] = (42, np.asarray(["hi", "bye"], dtype=dt_str))
         arr[3] = (84, np.asarray(["hi-hi", "bye-bye"], dtype=dt_str))
         buffer = arrayToBytes(arr, encoding="base64")
@@ -645,7 +716,8 @@ class ArrayUtilTest(unittest.TestCase):
         dt_arr_str = np.dtype("(2,)O", metadata={"vlen": bytes})
         dt = np.dtype([("x", "i4"), ("tag", dt_arr_str)])
         arr = np.zeros((4,), dtype=dt)
-        dt_str = np.dtype("O", metadata={"vlen": bytes})
+         
+        dt_str = special_dtype(vlen=str)
         arr[0] = (42, np.asarray([b"hi", b"bye"], dtype=dt_str))
         arr[3] = (84, np.asarray([b"hi-hi", b"bye-bye"], dtype=dt_str))
         buffer = arrayToBytes(arr, encoding="base64")

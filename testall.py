@@ -15,7 +15,16 @@ import sys
 import shutil
 import h5py
 
-unit_tests = ("hdf5dtype_test", "hdf5db_test")
+unit_tests = (
+    "array_util_test",
+    "objid_test",
+    "hdf5dtype_test",
+    "hdf5db_test",
+    "h5json_reader_test",
+    "h5json_writer_test",
+    "h5py_reader_test",
+    "h5py_writer_test",
+    )
 integ_tests = ("h5tojson_test", "jsontoh5_test")
 
 # verify the hdf5 lib version is recent
