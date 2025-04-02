@@ -11,8 +11,10 @@
 ##############################################################################
 import unittest
 import logging
+import numpy as np
 from h5json import Hdf5db
 from h5json.reader.h5json_reader import H5JsonReader
+from h5json import selections
 
 
 class H5pyReaderTest(unittest.TestCase):
@@ -62,6 +64,14 @@ class H5pyReaderTest(unittest.TestCase):
             dset_shape = dset_json["shape"]
             self.assertEqual(dset_shape["class"], "H5S_SIMPLE")
             self.assertEqual(dset_shape["dims"], [10, 10])
+            sel_all = selections.select((10, 10), ...)
+            arr = db.getDatasetValues(dset111_id, sel_all)
+            self.assertTrue(isinstance(arr, np.ndarray))
+            self.assertEqual(arr.shape, (10, 10))
+            for i in range(10):
+                for j in range(10):
+                    v = arr[i, j]
+                    self.assertEqual(v, i * j)
 
             # try adding an attribute
             db.createAttribute(dset111_id, "attr3", value=42)

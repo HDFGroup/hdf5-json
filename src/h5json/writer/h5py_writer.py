@@ -12,10 +12,11 @@
 import h5py
 import numpy as np
 
-from ..objid import getCollectionForId, isValidUuid
+from ..objid import getCollectionForId, isValidUuid, getUuidFromId, isObjId
 from ..hdf5dtype import createDataType
 from ..h5py_util import is_reference, is_regionreference, has_reference, convert_dtype
 from ..array_util import jsonToArray
+from .. import selections
 from .. import filters
 from .h5writer import H5Writer
 
@@ -33,13 +34,11 @@ class H5pyWriter(H5Writer):
         app_logger=None
     ):
         super().__init__(filepath, append=append, no_data=no_data, app_logger=app_logger)
-
-        if append:
-            self._mode = "a"
-        else:
-            self._mode = "w"
-
         self._id_map = {}
+        if append:
+            self._init = False
+        else:
+            self._init = True
 
     def _copy_element(self, val, src_dt, tgt_dt, fout=None):
         """ convert the given dataset or attribute element to h5py equivalent """
@@ -147,8 +146,8 @@ class H5pyWriter(H5Writer):
     def _createDataset(self, parent, dset_json, name=None):
         """ create a dataset object """
 
-        type_item = dset_json["type"]
-        dtype = createDataType(type_item)
+        dtype = self.db.getDtype(dset_json)
+
         kwargs = {"dtype": dtype}
         shape_json = dset_json["shape"]
         shape_class = shape_json["class"]
@@ -279,17 +278,6 @@ class H5pyWriter(H5Writer):
                 self.log.warning("unable to create user-defined link: {title}")
             elif link_class == "H5L_TYPE_HARD":
                 tgt_id = link_json["id"]
-                """
-                if tgt_id in visited:
-                    # we've already processed this object
-                    if title not in parent:
-                        if tgt_id in self._id_map:
-                            tgt_obj = self._id_map[tgt_id]
-                            parent[title] = tgt_obj
-                    else:
-                        self.log.warning("h5py_writer - expected to find {tgt_id} in id_map")
-                    continue
-                """
 
                 collection = getCollectionForId(tgt_id)
 
@@ -307,6 +295,7 @@ class H5pyWriter(H5Writer):
                         visited.add(tgt_id)
                         self._createObjects(tgt_obj, grp_links, visited=visited)
                 else:
+                    # need to create tgt_id object
                     parent_path = parent.name
                     if parent_path[-1] != '/':
                         parent_path += '/'
@@ -346,10 +335,20 @@ class H5pyWriter(H5Writer):
             dset[slices] = val
             self.log.debug(f"h5py_writer dset {dset.name} updated")
 
+    def initializeDatasetValues(self, dset_id, dset):
+        """ write all dataset values """
+
+        if dset.shape is None:
+            return  # null space dataset
+
+        sel_all = selections.select(dset.shape, ...)
+        arr = self.db.getDatasetValues(dset_id, sel_all)
+        dset[...] = arr
+
     def createAttribute(self, obj, name, attr_json):
         """ add the given attribute to obj """
 
-        src_dt = createDataType(attr_json["type"])
+        src_dt = self.db.getDtype(attr_json)
 
         # handle special case of null space attribute here
         shape_json = attr_json["shape"]
@@ -363,6 +362,8 @@ class H5pyWriter(H5Writer):
         else:
             dims = shape_json["dims"]
         src_arr = jsonToArray(dims, src_dt, attr_json["value"])
+        if not isinstance(src_arr, np.ndarray):
+            raise TypeError("Unexpected type for src_arr")
         tgt_arr = self._copy_array(src_arr, fout=obj.file)
         obj.attrs[name] = tgt_arr
 
@@ -385,25 +386,30 @@ class H5pyWriter(H5Writer):
         if not self.db:
             # no db set yet
             return False
-
         self.log.info("h5py_writer.flush()")
         root_id = self.db.root_id
         self._id_map[root_id] = "/"
-        with h5py.File(self._filepath, mode=self._mode) as f:
-            if self.db.new_objects:
+        mode = 'w' if self._init else 'a'
+        with h5py.File(self._filepath, mode=mode) as f:
+            if self.db.new_objects or self._init:
                 root_json = self.db.getObjectById(root_id)
                 if "links" in root_json:
                     root_links = root_json["links"]
-                    self._createObjects(f, root_links, visited=set(root_id))
+                    self._createObjects(f, root_links, visited=set((root_id,)))
             # update attributes, dataset values
             for obj_id in self._id_map:
-                if self.db.is_dirty(obj_id):
+                if self.db.is_dirty(obj_id) or self._init:
                     h5path = self._id_map[obj_id]
                     obj = f[h5path]
                     self.updateAttributes(obj_id, obj)
-                    self.updateDatasetValues(obj_id, obj)
+                    collection = getCollectionForId(obj_id)
+                    if collection == "datasets":
+                        if self._init:
+                            self.initializeDatasetValues(obj_id, obj)
+                        else:
+                            self.updateDatasetValues(obj_id, obj)
 
-        self._mode = "a"  # use append mode for future updates
+        self._init = False  # done with init after first flush
         return True  # all objects written successfully
 
     def close(self):

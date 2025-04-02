@@ -24,7 +24,7 @@ unit_tests = (
     "h5json_writer_test",
     "h5py_reader_test",
     "h5py_writer_test",
-    )
+)
 integ_tests = ("h5tojson_test", "jsontoh5_test")
 
 # verify the hdf5 lib version is recent

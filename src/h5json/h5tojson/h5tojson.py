@@ -17,7 +17,7 @@ import logging.handlers
 from h5json import Hdf5db
 from h5json.writer.h5json_writer import H5JsonWriter
 from h5json.reader.h5py_reader import H5pyReader
- 
+
 
 def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
@@ -31,7 +31,7 @@ def main():
             no_data = True
         else:
             filename = sys.argv[i]
-        
+
     # create logger
     log = logging.getLogger("h5tojson")
     # log.setLevel(logging.WARN)
@@ -48,9 +48,14 @@ def main():
     log.info(f"h5tojson {filename}")
 
     kwargs = {"app_logger": log}
-    
-    with Hdf5db(h5_reader=H5pyReader(filename, **kwargs), h5_writer=H5JsonWriter(None, no_data=no_data, **kwargs), **kwargs) as db:
-        pass
+    reader = H5pyReader(filename, **kwargs)
+    writer = H5JsonWriter(None, no_data=no_data, **kwargs)
+    kwargs["h5_reader"] = reader
+    kwargs["h5_writer"] = writer
+
+    with Hdf5db(**kwargs) as db:
+        db.flush()
+
 
 if __name__ == "__main__":
     main()

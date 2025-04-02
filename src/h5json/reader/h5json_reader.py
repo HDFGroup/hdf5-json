@@ -12,7 +12,7 @@
 import json
 import logging
 
-from ..objid import getCollectionForId, stripId
+from ..objid import getCollectionForId, stripId, getUuidFromId
 
 from ..hdf5dtype import createDataType
 from ..array_util import jsonToArray
@@ -34,6 +34,7 @@ class H5JsonReader(H5Reader):
             self.log = app_logger
         else:
             self.log = logging.getLogger()
+
         super().__init__(filepath, app_logger=app_logger)
 
         with open(filepath) as f:
@@ -55,11 +56,11 @@ class H5JsonReader(H5Reader):
         """ Return root id """
         return self._root_id
 
-    def getObjectById(self, obj_id, include_attrs=True, include_links=True):
+    def getObjectById(self, obj_id, include_attrs=True, include_links=True, include_values=False):
         """ return object with given id """
         collection = getCollectionForId(obj_id)
         if collection not in self._h5json:
-            self.log.warning(f"getObjectBId - collection: {collection} not found")
+            self.log.warning(f"getObjectById - collection: {collection} not found")
             return None
         json_objs = self._h5json[collection]
         obj_uuid = stripId(obj_id)
@@ -125,6 +126,9 @@ class H5JsonReader(H5Reader):
                 links[title] = item
             resp["links"] = links
 
+        if include_values and collection == "datasets" and "value" in json_obj:
+            resp["value"] = json_obj["value"]
+
         return resp
 
     def getAttribute(self, obj_id, name, includeData=True):
@@ -145,6 +149,22 @@ class H5JsonReader(H5Reader):
             return None
         return attributes[name]
 
+    def getDtype(self, obj_json):
+        """ Return the dtype for the type given by obj_json """
+        if "type" not in obj_json:
+            raise KeyError("no type item found")
+        type_item = obj_json["type"]
+        if isinstance(type_item, str) and type_item.startswith("datatypes/"):
+            # this is a reference to a committed type
+            ctype_id = "t-" + getUuidFromId(type_item)
+            ctype_json = self.getObjectById(ctype_id)
+            if "type" not in ctype_json:
+                raise KeyError(f"Unexpected datatype: {ctype_json}")
+            # Use the ctype's item json
+            type_item = ctype_json["type"]
+        dtype = createDataType(type_item)
+        return dtype
+
     def getDatasetValues(self, obj_id, sel=None):
         """
         Get values from dataset identified by obj_id.
@@ -153,10 +173,13 @@ class H5JsonReader(H5Reader):
         """
 
         self.log.debug(f"getDatasetValues({obj_id}), sel={sel}")
-        json_obj = self.getObjectById(obj_id)
+        json_obj = self.getObjectById(obj_id, include_values=True)
         if json_obj is None:
+            print("no json_obj")
             return None
+
         if "value" not in json_obj:
+            print("no json value")
             self.log.warning("value key not found for {obj_id}")
             return None
         json_value = json_obj["value"]
@@ -169,8 +192,7 @@ class H5JsonReader(H5Reader):
         else:
             dims = shape_json["dims"]
 
-        type_item = json_obj["type"]
-        dtype = createDataType(type_item)
+        dtype = self.getDtype(json_obj)
         arr = jsonToArray(dims, dtype, json_value)
         if sel is None or sel.select_type == selections.H5S_SELECT_ALL:
             pass  # just return the entire array

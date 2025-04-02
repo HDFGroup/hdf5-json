@@ -15,7 +15,7 @@ import logging
 from .hdf5dtype import getTypeItem, createDataType, Reference, special_dtype
 from .array_util import jsonToArray, bytesArrayToList
 from .dset_util import resize_dataset
-from .objid import createObjId, getCollectionForId
+from .objid import createObjId, getCollectionForId, isValidUuid, getUuidFromId
 from . import selections
 from .apiversion import _apiver
 from .reader.h5reader import H5Reader
@@ -85,8 +85,6 @@ class Hdf5db:
         if self._reader:
             self._reader.close()
         self._reader = value
-        if self._reader:
-            self._reader.set_db(self)
 
     @property
     def writer(self):
@@ -145,16 +143,9 @@ class Hdf5db:
         if not self.writer:
             return  # nothing to do
 
-        obj_ids = self._new_objects.union(self._dirty_objects)
-
         if not self.writer.flush():
             # flush not successful, don't clear dirty set
             return
-
-        for obj_id in obj_ids:
-            obj_json = self._db[obj_id]
-            if "values" in obj_json:
-                obj_json["values"] = []
 
         # reset new and dirty sets
         self._new_objects = set()
@@ -262,17 +253,26 @@ class Hdf5db:
         obj_json = self.getObjectById(obj_id)
         return obj_json
 
-    def getDtype(self, obj_id):
-        """ Return numpy data type for given object id """
-        if obj_id not in self.db:
-            raise KeyError(f"{obj_id} not found")
-        obj_json = self.db[obj_id]
+    def getDtype(self, obj_json):
+        """ Return numpy data type for given object id
+        """
+
         if "type" not in obj_json:
             # group id?
-            raise TypeError(f"{obj_id} does not have a datatype")
-        type_json = obj_json["type"]
+            raise TypeError(f"{obj_json} does not have a datatype")
+        type_item = obj_json["type"]
+        if isValidUuid(type_item) and getCollectionForId(type_item) == "datatypes":
+            ctype_id = "t-" + getUuidFromId(type_item)
+            ctype_json = self.getObjectById(ctype_id)
+            if ctype_json is None:
+                raise KeyError(f"ctype: {ctype_id} not found")
 
-        dtype = createDataType(type_json)
+            type_json = ctype_json["type"].copy()
+            type_json["id"] = ctype_id
+            dtype = createDataType(type_json)
+        else:
+            dtype = createDataType(type_item)
+
         return dtype
 
     def getAttribute(self, obj_id, name, includeData=True):
@@ -323,7 +323,7 @@ class Hdf5db:
             dims = ()
         else:
             dims = shape_json["dims"]
-        dtype = createDataType(attr_json["type"])
+        dtype = self.getDtype(attr_json)
 
         value = attr_json["value"]
         arr = jsonToArray(dims, dtype, value)
@@ -465,7 +465,7 @@ class Hdf5db:
                 raise ValueError("Selection shape does not match dataset shape")
             rank = len(dims)
 
-        dtype = self.getDtype(dset_id)
+        dtype = self.getDtype(dset_json)
         if self.reader:
             arr = self.reader.getDatasetValues(dset_id, sel)
         else:

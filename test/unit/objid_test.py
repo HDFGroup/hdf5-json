@@ -12,7 +12,7 @@
 import unittest
 
 from h5json.objid import isRootObjId, isValidUuid, validateUuid
-from h5json.objid import createObjId, getCollectionForId, stripId
+from h5json.objid import createObjId, getCollectionForId, stripId, getUuidFromId
 from h5json.objid import isObjId, isS3ObjKey, getS3Key, getObjId, isSchema2Id
 
 
@@ -191,6 +191,18 @@ class IdUtilTest(unittest.TestCase):
             self.assertTrue(s3key.startswith(s3prefix))
             self.assertEqual(getObjId(s3key), oid)
             self.assertTrue(isS3ObjKey(s3key))
+
+    def testGetDataTypeId(self):
+        test_uuid = "9b652223-83f8-11e5-b028-3c15c2da029e"
+        test_ids = (
+            "datatypes/9b652223-83f8-11e5-b028-3c15c2da029e",
+            "datatypes/t-9b652223-83f8-11e5-b028-3c15c2da029e",
+            "t-9b652223-83f8-11e5-b028-3c15c2da029e"
+        )
+        for test_id in test_ids:
+            self.assertTrue(isValidUuid(test_id))
+            self.assertEqual(getCollectionForId(test_id), "datatypes")
+            self.assertEqual(getUuidFromId(test_id), test_uuid)
 
 
 if __name__ == "__main__":

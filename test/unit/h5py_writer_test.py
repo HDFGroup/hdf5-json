@@ -154,6 +154,7 @@ class H5pyWriterTest(unittest.TestCase):
             root_id = db.getObjectIdByPath("/")
             dims = ()
             value = 42
+            print("test create attribute A1")
             db.createAttribute(root_id, "A1", value, shape=dims, dtype=np.int32)
             item = db.getAttribute(root_id, "A1")
             shape_json = item["shape"]

@@ -52,11 +52,16 @@ def main():
     log.info(f"jsontoh5 {json_filename} to {hdf5_filename}")
 
     kwargs = {"app_logger": log}
+
+    h5_reader=H5JsonReader(json_filename, **kwargs)
+    h5_writer=H5pyWriter(hdf5_filename, no_data=no_data, **kwargs)
+    kwargs["h5_reader"] = h5_reader
+    kwargs["h5_writer"] = h5_writer
+
     
-    with Hdf5db(h5_reader=H5JsonReader(json_filename, **kwargs), h5_writer=H5pyWriter(hdf5_filename, no_data=no_data, **kwargs), **kwargs) as db:
-        pass
-
-
+    with Hdf5db(**kwargs) as db:
+        db.flush()
+    
 
 if __name__ == "__main__":
     main()

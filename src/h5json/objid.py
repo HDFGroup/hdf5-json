@@ -119,11 +119,11 @@ def getCollectionForId(obj_id):
         raise ValueError("invalid object id")
 
     collection = None
-    if obj_id.startswith("g-"):
+    if obj_id.startswith("g-") or obj_id.startswith("groups/"):
         collection = "groups"
-    elif obj_id.startswith("d-"):
+    elif obj_id.startswith("d-") or obj_id.startswith("datasets/"):
         collection = "datasets"
-    elif obj_id.startswith("t-"):
+    elif obj_id.startswith("t-") or obj_id.startswith("datatypes"):
         collection = "datatypes"
     else:
         raise ValueError(f"{obj_id} not a collection id")
@@ -399,6 +399,21 @@ def validateUuid(id, obj_class=None):
         # e.g.: "a49be-g-314d61b8-9954-11e6-a733-3c15c2da029e",
         if id[:5].isalnum() and id[5] == '-':
             id = id[6:]  # trim off the hash tag
+
+        # for id's like "datasets/abced...", trim the collection name and add collection
+        # prefix to the id if not already present
+        if id.find('/') > 0:
+            parts = id.split('/')
+            if len(parts) > 2:
+                raise ValueError(f"obj_id: {id} not valid (too many slash chars)")
+            collection = parts[0]
+            if getCollectionForId(id) != collection:
+                raise ValueError(f"obj_id: {id} invalid collection")
+            id = parts[1]
+            if len(id) == UUID_LEN:
+                # prefix with the one char collection code
+                id = _getPrefixForCollection(collection) + '-' + id
+
         # validate prefix
         if id[0] not in ("g", "d", "t", "c"):
             raise ValueError("Unexpected prefix")
@@ -476,7 +491,13 @@ def isObjId(id):
 
 def getUuidFromId(id):
     """strip off the type prefix ('g-' or 'd-', or 't-')
-    and return the uuid part"""
+    and return the uuid part """
+    if id.find('/') > 0:
+        # remove a collection name prefix if present
+        parts = id.split('/')
+        if len(parts) > 2:
+            raise ValueError(f"Unexpected obj_id: {id}")
+        id = parts[1]
     if len(id) == UUID_LEN:
         # just a uuid
         return id
@@ -494,4 +515,4 @@ def stripId(obj_id):
     if len(obj_id) == UUID_LEN + 2:
         return obj_id[2:]
     else:
-        raise ValueError("unexpected obj_id: {obj_id}")
+        raise ValueError(f"unexpected obj_id: {obj_id}")

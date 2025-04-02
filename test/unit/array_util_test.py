@@ -95,8 +95,8 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(nelements, 80)
 
     def testJsonToArray(self):
-       
-        # simple integer 
+
+        # simple integer
 
         dt = np.dtype("i4")
         shape = [4, ]
@@ -113,7 +113,7 @@ class ArrayUtilTest(unittest.TestCase):
         out = jsonToArray(shape, dt, data)
         self.assertTrue(isinstance(out, np.ndarray))
         self.assertEqual(out.shape, ())
-        self.assertEqual(out[()], 42)  
+        self.assertEqual(out[()], 42)
 
         # VLEN Scalar str
         dt = special_dtype(vlen=str)
@@ -167,7 +167,6 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(out[0], tuple(data[0]))
         self.assertEqual(out[1], tuple(data[1]))
 
-        
         # VLEN unicode
         dt = special_dtype(vlen=bytes)
         data = ["one", "two", "three", "four", "five"]
@@ -177,7 +176,7 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertTrue("vlen" in out.dtype.metadata)
         self.assertEqual(out.dtype.metadata["vlen"], bytes)
         self.assertEqual(out.dtype.kind, "O")
-        self.assertEqual(out[2], "three")  
+        self.assertEqual(out[2], "three")
 
         # test ascii chars >127
         dt = np.dtype("S26")
@@ -188,7 +187,7 @@ class ArrayUtilTest(unittest.TestCase):
             self.assertTrue(False)
         except ValueError:
             pass  # expected
-          
+
         dt = special_dtype(vlen=str)
         out = jsonToArray(shape, dt, data)  # vlen str should be ok
         self.assertTrue(isinstance(out, np.ndarray))
@@ -299,7 +298,7 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(e1, (5, b"five"))
 
         # compound with VLEN element
-         
+
         dt_str = special_dtype(vlen=str)
         dt = np.dtype([("a", "i4"), ("b", dt_str)])
         shape = [1, ]
@@ -329,7 +328,7 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(out.shape, (1,))
         e0 = out[0].tolist()
         self.assertEqual(e0, (6, "six"))
-        
+
         # scalar compound
         shape = []
         data = [6, "six"]
@@ -337,7 +336,7 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertTrue(isinstance(out, np.ndarray))
         self.assertEqual(out.shape, ())
         e0 = out[()].tolist()
-        self.assertEqual(e0, (6, "six")) 
+        self.assertEqual(e0, (6, "six"))
 
         # compound type with array field
         dt = np.dtype([("a", ("i4", 3)), ("b", "S5")])
@@ -541,7 +540,7 @@ class ArrayUtilTest(unittest.TestCase):
         #
         dt_arr_str = np.dtype("(2,)O", metadata={"vlen": str})
         dt = np.dtype([("x", "i4"), ("tag", dt_arr_str)])
-        arr = np.zeros((4,), dtype=dt)         
+        arr = np.zeros((4,), dtype=dt)
         dt_str = special_dtype(vlen=str)
         arr[0] = (42, np.asarray(["hi", "bye"], dtype=dt_str))
         arr[3] = (84, np.asarray(["hi-hi", "bye-bye"], dtype=dt_str))
@@ -568,7 +567,7 @@ class ArrayUtilTest(unittest.TestCase):
         dt_arr_str = np.dtype("(2,)O", metadata={"vlen": bytes})
         dt = np.dtype([("x", "i4"), ("tag", dt_arr_str)])
         arr = np.zeros((4,), dtype=dt)
-         
+
         dt_str = special_dtype(vlen=str)
         arr[0] = (42, np.asarray([b"hi", b"bye"], dtype=dt_str))
         arr[3] = (84, np.asarray([b"hi-hi", b"bye-bye"], dtype=dt_str))
@@ -695,7 +694,7 @@ class ArrayUtilTest(unittest.TestCase):
         dt_arr_str = np.dtype("(2,)O", metadata={"vlen": str})
         dt = np.dtype([("x", "i4"), ("tag", dt_arr_str)])
         arr = np.zeros((4,), dtype=dt)
-         
+
         dt_str = special_dtype(vlen=str)
         arr[0] = (42, np.asarray(["hi", "bye"], dtype=dt_str))
         arr[3] = (84, np.asarray(["hi-hi", "bye-bye"], dtype=dt_str))
@@ -716,7 +715,7 @@ class ArrayUtilTest(unittest.TestCase):
         dt_arr_str = np.dtype("(2,)O", metadata={"vlen": bytes})
         dt = np.dtype([("x", "i4"), ("tag", dt_arr_str)])
         arr = np.zeros((4,), dtype=dt)
-         
+
         dt_str = special_dtype(vlen=str)
         arr[0] = (42, np.asarray([b"hi", b"bye"], dtype=dt_str))
         arr[3] = (84, np.asarray([b"hi-hi", b"bye-bye"], dtype=dt_str))
