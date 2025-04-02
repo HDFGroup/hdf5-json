@@ -37,6 +37,9 @@ if h5py.version.version_tuple < (3, 0, 0):
     print(h5py.version.info)
     sys.exit("Need h5py version 3.0 or later")
 
+if not os.path.isdir("./out"):
+    os.makedirs("out")
+
 # Run all hdf5-json tests
 # Run this script before running any integ tests
 for file_name in unit_tests:
@@ -48,6 +51,13 @@ shutil.rmtree("./out", ignore_errors=True)
 os.remove("hdf5dbtest.log")
 
 os.chdir("test/integ")
+
+if not os.path.isdir("./h5_out"):
+    os.makedirs("h5_out")
+
+if not os.path.isdir("./json_out"):
+    os.makedirs("json_out")
+    
 for file_name in integ_tests:
     print(file_name)
     rc = os.system("python " + file_name + ".py")
