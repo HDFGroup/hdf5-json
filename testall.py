@@ -57,7 +57,7 @@ if not os.path.isdir("./h5_out"):
 
 if not os.path.isdir("./json_out"):
     os.makedirs("json_out")
-    
+
 for file_name in integ_tests:
     print(file_name)
     rc = os.system("python " + file_name + ".py")
