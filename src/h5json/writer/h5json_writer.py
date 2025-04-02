@@ -265,7 +265,7 @@ class H5JsonWriter(H5Writer):
 
         self.dumpDatatypes()
         indent = 4
-        ensure_ascii = False
+        ensure_ascii = True
         if self._filepath:
             with open('data.json', 'w', encoding='utf-8') as f:
                 json.dump(self.json, f, ensure_ascii=ensure_ascii, indent=indent)
