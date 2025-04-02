@@ -285,7 +285,7 @@ class Hdf5db:
         attrs = obj_json["attributes"]
 
         if name not in attrs:
-            msg = f"Attribute: [{name }] not found in object: {obj_id}"
+            msg = f"Attribute: [{name}] not found in object: {obj_id}"
             self.log.info(msg)
             return None
         if attrs[name] is None:
