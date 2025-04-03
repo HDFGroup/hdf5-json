@@ -11,6 +11,7 @@
 ##############################################################################
 import h5py
 import numpy as np
+import time
 
 from ..objid import getCollectionForId, isValidUuid, getUuidFromId, isObjId
 from ..hdf5dtype import createDataType
@@ -39,6 +40,7 @@ class H5pyWriter(H5Writer):
             self._init = False
         else:
             self._init = True
+        self._flush_time = 0.0
 
     def _copy_element(self, val, src_dt, tgt_dt, fout=None):
         """ convert the given dataset or attribute element to h5py equivalent """
@@ -379,10 +381,14 @@ class H5pyWriter(H5Writer):
         attrs = obj_json["attributes"]
         for name in attrs:
             attr_json = attrs[name]
+            if "created" in attr_json and attr_json["created"] < self._flush_time:
+                # ttribute should be saved already
+                continue
             self.createAttribute(obj, name, attr_json)
 
     def flush(self):
         """ Write dirty items """
+
         if not self.db:
             # no db set yet
             return False
@@ -393,6 +399,7 @@ class H5pyWriter(H5Writer):
         with h5py.File(self._filepath, mode=mode) as f:
             if self.db.new_objects or self._init:
                 root_json = self.db.getObjectById(root_id)
+
                 if "links" in root_json:
                     root_links = root_json["links"]
                     self._createObjects(f, root_links, visited=set((root_id,)))
@@ -408,6 +415,10 @@ class H5pyWriter(H5Writer):
                             self.initializeDatasetValues(obj_id, obj)
                         else:
                             self.updateDatasetValues(obj_id, obj)
+            # mark time write is complete
+            # updates before this time will not need to be written
+            # TBD: possible race condition with multithreading
+            self._flush_time = time.time()
 
         self._init = False  # done with init after first flush
         return True  # all objects written successfully

@@ -15,6 +15,7 @@ import logging
 import h5py
 import numpy as np
 from h5json import Hdf5db
+from h5json.reader.h5json_reader import H5JsonReader
 from h5json.writer.h5py_writer import H5pyWriter
 from h5json.hdf5dtype import special_dtype, Reference
 from h5json import selections
@@ -472,6 +473,53 @@ class H5pyWriterTest(unittest.TestCase):
             self.assertEqual(sub_dt, np.dtype("S15"))
             sub_dt = t1.dtype["field_4"]
             self.assertEqual(sub_dt, h5py.special_dtype(vlen=str))
+
+    def testReaderWithUpdate(self):
+
+        file_in = "data/json/tall.json"
+        file_out = "test/unit/out/h5py_writer_test_testReaderWithUpdate.h5"
+
+        with Hdf5db(app_logger=self.log) as db:
+            db.reader = H5JsonReader(file_in)
+            db.writer = H5pyWriter(file_out, no_data=False)
+            dset111_id = db.getObjectIdByPath("/g1/g1.1/dset1.1.1")
+            db.flush()
+
+            with h5py.File(file_out) as f:
+                self.assertTrue("/g1/g1.1/dset1.1.1" in f)
+                dset111 = f["/g1/g1.1/dset1.1.1"]
+                self.assertEqual(len(dset111.attrs), 2)
+                
+            db.createAttribute(dset111_id, "attr3", "hello")
+            dset_json = db.getObjectById(dset111_id)
+            db.flush()
+
+            with h5py.File(file_out) as f:
+                self.assertTrue("/g1/g1.1/dset1.1.1" in f)
+                dset111 = f["/g1/g1.1/dset1.1.1"]
+                self.assertEqual(len(dset111.attrs), 3)
+                self.assertEqual(dset111.attrs["attr3"], b"hello")
+
+            db.createAttribute(dset111_id, "attr3", "bye-bye")
+            db.flush()
+
+            with h5py.File(file_out) as f:
+                self.assertTrue("/g1/g1.1/dset1.1.1" in f)
+                dset111 = f["/g1/g1.1/dset1.1.1"]
+                self.assertEqual(len(dset111.attrs), 3)
+                self.assertEqual(dset111.attrs["attr3"], b"bye-bye")
+                g1 = f["g1"]
+                
+            # create a new link
+            g13_id = db.createGroup()
+            g1_id = db.getObjectIdByPath("/g1")
+            db.createHardLink(g1_id, "g1.3", g13_id)
+            db.flush()
+
+            with h5py.File(file_out) as f:
+                g1 = f["g1"]
+                self.assertEqual(len(g1), 3)
+                self.assertTrue("g1.3" in g1)
 
 
 if __name__ == "__main__":

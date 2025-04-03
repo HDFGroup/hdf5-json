@@ -39,7 +39,9 @@ class H5pyReaderTest(unittest.TestCase):
     def testSimple(self):
         filepath = "data/json/tall.json"
         kwargs = {"app_logger": self.log}
-        with Hdf5db(h5_reader=H5JsonReader(filepath, **kwargs), **kwargs) as db:
+        with Hdf5db(**kwargs) as db:
+            h5_reader = H5JsonReader(filepath, **kwargs)
+            db.reader = h5_reader
             root_id = db.getObjectIdByPath("/")
             root_json = db.getObjectById(root_id)
 

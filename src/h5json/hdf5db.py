@@ -82,9 +82,19 @@ class Hdf5db:
     @reader.setter
     def reader(self, value: H5Reader):
         """ set the reader """
+        if self._writer:
+            self.flush()
         if self._reader:
             self._reader.close()
+        root_id = value.get_root_id()
+        if not root_id:
+            raise ValueError(f"reader {type(value)} unable to return root_id")
+        group_json = value.getObjectById(root_id)
+        if not group_json:
+            raise ValueError(f"reader {type(value)} unable to return group json")
         self._reader = value
+        self._db[root_id] = group_json
+        self._root_id = root_id
 
     @property
     def writer(self):
@@ -411,15 +421,10 @@ class Hdf5db:
 
         obj_json = self.getObjectById(obj_id)
         attrs_json = obj_json["attributes"]
-        if name in attrs_json:
-            # replace, keep, created timestamp
-            created = attrs_json["created"]
-        else:
-            created = time.time()
         type_json = getTypeItem(dtype)
         # finally put it all together...
         attr_json = {"shape": shape_json, "type": type_json, "value": value_json}
-        attr_json["created"] = created
+        attr_json["created"] = time.time()
 
         # slot into the obj_json["attrs"]
         attrs_json[name] = attr_json
