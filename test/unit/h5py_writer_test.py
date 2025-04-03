@@ -489,9 +489,8 @@ class H5pyWriterTest(unittest.TestCase):
                 self.assertTrue("/g1/g1.1/dset1.1.1" in f)
                 dset111 = f["/g1/g1.1/dset1.1.1"]
                 self.assertEqual(len(dset111.attrs), 2)
-                
+
             db.createAttribute(dset111_id, "attr3", "hello")
-            dset_json = db.getObjectById(dset111_id)
             db.flush()
 
             with h5py.File(file_out) as f:
@@ -509,7 +508,7 @@ class H5pyWriterTest(unittest.TestCase):
                 self.assertEqual(len(dset111.attrs), 3)
                 self.assertEqual(dset111.attrs["attr3"], b"bye-bye")
                 g1 = f["g1"]
-                
+
             # create a new link
             g13_id = db.createGroup()
             g1_id = db.getObjectIdByPath("/g1")
