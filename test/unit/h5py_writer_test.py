@@ -482,7 +482,6 @@ class H5pyWriterTest(unittest.TestCase):
         with Hdf5db(app_logger=self.log) as db:
             db.reader = H5JsonReader(file_in)
             db.writer = H5pyWriter(file_out, no_data=False)
-            dset111_id = db.getObjectIdByPath("/g1/g1.1/dset1.1.1")
             db.flush()
 
             with h5py.File(file_out) as f:
@@ -490,6 +489,7 @@ class H5pyWriterTest(unittest.TestCase):
                 dset111 = f["/g1/g1.1/dset1.1.1"]
                 self.assertEqual(len(dset111.attrs), 2)
 
+            dset111_id = db.getObjectIdByPath("/g1/g1.1/dset1.1.1")
             db.createAttribute(dset111_id, "attr3", "hello")
             db.flush()
 
@@ -509,7 +509,7 @@ class H5pyWriterTest(unittest.TestCase):
                 self.assertEqual(dset111.attrs["attr3"], b"bye-bye")
                 g1 = f["g1"]
 
-            # create a new link
+            # create a new group
             g13_id = db.createGroup()
             g1_id = db.getObjectIdByPath("/g1")
             db.createHardLink(g1_id, "g1.3", g13_id)
@@ -519,6 +519,32 @@ class H5pyWriterTest(unittest.TestCase):
                 g1 = f["g1"]
                 self.assertEqual(len(g1), 3)
                 self.assertTrue("g1.3" in g1)
+
+            # create a new dataset
+            dset_id = db.createDataset(shape=(10, 10), dtype=np.int32)
+            db.createHardLink(g1_id, "DS1", dset_id)
+            db.flush()
+
+            with h5py.File(file_out) as f:
+                g1 = f["g1"]
+                self.assertTrue("DS1" in g1)
+                ds1 = g1["DS1"]
+                self.assertEqual(ds1.shape, (10, 10))
+
+            arr = np.asarray(range(10), dtype=np.int32)
+            sel = selections.select((10, 10), (slice(5, 6), slice(0, 10)))
+            db.setDatasetValues(dset_id, sel, arr)
+            db.flush()
+
+            with h5py.File(file_out) as f:
+                ds1 = f["/g1/DS1"]
+                data = ds1[:, :]
+                for i in range(10):
+                    for j in range(10):
+                        if i == 5:
+                            self.assertEqual(data[i, j], j)
+                        else:
+                            self.assertEqual(data[i, j], 0)
 
 
 if __name__ == "__main__":
