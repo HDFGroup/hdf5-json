@@ -13,7 +13,7 @@
 import json
 
 from .h5writer import H5Writer
-from ..objid import stripId, getCollectionForId
+from ..objid import getUuidFromId, getCollectionForId
 from ..array_util import bytesArrayToList
 from .. import selections
 
@@ -117,7 +117,7 @@ class H5JsonWriter(H5Writer):
         if "id" in item:
             tgt_id = item["id"]
             response["collection"] = getCollectionForId(tgt_id)
-            response["id"] = stripId(tgt_id)
+            response["id"] = getUuidFromId(tgt_id)
 
         for key in item:
             if key in ("id", "created", "modified"):
@@ -154,14 +154,14 @@ class H5JsonWriter(H5Writer):
     def dumpGroups(self):
         groups = {}
         item = self.dumpGroup(self._root_uuid)
-        root_uuid = stripId(self._root_uuid)
+        root_uuid = getUuidFromId(self._root_uuid)
         groups[root_uuid] = item
         obj_ids = self.db.getCollection("groups")
         for obj_id in obj_ids:
             if obj_id == self._root_uuid:
                 continue
             item = self.dumpGroup(obj_id)
-            obj_uuid = stripId(obj_id)
+            obj_uuid = getUuidFromId(obj_id)
             groups[obj_uuid] = item
 
         self.json["groups"] = groups
@@ -220,7 +220,7 @@ class H5JsonWriter(H5Writer):
             datasets = {}
             for obj_id in obj_ids:
                 item = self.dumpDataset(obj_id)
-                obj_uuid = stripId(obj_id)
+                obj_uuid = getUuidFromId(obj_id)
                 datasets[obj_uuid] = item
 
             self.json["datasets"] = datasets
@@ -244,7 +244,7 @@ class H5JsonWriter(H5Writer):
             datatypes = {}
             for obj_id in obj_ids:
                 item = self.dumpDatatype(obj_id)
-                obj_uuid = stripId(obj_id)
+                obj_uuid = getUuidFromId(obj_id)
                 datatypes[obj_uuid] = item
 
             self.json["datatypes"] = datatypes
@@ -255,7 +255,7 @@ class H5JsonWriter(H5Writer):
         db_version_info = self.db.getVersionInfo()
 
         self.json["apiVersion"] = db_version_info["hdf5-json-version"]
-        self.json["root"] = stripId(self._root_uuid)
+        self.json["root"] = getUuidFromId(self._root_uuid)
 
         self.updateAliasList()  # create alias_db with obj_id to alias list dict
 

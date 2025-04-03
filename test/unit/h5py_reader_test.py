@@ -10,12 +10,8 @@
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
 import unittest
-import os
 
-import os.path as op
-import stat
 import logging
-import shutil
 from h5json import Hdf5db
 from h5json.reader.h5py_reader import H5pyReader
 

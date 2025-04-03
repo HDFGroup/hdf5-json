@@ -506,13 +506,3 @@ def getUuidFromId(id):
         return id[2:]
     else:
         raise ValueError(f"Unexpected obj_id: {id}")
-
-
-def stripId(obj_id):
-    """ return just the base id without any prefix (e.g. 'g-') """
-    if len(obj_id) == UUID_LEN:
-        return obj_id  # just return as is
-    if len(obj_id) == UUID_LEN + 2:
-        return obj_id[2:]
-    else:
-        raise ValueError(f"unexpected obj_id: {obj_id}")

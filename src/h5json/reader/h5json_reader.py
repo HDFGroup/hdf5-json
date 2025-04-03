@@ -12,7 +12,7 @@
 import json
 import logging
 
-from ..objid import getCollectionForId, stripId, getUuidFromId
+from ..objid import getCollectionForId, getUuidFromId
 
 from ..hdf5dtype import createDataType
 from ..array_util import jsonToArray
@@ -63,7 +63,7 @@ class H5JsonReader(H5Reader):
             self.log.warning(f"getObjectById - collection: {collection} not found")
             return None
         json_objs = self._h5json[collection]
-        obj_uuid = stripId(obj_id)
+        obj_uuid = getUuidFromId(obj_id)
         if obj_uuid not in json_objs:
             self.log.warning(f"getObjectById - {obj_id} not found")
             return None

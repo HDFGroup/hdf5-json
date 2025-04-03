@@ -15,7 +15,6 @@ import logging
 import numpy as np
 from h5json import Hdf5db
 from h5json.writer.h5json_writer import H5JsonWriter
-from h5json.objid import isRootObjId, isValidUuid, isSchema2Id, stripId
 from h5json.hdf5dtype import special_dtype, Reference
 from h5json import selections
 
