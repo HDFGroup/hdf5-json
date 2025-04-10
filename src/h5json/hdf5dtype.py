@@ -316,7 +316,7 @@ def getTypeItem(dt, metadata=None):
         metadata = dt.metadata
 
     type_info = {}
-    if len(dt) > 1:
+    if len(dt):
         # compound type
         names = dt.names
         type_info["class"] = "H5T_COMPOUND"
@@ -494,14 +494,14 @@ def isVlen(dt):
     Return True if the type contains variable length elements
     """
     is_vlen = False
-    if len(dt) > 1:
+    if len(dt):
         names = dt.names
         for name in names:
             if isVlen(dt[name]):
                 is_vlen = True
                 break
     else:
-        if dt.metadata and "vlen" in dt.metadata:
+        if dt.base.metadata and "vlen" in dt.base.metadata:
             is_vlen = True
     return is_vlen
 
@@ -510,7 +510,7 @@ def isOpaqueDtype(dt):
     """
     Return True if this is an opaque dtype
     """
-    if dt.kind == "V" and len(dt) <= 1 and len(dt.shape) == 0 and not dt.names:
+    if dt.kind == "V" and len(dt) == 0 and len(dt.shape) == 0 and not dt.names:
         return True
     if dt.metadata and dt.metadata.get('h5py_opaque'):
         return True
@@ -626,7 +626,7 @@ def getDtypeItemSize(dtype):
         return the string "H5T_VARIABLE
     """
     item_size = 0
-    if len(dtype) > 0:
+    if len(dtype):
         # compound dtype
         for i in range(len(dtype)):
             sub_dt = dtype[i]

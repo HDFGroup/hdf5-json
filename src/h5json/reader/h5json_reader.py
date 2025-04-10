@@ -175,12 +175,11 @@ class H5JsonReader(H5Reader):
         self.log.debug(f"getDatasetValues({obj_id}), sel={sel}")
         json_obj = self.getObjectById(obj_id, include_values=True)
         if json_obj is None:
-            print("no json_obj")
+            self.log.warning(f"no object found with id; {obj_id}")
             return None
 
         if "value" not in json_obj:
-            print("no json value")
-            self.log.warning("value key not found for {obj_id}")
+            self.log.warning(f"value key not found for {obj_id}")
             return None
         json_value = json_obj["value"]
         shape_json = json_obj["shape"]

@@ -15,6 +15,8 @@ import base64
 import binascii
 import numpy as np
 
+from .hdf5dtype import isVlen
+
 MAX_VLEN_ELEMENT = 1_000_000  # restrict largest vlen element to one million
 
 
@@ -99,23 +101,6 @@ def getNumElements(dims):
     return num_elements
 
 
-def isVlen(dt):
-    """
-    Return True if the type contains variable length elements
-    """
-    is_vlen = False
-    if len(dt) > 1:
-        names = dt.names
-        for name in names:
-            if isVlen(dt[name]):
-                is_vlen = True
-                break
-    else:
-        if dt.metadata and "vlen" in dt.metadata:
-            is_vlen = True
-    return is_vlen
-
-
 def jsonToArray(data_shape, data_dtype, data_json):
     """
     Return numpy array from the given json array.
@@ -193,16 +178,16 @@ def getElementSize(e, dt):
             field_dt = dt[name]
             field_val = e[name]
             count += getElementSize(field_val, field_dt)
-    elif not dt.metadata or "vlen" not in dt.metadata:
+    elif not dt.base.metadata or "vlen" not in dt.base.metadata:
         count = dt.itemsize  # fixed size element
     else:
         # variable length element
-        vlen = dt.metadata["vlen"]
+        vlen = dt.base.metadata["vlen"]
         if isinstance(e, int):
             if e == 0:
                 count = 4  # non-initialized element
             else:
-                raise ValueError("Unexpected value: {}".format(e))
+                raise ValueError(f"Unexpected value: {e}")
         elif isinstance(e, bytes):
             count = len(e) + 4
         elif isinstance(e, str):
@@ -226,6 +211,7 @@ def getElementSize(e, dt):
                 count = len(e) * vlen.itemsize + 4  # +4 for byte count
         else:
             raise TypeError("unexpected type: {}".format(type(e)))
+    # print("getElementSize returning:", count)
     return count
 
 
@@ -262,46 +248,40 @@ def copyElement(e, dt, buffer, offset):
     """
     Copy element to bytearray
     """
+
     # print(f"copyElement - dt: {dt}  offset: {offset}")
     if len(dt) > 1:
         for name in dt.names:
             field_dt = dt[name]
             field_val = e[name]
             offset = copyElement(field_val, field_dt, buffer, offset)
-    elif not dt.metadata or "vlen" not in dt.metadata:
-        # print(f"e vlen: {e} type: {type(e)} itemsize: {dt.itemsize}")
-        e_buf = e.tobytes()
-        # print("tobytes:", e_buf)
+    elif not dt.base.metadata or "vlen" not in dt.base.metadata:
+        # print(f"no vlen: {e} type: {type(e)} e.dtype: {e.dtype} itemsize: {dt.itemsize}")
+        e_buf = np.asarray(e, dtype=dt).tobytes()
         if len(e_buf) < dt.itemsize:
             # extend the buffer for fixed size strings
-            # print("extending buffer")
             e_buf_ex = bytearray(dt.itemsize)
             for i in range(len(e_buf)):
                 e_buf_ex[i] = e_buf[i]
             e_buf = bytes(e_buf_ex)
 
-        # print("length:", len(e_buf))
         offset = copyBuffer(e_buf, buffer, offset)
     else:
         # variable length element
-        vlen = dt.metadata["vlen"]
-        # print("copyBuffer vlen:", vlen)
+        vlen = dt.base.metadata["vlen"]
         if isinstance(e, int):
-            # print("copyBuffer int")
             if e == 0:
                 # write 4-byte integer 0 to buffer
                 offset = copyBuffer(b"\x00\x00\x00\x00", buffer, offset)
             else:
                 raise ValueError("Unexpected value: {}".format(e))
         elif isinstance(e, bytes):
-            # print("copyBuffer bytes")
             count = np.int32(len(e))
             if count > MAX_VLEN_ELEMENT:
                 raise ValueError("vlen element too large")
             offset = copyBuffer(count.tobytes(), buffer, offset)
             offset = copyBuffer(e, buffer, offset)
         elif isinstance(e, str):
-            # print("copyBuffer, str")
             text = e.encode("utf-8")
             count = np.int32(len(text))
             if count > MAX_VLEN_ELEMENT:
@@ -311,18 +291,13 @@ def copyElement(e, dt, buffer, offset):
 
         elif isinstance(e, np.ndarray):
             nElements = math.prod(e.shape)
-            # print("copyBuffer ndarray, nElements:", nElements)
 
             if e.dtype.kind != "O":
                 count = np.int32(e.dtype.itemsize * nElements)
-                # print("copyBuffeer got vlen count:", count)
-                # print("copyBuffer e:", e)
                 if count > MAX_VLEN_ELEMENT:
                     raise ValueError("vlen element too large")
                 offset = copyBuffer(count.tobytes(), buffer, offset)
-                # print("copyBuffer write new count, offset:", offset)
                 offset = copyBuffer(e.tobytes(), buffer, offset)
-                # print("copyBuffer write data, offset:", offset)
             else:
                 arr1d = e.reshape((nElements,))
                 for item in arr1d:
@@ -340,7 +315,6 @@ def copyElement(e, dt, buffer, offset):
 
         else:
             raise TypeError("unexpected type: {}".format(type(e)))
-        # print("buffer: {}".format(buffer))
     return offset
 
 
@@ -385,12 +359,13 @@ def readElement(buffer, offset, arr, index, dt):
     Returns:
         int: The updated offset value after reading the element.
     """
+    # print("readElement, offset:", offset)
     if len(dt) > 1:
         e = arr[index]
         for name in dt.names:
             field_dt = dt[name]
             offset = readElement(buffer, offset, e, name, field_dt)
-    elif not dt.metadata or "vlen" not in dt.metadata:
+    elif not dt.base.metadata or "vlen" not in dt.base.metadata:
         count = dt.itemsize
         n = offset
         m = offset + count
@@ -399,12 +374,13 @@ def readElement(buffer, offset, arr, index, dt):
         try:
             e = np.frombuffer(bytes(e_buffer), dtype=dt)
             arr[index] = e[0]
+
         except ValueError:
-            print(f"ERROR: ValueError setting {e_buffer} and dtype: {dt}")
+            # print(f"ValueError setting {e_buffer} and dtype: {dt}")
             raise
     else:
         # variable length element
-        vlenBaseType = dt.metadata["vlen"]
+        vlenBaseType = dt.base.metadata["vlen"]
         e = arr[index]
 
         if isinstance(e, np.ndarray):
@@ -474,6 +450,7 @@ def arrayToBytes(arr, encoding=None):
     """
     Return byte representation of numpy array
     """
+
     if isVlen(arr.dtype):
         nSize = getByteArraySize(arr)
         buffer = bytearray(nSize)
@@ -481,7 +458,6 @@ def arrayToBytes(arr, encoding=None):
         nElements = math.prod(arr.shape)
         arr1d = arr.reshape((nElements,))
         for e in arr1d:
-            # print("arrayToBytes:", e)
             offset = copyElement(e, arr1d.dtype, buffer, offset)
         data = bytes(buffer)
     else:
@@ -499,17 +475,17 @@ def bytesToArray(data, dt, shape, encoding=None):
     """
     if encoding:
         # decode the data
-        # will raise ValueError if non-decodeable
+        # will raise ValueError if non-decodable
         data = decodeData(data)
     if not isVlen(dt):
         # regular numpy from string
         arr = np.frombuffer(data, dtype=dt)
     else:
-        nelements = getNumElements(shape)
+        nElements = getNumElements(shape)
 
-        arr = np.zeros((nelements,), dtype=dt)
+        arr = np.zeros((nElements,), dtype=dt)
         offset = 0
-        for index in range(nelements):
+        for index in range(nElements):
             offset = readElement(data, offset, arr, index, dt)
     if shape is not None:
         arr = arr.reshape(shape)

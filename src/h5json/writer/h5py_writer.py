@@ -345,7 +345,8 @@ class H5pyWriter(H5Writer):
 
         sel_all = selections.select(dset.shape, ...)
         arr = self.db.getDatasetValues(dset_id, sel_all)
-        dset[...] = arr
+        if arr is not None:
+            dset[...] = arr
 
     def createAttribute(self, obj, name, attr_json):
         """ add the given attribute to obj """

@@ -26,6 +26,7 @@ from h5json.array_util import IndexIterator
 from h5json.array_util import ndarray_compare
 from h5json.array_util import getNumpyValue
 from h5json.array_util import getBroadcastShape
+from h5json.array_util import isVlen
 
 from h5json.hdf5dtype import special_dtype
 from h5json.hdf5dtype import check_dtype
@@ -378,6 +379,12 @@ class ArrayUtilTest(unittest.TestCase):
         arr_copy = bytesToArray(buffer, dt, (4,))
         self.assertTrue(np.array_equal(arr, arr_copy))
 
+        # big-endian ints
+        dt = np.dtype(">u8")
+        arr = np.asarray((1, 2, 3, 4), dtype=dt)
+        buffer = arrayToBytes(arr)
+        self.assertEqual(buffer, arr.tobytes())
+
         # fixed length string
         dt = np.dtype("S8")
         arr = np.asarray(("abcdefgh", "ABCDEFGH", "12345678"), dtype=dt)
@@ -428,11 +435,11 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertTrue(ndarray_compare(arr, arr_copy))
 
         # VLEN of int32's
-        dt = np.dtype("O", metadata={"vlen": np.dtype("int32")})
+        dt = special_dtype(vlen=np.dtype("<i4"))
         arr = np.zeros((4,), dtype=dt)
         arr[0] = np.int32([1, ])
         arr[1] = np.int32([1, 2])
-        arr[2] = 0  # test un-intialized value
+        arr[2] = 0  # test un-initialized value
         arr[3] = np.int32([1, 2, 3])
         buffer = arrayToBytes(arr)
         self.assertEqual(len(buffer), 40)
@@ -442,7 +449,7 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertTrue(ndarray_compare(arr, arr_copy))
 
         # VLEN of strings
-        dt = np.dtype("O", metadata={"vlen": str})
+        dt = special_dtype(vlen=str)
         arr = np.zeros((5,), dtype=dt)
         arr[0] = "one: \u4e00"
         arr[1] = "two: \u4e8c"
@@ -467,7 +474,7 @@ class ArrayUtilTest(unittest.TestCase):
 
         self.assertTrue(ndarray_compare(arr, arr_copy))
         # VLEN of bytes
-        dt = np.dtype("O", metadata={"vlen": bytes})
+        dt = special_dtype(vlen=bytes)
         arr = np.zeros((5,), dtype=dt)
         arr[0] = b"Parting"
         arr[1] = b"is such"
@@ -494,7 +501,7 @@ class ArrayUtilTest(unittest.TestCase):
         #
         # Compound str vlen
         #
-        dt_vstr = np.dtype("O", metadata={"vlen": str})
+        dt_vstr = special_dtype(vlen=str)
         dt = np.dtype([("x", "i4"), ("tag", dt_vstr), ("code", "S4")])
         arr = np.zeros((4,), dtype=dt)
         arr[0] = (42, "Hello", "X1")
@@ -515,7 +522,7 @@ class ArrayUtilTest(unittest.TestCase):
         #
         # Compound int vlen
         #
-        dt_vint = np.dtype("O", metadata={"vlen": "int32"})
+        dt_vint = special_dtype(vlen=np.dtype("<i4"))
         dt = np.dtype([("x", "int32"), ("tag", dt_vint)])
         arr = np.zeros((4,), dtype=dt)
         arr[0] = (42, np.array((), dtype="int32"))
@@ -538,7 +545,8 @@ class ArrayUtilTest(unittest.TestCase):
         #
         # VLEN utf string with array type
         #
-        dt_arr_str = np.dtype("(2,)O", metadata={"vlen": str})
+        dt_str = special_dtype(vlen=str)
+        dt_arr_str = np.dtype((dt_str, (2,)))
         dt = np.dtype([("x", "i4"), ("tag", dt_arr_str)])
         arr = np.zeros((4,), dtype=dt)
         dt_str = special_dtype(vlen=str)
@@ -564,11 +572,11 @@ class ArrayUtilTest(unittest.TestCase):
         #
         # VLEN ascii with array type
         #
-        dt_arr_str = np.dtype("(2,)O", metadata={"vlen": bytes})
+        dt_str = special_dtype(vlen=bytes)
+        dt_arr_str = np.dtype((dt_str, (2,)))
         dt = np.dtype([("x", "i4"), ("tag", dt_arr_str)])
         arr = np.zeros((4,), dtype=dt)
 
-        dt_str = special_dtype(vlen=str)
         arr[0] = (42, np.asarray([b"hi", b"bye"], dtype=dt_str))
         arr[3] = (84, np.asarray([b"hi-hi", b"bye-bye"], dtype=dt_str))
         buffer = arrayToBytes(arr)
@@ -582,6 +590,69 @@ class ArrayUtilTest(unittest.TestCase):
 
         arr_copy = bytesToArray(buffer, dt, (4,))
         self.assertTrue(ndarray_compare(arr, arr_copy))
+
+        # test Compound with VLEN
+        count = 4
+        fixed_str8_type = {
+            "charSet": "H5T_CSET_ASCII",
+            "class": "H5T_STRING",
+            "length": 8,
+            "strPad": "H5T_STR_NULLPAD",
+        }
+        fields = [
+            {
+                "type": {"class": "H5T_INTEGER", "base": "H5T_STD_U64BE"},
+                "name": "VALUE1",
+            },
+            {
+                "type": fixed_str8_type,
+                "name": "VALUE2"
+            },
+            {
+                "type": {
+                    "class": "H5T_ARRAY",
+                    "dims": [2],
+                    "base": {
+                        "class": "H5T_STRING",
+                        "charSet": "H5T_CSET_ASCII",
+                        "strPad": "H5T_STR_NULLTERM",
+                        "length": "H5T_VARIABLE",
+                    },
+                },
+                "name": "VALUE3",
+            },
+        ]
+
+        datatype = {"class": "H5T_COMPOUND", "fields": fields}
+
+        dt = createDataType(datatype)
+        self.assertTrue(isVlen(dt))
+
+        # create numpy vlen array
+        arr = np.zeros((count,), dtype=dt)
+        for i in range(count):
+            e = arr[i]
+            e["VALUE1"] = i + 1
+            s = ""
+            for j in range(i + 5):
+                offset = (i + j) % 26
+                s += chr(ord("A") + offset)
+            e["VALUE2"] = s
+            e["VALUE3"] = [b"Hi! " * (i + 1), b"Bye!" * (i + 1)]
+
+        # converts to bytes
+        data = arrayToBytes(arr)
+        self.assertEqual(len(data), 192)  # will vary based on count
+
+        # convert back to array
+        arr_copy = bytesToArray(data, dt, (4,))
+
+        self.assertEqual(arr.dtype, arr_copy.dtype)
+        self.assertEqual(arr.shape, arr_copy.shape)
+        for i in range(4):
+            e = arr[i]
+            e_copy = arr_copy[i]
+            self.assertTrue(np.array_equal(e, e_copy))
 
     def testArrToBytesBase64(self):
         # Simple array
@@ -617,11 +688,11 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertTrue(ndarray_compare(arr, arr_copy))
 
         # VLEN of int32's
-        dt = np.dtype("O", metadata={"vlen": np.dtype("int32")})
+        dt = special_dtype(vlen=np.dtype("<i4"))
         arr = np.zeros((4,), dtype=dt)
         arr[0] = np.int32([1, ])
         arr[1] = np.int32([1, 2])
-        arr[2] = 0  # test un-intialized value
+        arr[2] = 0  # test un-initialized value
         arr[3] = np.int32([1, 2, 3])
         buffer = arrayToBytes(arr, encoding="base64")
 
@@ -630,7 +701,7 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertTrue(ndarray_compare(arr, arr_copy))
 
         # VLEN of strings
-        dt = np.dtype("O", metadata={"vlen": str})
+        dt = special_dtype(vlen=str)
         arr = np.zeros((5,), dtype=dt)
         arr[0] = "one: \u4e00"
         arr[1] = "two: \u4e8c"
@@ -643,7 +714,7 @@ class ArrayUtilTest(unittest.TestCase):
         arr_copy = bytesToArray(buffer, dt, (5,), encoding="base64")
         self.assertTrue(ndarray_compare(arr, arr_copy))
         # VLEN of bytes
-        dt = np.dtype("O", metadata={"vlen": bytes})
+        dt = special_dtype(vlen=bytes)
         arr = np.zeros((5,), dtype=dt)
         arr[0] = b"Parting"
         arr[1] = b"is such"
@@ -660,7 +731,7 @@ class ArrayUtilTest(unittest.TestCase):
         #
         # Compound str vlen
         #
-        dt_vstr = np.dtype("O", metadata={"vlen": str})
+        dt_vstr = special_dtype(vlen=str)
         dt = np.dtype([("x", "i4"), ("tag", dt_vstr), ("code", "S4")])
         arr = np.zeros((4,), dtype=dt)
         arr[0] = (42, "Hello", "X1")
@@ -675,7 +746,7 @@ class ArrayUtilTest(unittest.TestCase):
         #
         # Compound int vlen
         #
-        dt_vint = np.dtype("O", metadata={"vlen": "int32"})
+        dt_vint = special_dtype(vlen=np.dtype("<i4"))
         dt = np.dtype([("x", "int32"), ("tag", dt_vint)])
         arr = np.zeros((4,), dtype=dt)
         arr[0] = (42, np.array((), dtype="int32"))
@@ -691,7 +762,8 @@ class ArrayUtilTest(unittest.TestCase):
         #
         # VLEN utf string with array type
         #
-        dt_arr_str = np.dtype("(2,)O", metadata={"vlen": str})
+        dt_str = special_dtype(vlen=str)
+        dt_arr_str = np.dtype((dt_str, (2,)))
         dt = np.dtype([("x", "i4"), ("tag", dt_arr_str)])
         arr = np.zeros((4,), dtype=dt)
 
@@ -712,7 +784,8 @@ class ArrayUtilTest(unittest.TestCase):
         #
         # VLEN ascii with array type
         #
-        dt_arr_str = np.dtype("(2,)O", metadata={"vlen": bytes})
+        dt_str = special_dtype(vlen=bytes)
+        dt_arr_str = np.dtype((dt_str, (2,)))
         dt = np.dtype([("x", "i4"), ("tag", dt_arr_str)])
         arr = np.zeros((4,), dtype=dt)
 
@@ -737,7 +810,7 @@ class ArrayUtilTest(unittest.TestCase):
 
     def testArrayCompareVlenInt(self):
         # Vlen array
-        dt_vint = np.dtype("O", metadata={"vlen": "int32"})
+        dt_vint = special_dtype(vlen=np.dtype("<i4"))
         dt = np.dtype([("x", "int32"), ("tag", dt_vint)])
         arr1 = np.zeros((1024, 1024), dtype=dt)
         arr2 = np.zeros((1024, 1024), dtype=dt)
@@ -777,7 +850,6 @@ class ArrayUtilTest(unittest.TestCase):
                 if isinstance(b, str):
                     b = b.encode("utf8")
                 if a != b:
-                    print(f"{a} != {b}")
                     return False
 
             return True
@@ -818,7 +890,7 @@ class ArrayUtilTest(unittest.TestCase):
         #
         # Compound vlen
         #
-        dt_str = np.dtype("O", metadata={"vlen": str})
+        dt_str = special_dtype(vlen=str)
         dt = np.dtype([("x", "i4"), ("tag", dt_str)])
         shape = [4, ]
         data = [[42, "Hello"], [0, 0], [0, 0], [84, "Bye"]]
@@ -845,7 +917,8 @@ class ArrayUtilTest(unittest.TestCase):
         #
         # VLEN utf with array type
         #
-        dt_arr_str = np.dtype("(2,)O", metadata={"vlen": str})
+        dt_str = special_dtype(vlen=str)
+        dt_arr_str = np.dtype((dt_str, (2,)))
         dt = np.dtype([("x", "i4"), ("tag", dt_arr_str)])
         shape = [4,]
         data = [
@@ -871,7 +944,8 @@ class ArrayUtilTest(unittest.TestCase):
         #
         # VLEN ascii with array type
         #
-        dt_arr_str = np.dtype("(2,)O", metadata={"vlen": bytes})
+        dt_str = special_dtype(vlen=bytes)
+        dt_arr_str = np.dtype((dt_str, (2,)))
         dt = np.dtype([("x", "i4"), ("tag", dt_arr_str)])
         shape = [4,]
         data = [
@@ -934,7 +1008,7 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(val, b"hello")
 
         # test variable length string conversion
-        dt = np.dtype("O", metadata={"vlen": bytes})
+        dt = special_dtype(vlen=bytes)
         val = getNumpyValue("hello", dt=dt)
         self.assertTrue(isinstance(val, str))
         self.assertEqual(val, "hello")
