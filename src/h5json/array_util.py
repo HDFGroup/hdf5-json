@@ -105,7 +105,9 @@ def jsonToArray(data_shape, data_dtype, data_json):
     """
     Return numpy array from the given json array.
     """
+    # print(f"jsonToArray: data_shape: {data_shape}, data_dtype: {data_dtype} data_json: {data_json}")
     def fillVlenArray(rank, data, arr, index):
+        # print(f"fillVlenArray rank: {rank} data: {data} arr: {arr} index: {index}")
         if arr.shape == ():
             arr[()] = data
         else:
@@ -134,8 +136,8 @@ def jsonToArray(data_shape, data_dtype, data_json):
 
     if type(data_json) in (list, tuple):
         converted_data = []
-        if npoints == 1:
-            converted_data = toTuple(np_shape_rank, data_json)
+        if np_shape_rank > 0 and npoints == 1 and len(data_json) == len(data_dtype):
+            converted_data.append(toTuple(0, data_json))
         else:
             converted_data = toTuple(np_shape_rank, data_json)
         data_json = converted_data

@@ -202,6 +202,11 @@ class ArrayUtilTest(unittest.TestCase):
         except UnicodeEncodeError:
             pass  # expected
 
+        # UTF8 encode the data first
+        out = jsonToArray(shape, dt, data.encode('utf8'))
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out[()], data.encode('utf8'))
+
         # VLEN data
         dt = special_dtype(vlen=np.dtype("int32"))
         shape = [4, ]
@@ -298,46 +303,53 @@ class ArrayUtilTest(unittest.TestCase):
         e1 = out[1].tolist()
         self.assertEqual(e1, (5, b"five"))
 
+        data = [6, "six"]
+        shape = [1,]
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, (1,))
+        self.assertTrue(isinstance(out[0], np.void))
+        e1 = out[0].tolist()
+        self.assertEqual(e1, (6, b"six"))
+
+        data = [7, "seven"]
+        shape = []
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, ())
+        self.assertTrue(isinstance(out[()], np.void))
+        e1 = out[()].tolist()
+        self.assertEqual(e1, (7, b"seven"))
+
         # compound with VLEN element
 
         dt_str = special_dtype(vlen=str)
         dt = np.dtype([("a", "i4"), ("b", dt_str)])
+        shape = [2, ]
+        data = [[4, "four"], [5, "five"]]
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, (2,))
+        e0 = out[0].tolist()
+        self.assertEqual(e0, (4, "four"))
+
         shape = [1, ]
-        data = [[6, "six"],]
+        data = [6, "six"]
         out = jsonToArray(shape, dt, data)
         self.assertTrue(isinstance(out, np.ndarray))
         self.assertEqual(out.shape, (1,))
-        e0 = out[0]
-
         e0 = out[0].tolist()
         self.assertEqual(e0, (6, "six"))
+
         shape = []
-        data = [6, "six",]
+        data = [7, "seven",]
         out = jsonToArray(shape, dt, data)
         self.assertTrue(isinstance(out, np.ndarray))
         self.assertEqual(out.shape, ())
         e0 = out[()]
         self.assertEqual(len(e0), 2)
-        self.assertEqual(e0[0], 6)
-        self.assertEqual(e0[1], "six")
-
-        # one element compound
-        shape = [1, ]
-        data = [[6, "six"],]
-        out = jsonToArray(shape, dt, data)
-        self.assertTrue(isinstance(out, np.ndarray))
-        self.assertEqual(out.shape, (1,))
-        e0 = out[0].tolist()
-        self.assertEqual(e0, (6, "six"))
-
-        # scalar compound
-        shape = []
-        data = [6, "six"]
-        out = jsonToArray(shape, dt, data)
-        self.assertTrue(isinstance(out, np.ndarray))
-        self.assertEqual(out.shape, ())
-        e0 = out[()].tolist()
-        self.assertEqual(e0, (6, "six"))
+        self.assertEqual(e0[0], 7)
+        self.assertEqual(e0[1], "seven")
 
         # compound type with array field
         dt = np.dtype([("a", ("i4", 3)), ("b", "S5")])
