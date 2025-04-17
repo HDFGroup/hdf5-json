@@ -61,7 +61,7 @@ def bytesArrayToList(data):
     return out
 
 
-def toTuple(rank, data):
+def toTuple(rank, data, encoding=None):
     """
     Convert a list to a tuple, recursively.
     Example. [[1,2],[3,4]] -> ((1,2),(3,4))
@@ -72,6 +72,8 @@ def toTuple(rank, data):
         else:
             return tuple(toTuple(rank - 1, x) for x in data)
     else:
+        if encoding:
+            data = data.encode(encoding, "surrogateesacpe")
         return data
 
 
@@ -153,9 +155,9 @@ def jsonToArray(data_shape, data_dtype, data_json):
         try:
             arr = np.array(data_json, dtype=data_dtype)
         except UnicodeEncodeError:
-            # Unable to encode data
-            # TBD: look into using surrogate encoding here
-            raise
+            # Unable to encode data, encode as utf8 with surrogate escaping
+            data_json = toTuple(np_shape_rank, data_json, encoding="utf8")
+            arr = np.array(data_json, dtype=data_dtype)
     # raise an exception of the array shape doesn't match the selection shape
     # allow if the array is a scalar and the selection shape is one element,
     # numpy is ok with this

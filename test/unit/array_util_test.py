@@ -116,6 +116,21 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(out.shape, ())
         self.assertEqual(out[()], 42)
 
+        dt = np.dtype("S10")  # fixed size string
+        shape = [5, ]
+        data = ["parting", "is", "such", "sweet", "sorrow"]
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, (5, ))
+        self.assertEqual(out[4], b'sorrow')
+
+        shape = ()  # scalar
+        data = "a string"
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, ())
+        self.assertEqual(out[()], b'a string')
+
         # VLEN Scalar str
         dt = special_dtype(vlen=str)
         data = "I'm a string!"
@@ -179,33 +194,36 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(out.dtype.kind, "O")
         self.assertEqual(out[2], "three")
 
-        # test ascii chars >127
+        # test utf8 strings
         dt = np.dtype("S26")
         shape = []
-        data = "extended ascii char 241: " + chr(241)
-        try:
-            jsonToArray(shape, dt, data)
-            self.assertTrue(False)
-        except ValueError:
-            pass  # expected
+        data = "eight: \u516b"
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out[()], data.encode("utf8"))
 
         dt = special_dtype(vlen=str)
-        out = jsonToArray(shape, dt, data)  # vlen str should be ok
+        out = jsonToArray(shape, dt, data)
         self.assertTrue(isinstance(out, np.ndarray))
         self.assertEqual(out[()], data)
 
         dt = np.dtype("S12")
         data = "eight: \u516b"
-        try:
-            jsonToArray(shape, dt, data)
-            self.assertTrue(False)
-        except UnicodeEncodeError:
-            pass  # expected
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out[()], data.encode("utf8"))
 
         # UTF8 encode the data first
         out = jsonToArray(shape, dt, data.encode('utf8'))
         self.assertTrue(isinstance(out, np.ndarray))
         self.assertEqual(out[()], data.encode('utf8'))
+
+        # one-element array
+        shape = [1,]
+        dt = np.dtype("S12")
+        data = "eight: \u516b"
+        out = jsonToArray(shape, dt, data)
+        self.assertEqual(out[0], b'eight: \xe5\x85\xab')
 
         # VLEN data
         dt = special_dtype(vlen=np.dtype("int32"))
