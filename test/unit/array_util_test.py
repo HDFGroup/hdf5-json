@@ -82,6 +82,27 @@ class ArrayUtilTest(unittest.TestCase):
         out = toTuple(1, data3d)  # treat input a 1d array of compound type of compound types
         self.assertEqual([((0, 0.0), (1, 0.1)), ((2, 0.2), (3, 0.3))], out)
 
+    def testToTupleStrData(self):
+        data = "a string!"
+        out = toTuple(0, data)
+        self.assertEqual(data, out)
+
+        data = ["a string!"]
+        out = toTuple(1, data)
+        self.assertEqual(data, out)
+
+        data = ["a string2"]
+        out = toTuple(1, data)
+        self.assertEqual(data, out)
+
+        data = [["partA", "partB", "partC"],]
+        out = toTuple(1, data)
+        self.assertEqual([("partA", "partB", "partC"), ], out)
+
+        data = [[[4, 8, 12], "four"], [[5, 10, 15], "five"]]
+        out = toTuple(1, data)
+        self.assertEqual([((4, 8, 12), 'four'), ((5, 10, 15), 'five')], out)
+
     def testGetNumElements(self):
         shape = (4,)
         nelements = getNumElements(shape)
@@ -98,7 +119,6 @@ class ArrayUtilTest(unittest.TestCase):
     def testJsonToArray(self):
 
         # simple integer
-
         dt = np.dtype("i4")
         shape = [4, ]
         data = [0, 2, 4, 6]
@@ -151,6 +171,14 @@ class ArrayUtilTest(unittest.TestCase):
         val = out[0]
         self.assertEqual(val, data)
 
+        # VLEN multi element
+        shape = [5, ]
+        data = ["parting", "is", "such", "sweet", "sorrow"]
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, (5, ))
+        self.assertEqual(out[4], 'sorrow')
+
         # VLEN ascii
         dt = special_dtype(vlen=bytes)
         data = [b"one", b"two", b"three", b"four", b"five"]
@@ -166,22 +194,6 @@ class ArrayUtilTest(unittest.TestCase):
         #  probably not worth the effort to fix
         self.assertEqual(out[2], b"three")
         self.assertEqual(out[3], b"four")
-
-        # VLEN str
-        dt = special_dtype(vlen=str)
-        data = [
-            [b"part 1 - section A", b"part 1 - section B"],
-            [b"part 2 - section A", b"part 2 - section B"],
-        ]
-        shape = [2,]
-        out = jsonToArray(shape, dt, data)
-        self.assertTrue(isinstance(out, np.ndarray))
-        self.assertTrue("vlen" in out.dtype.metadata)
-        self.assertEqual(out.dtype.metadata["vlen"], str)
-        self.assertEqual(out.dtype.kind, "O")
-        self.assertEqual(out.shape, (2,))
-        self.assertEqual(out[0], tuple(data[0]))
-        self.assertEqual(out[1], tuple(data[1]))
 
         # VLEN unicode
         dt = special_dtype(vlen=bytes)
@@ -207,6 +219,12 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertTrue(isinstance(out, np.ndarray))
         self.assertEqual(out[()], data)
 
+        data = ["I'm an UTF-8 null terminated string",]
+        shape = [1,]
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out[0], data[0])
+
         dt = np.dtype("S12")
         data = "eight: \u516b"
         out = jsonToArray(shape, dt, data)
@@ -223,9 +241,16 @@ class ArrayUtilTest(unittest.TestCase):
         dt = np.dtype("S12")
         data = "eight: \u516b"
         out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
         self.assertEqual(out[0], b'eight: \xe5\x85\xab')
 
         # VLEN data
+        shape = []
+        dt = special_dtype(vlen=np.dtype("S10"))
+        data = ["foo", "bar"]
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+
         dt = special_dtype(vlen=np.dtype("int32"))
         shape = [4, ]
         data = [
@@ -321,7 +346,7 @@ class ArrayUtilTest(unittest.TestCase):
         e1 = out[1].tolist()
         self.assertEqual(e1, (5, b"five"))
 
-        data = [6, "six"]
+        data = [[6, "six"],]
         shape = [1,]
         out = jsonToArray(shape, dt, data)
         self.assertTrue(isinstance(out, np.ndarray))
@@ -352,7 +377,7 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(e0, (4, "four"))
 
         shape = [1, ]
-        data = [6, "six"]
+        data = [[6, "six"],]
         out = jsonToArray(shape, dt, data)
         self.assertTrue(isinstance(out, np.ndarray))
         self.assertEqual(out.shape, (1,))

@@ -107,19 +107,6 @@ def jsonToArray(data_shape, data_dtype, data_json):
     """
     Return numpy array from the given json array.
     """
-    # print(f"jsonToArray: data_shape: {data_shape}, data_dtype: {data_dtype} data_json: {data_json}")
-    def fillVlenArray(rank, data, arr, index):
-        # print(f"fillVlenArray rank: {rank} data: {data} arr: {arr} index: {index}")
-        if arr.shape == ():
-            arr[()] = data
-        else:
-            for i in range(len(data)):
-                if rank > 1:
-                    index = fillVlenArray(rank - 1, data[i], arr, index)
-                else:
-                    arr[index] = data[i]
-                    index += 1
-        return index
 
     if data_json is None:
         return np.array([]).astype(data_dtype)
@@ -131,33 +118,23 @@ def jsonToArray(data_shape, data_dtype, data_json):
     # need some special conversion for compound types --
     # each element must be a tuple, but the JSON decoder
     # gives us a list instead.
-    if len(data_dtype) > 1 and not isinstance(data_json, (list, tuple)):
+    if len(data_dtype) > 0 and not isinstance(data_json, (list, tuple)):
         raise TypeError("expected list data for compound data type")
     npoints = getNumElements(data_shape)
     np_shape_rank = len(data_shape)
 
     if type(data_json) in (list, tuple):
-        converted_data = []
-        if np_shape_rank > 0 and npoints == 1 and len(data_json) == len(data_dtype):
-            converted_data.append(toTuple(0, data_json))
-        else:
-            converted_data = toTuple(np_shape_rank, data_json)
-        data_json = converted_data
+        data_json = toTuple(np_shape_rank, data_json)
 
-    if isVlen(data_dtype):
-        if np_shape_rank == 0 and npoints == 1:
-            arr_shape = ()
-        else:
-            arr_shape = (npoints,)
-        arr = np.zeros(arr_shape, dtype=data_dtype)
-        fillVlenArray(np_shape_rank, data_json, arr, 0)
-    else:
-        try:
-            arr = np.array(data_json, dtype=data_dtype)
-        except UnicodeEncodeError:
-            # Unable to encode data, encode as utf8 with surrogate escaping
-            data_json = toTuple(np_shape_rank, data_json, encoding="utf8")
-            arr = np.array(data_json, dtype=data_dtype)
+    arr = np.zeros(data_shape, dtype=data_dtype)
+
+    try:
+        # arr = np.array(data_json, dtype=data_dtype)
+        arr[...] = data_json
+    except UnicodeEncodeError:
+        # Unable to encode data, encode as utf8 with surrogate escaping
+        data_json = toTuple(np_shape_rank, data_json, encoding="utf8")
+        arr[...] = data_json
     # raise an exception of the array shape doesn't match the selection shape
     # allow if the array is a scalar and the selection shape is one element,
     # numpy is ok with this
@@ -165,8 +142,6 @@ def jsonToArray(data_shape, data_dtype, data_json):
         msg = "Input data doesn't match selection number of elements"
         msg += f" Expected {npoints}, but received: {arr.size}"
         raise ValueError(msg)
-    if arr.shape != data_shape:
-        arr = arr.reshape(data_shape)  # reshape to match selection
 
     return arr
 
