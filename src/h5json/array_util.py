@@ -108,7 +108,7 @@ def jsonToArray(data_shape, data_dtype, data_json):
     Return numpy array from the given json array.
     """
 
-    print(f"jsonToArray - data_shape: {data_shape} dtype: {data_dtype} data: {data_json}")
+    # print(f"jsonToArray - data_shape: {data_shape} dtype: {data_dtype} data: {data_json}")
 
     def get_array(data, rank, dtype):
         # helper function to create an array with encoding if needed
@@ -137,12 +137,10 @@ def jsonToArray(data_shape, data_dtype, data_json):
 
     if type(data_json) in (list, tuple):
         data_json = toTuple(np_shape_rank, data_json)
-        print("data_json after toTuple:", data_json)
 
     if isVlen(data_dtype):
         # for vlen data we need to initialize of zero numpy array to ensure the right shape
         arr = np.zeros(data_shape, dtype=data_dtype)
-        print("made vlen arr:", arr)
         arr[...] = data_json
     else:
         arr = get_array(data_json, np_shape_rank, data_dtype)
@@ -153,7 +151,6 @@ def jsonToArray(data_shape, data_dtype, data_json):
     if arr.size != npoints:
         msg = "Input data doesn't match selection number of elements"
         msg += f" Expected {npoints}, but received: {arr.size}"
-        print(msg)
         # try adding an extra dimension to data_json
         # for cases where e.g. compound types are not getting interpreted correctly
         data_json = toTuple(np_shape_rank, [data_json, ])
@@ -163,7 +160,6 @@ def jsonToArray(data_shape, data_dtype, data_json):
             raise ValueError(msg)
 
     if arr.shape != tuple(data_shape):
-        print("reshaping to:", data_shape)
         arr = arr.reshape(tuple(data_shape))
 
     return arr
