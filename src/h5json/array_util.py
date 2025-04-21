@@ -108,6 +108,8 @@ def jsonToArray(data_shape, data_dtype, data_json):
     Return numpy array from the given json array.
     """
 
+    print(f"jsonToArray - data_shape: {data_shape} dtype: {data_dtype} data: {data_json}")
+
     if data_json is None:
         return np.array([]).astype(data_dtype)
 
@@ -141,6 +143,7 @@ def jsonToArray(data_shape, data_dtype, data_json):
     if arr.size != npoints:
         msg = "Input data doesn't match selection number of elements"
         msg += f" Expected {npoints}, but received: {arr.size}"
+        print(msg)
         raise ValueError(msg)
 
     return arr

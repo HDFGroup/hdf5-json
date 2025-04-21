@@ -364,6 +364,15 @@ class ArrayUtilTest(unittest.TestCase):
         e1 = out[()].tolist()
         self.assertEqual(e1, (7, b"seven"))
 
+        data = [8, "eight"],
+        shape = [1,]
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, (1,))
+        self.assertTrue(isinstance(out[0], np.void))
+        e1 = out[0].tolist()
+        self.assertEqual(e1, (8, b"eight"))
+
         # compound with VLEN element
 
         dt_str = special_dtype(vlen=str)
