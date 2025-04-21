@@ -136,6 +136,36 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(out.shape, ())
         self.assertEqual(out[()], 42)
 
+        shape = (1, )  # one element
+        data = 42
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, (1, ))
+        self.assertEqual(out[0], 42)
+
+        shape = (10, )  # multi-1D
+        data = list(range(10))
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, (10, ))
+        self.assertEqual(out[5], 5)
+
+        shape = (5, 4)  # multi-2D
+        data = []
+        for i in range(5):
+            data.append([42, ] * 4)
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, (5, 4))
+        self.assertEqual(out[2, 3], 42)
+
+        shape = (5, 4)  # multi-2D, reshape input data
+        data = [42, ] * 20
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, (5, 4))
+        self.assertEqual(out[2, 3], 42)
+
         dt = np.dtype("S10")  # fixed size string
         shape = [5, ]
         data = ["parting", "is", "such", "sweet", "sorrow"]

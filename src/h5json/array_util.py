@@ -110,6 +110,16 @@ def jsonToArray(data_shape, data_dtype, data_json):
 
     print(f"jsonToArray - data_shape: {data_shape} dtype: {data_dtype} data: {data_json}")
 
+    def get_array(data, rank, dtype):
+        # helper function to create an array with encoding if needed
+        try:
+            arr = np.array(data, dtype=dtype)
+        except UnicodeEncodeError:
+            # Unable to encode data, encode as utf8 with surrogate escaping
+            data = toTuple(rank, data, encoding="utf8")
+            arr = np.array(data, dtype=dtype)
+        return arr
+
     if data_json is None:
         return np.array([]).astype(data_dtype)
 
@@ -127,21 +137,16 @@ def jsonToArray(data_shape, data_dtype, data_json):
 
     if type(data_json) in (list, tuple):
         data_json = toTuple(np_shape_rank, data_json)
+        print("data_json after toTuple:", data_json)
 
-    arr = np.zeros(data_shape, dtype=data_dtype)
+    if isVlen(data_dtype):
+        # for vlen data we need to initialize of zero numpy array to ensure the right shape
+        arr = np.zeros(data_shape, dtype=data_dtype)
+        print("made vlen arr:", arr)
+        arr[...] = data_json
+    else:
+        arr = get_array(data_json, np_shape_rank, data_dtype)
 
-    try:
-        arr[...] = data_json
-    except UnicodeEncodeError:
-        # Unable to encode data, encode as utf8 with surrogate escaping
-        data_json = toTuple(np_shape_rank, data_json, encoding="utf8")
-        arr[...] = data_json
-    except ValueError:
-        if npoints == 1:
-            # try setting the first and only element
-            arr[0] = tuple(data_json)
-        else:
-            raise
     # raise an exception of the array shape doesn't match the selection shape
     # allow if the array is a scalar and the selection shape is one element,
     # numpy is ok with this
@@ -149,7 +154,17 @@ def jsonToArray(data_shape, data_dtype, data_json):
         msg = "Input data doesn't match selection number of elements"
         msg += f" Expected {npoints}, but received: {arr.size}"
         print(msg)
-        raise ValueError(msg)
+        # try adding an extra dimension to data_json
+        # for cases where e.g. compound types are not getting interpreted correctly
+        data_json = toTuple(np_shape_rank, [data_json, ])
+        arr = get_array(data_json, np_shape_rank, data_dtype)
+        if arr.size != npoints:
+            # still no good, raise error
+            raise ValueError(msg)
+
+    if arr.shape != tuple(data_shape):
+        print("reshaping to:", data_shape)
+        arr = arr.reshape(tuple(data_shape))
 
     return arr
 
