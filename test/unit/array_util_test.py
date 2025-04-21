@@ -373,6 +373,15 @@ class ArrayUtilTest(unittest.TestCase):
         e1 = out[0].tolist()
         self.assertEqual(e1, (8, b"eight"))
 
+        dt = np.dtype([("a", "i4"), ("b", "f4")])
+        shape = [1, ]
+        data = [42, 0.42]
+        out = jsonToArray(shape, dt, data)
+        self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, (1, ))
+        e1 = out[0]
+        self.assertEqual(e1[0], 42)
+
         # compound with VLEN element
 
         dt_str = special_dtype(vlen=str)

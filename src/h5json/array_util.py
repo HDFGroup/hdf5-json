@@ -131,12 +131,17 @@ def jsonToArray(data_shape, data_dtype, data_json):
     arr = np.zeros(data_shape, dtype=data_dtype)
 
     try:
-        # arr = np.array(data_json, dtype=data_dtype)
         arr[...] = data_json
     except UnicodeEncodeError:
         # Unable to encode data, encode as utf8 with surrogate escaping
         data_json = toTuple(np_shape_rank, data_json, encoding="utf8")
         arr[...] = data_json
+    except ValueError:
+        if npoints == 1:
+            # try setting the first and only element
+            arr[0] = tuple(data_json)
+        else:
+            raise
     # raise an exception of the array shape doesn't match the selection shape
     # allow if the array is a scalar and the selection shape is one element,
     # numpy is ok with this
