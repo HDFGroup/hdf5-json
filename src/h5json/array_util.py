@@ -143,7 +143,14 @@ def jsonToArray(data_shape, data_dtype, data_json):
         arr = np.zeros(data_shape, dtype=data_dtype)
         arr[...] = data_json
     else:
-        arr = get_array(data_json, np_shape_rank, data_dtype)
+        try:
+            arr = get_array(data_json, np_shape_rank, data_dtype)
+        except ValueError:
+            if npoints <= 1 and isinstance(data_json, list):
+                # try converting data to a tuple
+                arr = get_array(tuple(data_json), np_shape_rank, data_dtype)
+            else:
+                raise
 
     # raise an exception of the array shape doesn't match the selection shape
     # allow if the array is a scalar and the selection shape is one element,

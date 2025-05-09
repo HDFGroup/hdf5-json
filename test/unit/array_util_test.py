@@ -394,7 +394,7 @@ class ArrayUtilTest(unittest.TestCase):
         e1 = out[()].tolist()
         self.assertEqual(e1, (7, b"seven"))
 
-        data = [8, "eight"],
+        data = [8, "eight"]
         shape = [1,]
         out = jsonToArray(shape, dt, data)
         self.assertTrue(isinstance(out, np.ndarray))
