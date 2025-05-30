@@ -465,7 +465,7 @@ class H5pyReader(H5Reader):
 
         return obj_json
 
-    def getDatasetValues(self, dset_id, sel=None):
+    def getDatasetValues(self, dset_id, sel=None, dtype=None):
         """
         Get values from dataset identified by obj_id.
         If a slices list or tuple is provided, it should have the same

@@ -53,6 +53,7 @@ packages = [
     "h5json",
     "h5json.jsonstore",
     "h5json.h5pystore",
+    "h5json.hsdsstore",
     "h5json.h5tojson",
     "h5json.jsontoh5",
     "h5json.schema",

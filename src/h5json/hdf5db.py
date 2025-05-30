@@ -472,7 +472,7 @@ class Hdf5db:
 
         dtype = self.getDtype(dset_json)
         if self.reader:
-            arr = self.reader.getDatasetValues(dset_id, sel)
+            arr = self.reader.getDatasetValues(dset_id, sel, dtype=dtype)
         else:
             # TBD: Initialize with fill value if non-zero
             arr = np.zeros(sel.shape, dtype=dtype)
