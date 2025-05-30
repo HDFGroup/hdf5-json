@@ -51,8 +51,8 @@ build-backend = "setuptools.build_meta"
 package-dir = { "" = "src" }
 packages = [
     "h5json",
-    "h5json.reader",
-    "h5json.writer",
+    "h5json.jsonstore",
+    "h5json.h5pystore",
     "h5json.h5tojson",
     "h5json.jsontoh5",
     "h5json.schema",

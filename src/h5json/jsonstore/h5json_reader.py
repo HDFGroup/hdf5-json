@@ -17,7 +17,7 @@ from ..objid import getCollectionForId, getUuidFromId
 from ..hdf5dtype import createDataType
 from ..array_util import jsonToArray
 from .. import selections
-from .h5reader import H5Reader
+from ..h5reader import H5Reader
 
 
 class H5JsonReader(H5Reader):

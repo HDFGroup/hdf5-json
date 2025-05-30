@@ -12,7 +12,7 @@
 
 import json
 
-from .h5writer import H5Writer
+from ..h5writer import H5Writer
 from ..objid import getUuidFromId, getCollectionForId
 from ..array_util import bytesArrayToList
 from .. import selections

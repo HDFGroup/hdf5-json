@@ -13,7 +13,7 @@ import unittest
 import logging
 import numpy as np
 from h5json import Hdf5db
-from h5json.reader.h5json_reader import H5JsonReader
+from h5json.jsonstore.h5json_reader import H5JsonReader
 from h5json import selections
 
 

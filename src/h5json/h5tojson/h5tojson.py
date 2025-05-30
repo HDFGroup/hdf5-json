@@ -15,8 +15,8 @@ import logging
 import logging.handlers
 
 from h5json import Hdf5db
-from h5json.writer.h5json_writer import H5JsonWriter
-from h5json.reader.h5py_reader import H5pyReader
+from h5json.jsonstore.h5json_writer import H5JsonWriter
+from h5json.h5pystore.h5py_reader import H5pyReader
 
 
 def main():

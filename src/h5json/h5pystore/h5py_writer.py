@@ -19,7 +19,7 @@ from ..h5py_util import is_reference, is_regionreference, has_reference, convert
 from ..array_util import jsonToArray
 from .. import selections
 from .. import filters
-from .h5writer import H5Writer
+from ..h5writer import H5Writer
 
 
 class H5pyWriter(H5Writer):

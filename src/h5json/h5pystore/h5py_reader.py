@@ -20,7 +20,7 @@ from .. import selections
 from .. import filters
 
 from ..h5py_util import is_reference, is_regionreference, has_reference, convert_dtype
-from .h5reader import H5Reader
+from ..h5reader import H5Reader
 
 
 class H5pyReader(H5Reader):

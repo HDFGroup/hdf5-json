@@ -13,7 +13,7 @@ import unittest
 
 import logging
 from h5json import Hdf5db
-from h5json.reader.h5py_reader import H5pyReader
+from h5json.h5pystore.h5py_reader import H5pyReader
 
 
 class H5pyReaderTest(unittest.TestCase):
