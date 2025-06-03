@@ -59,7 +59,7 @@ class HSDSReader(H5Reader):
             self.log.debug(f"    username: {username}")
             kwargs["username"] = username
         if password:
-            self.log.debug(f"    password: {"*" * len(password)}")
+            self.log.debug(f"    password: {'*' * len(password)}")
             kwargs["password"] = password
         if bucket:
             self.log.debug(f"    bucket: {bucket}")
@@ -68,7 +68,7 @@ class HSDSReader(H5Reader):
             self.log.debug(f"    mode: {mode}")
             kwargs["mode"] = mode
         if api_key:
-            self.log.debug(f"    apI_key: {"*" * len(api_key)}")
+            self.log.debug(f"    apI_key: {'*' * len(api_key)}")
             kwargs["api_key"] = api_key
         if use_session:
             self.log.debug(f"    use_session: {use_session}")
