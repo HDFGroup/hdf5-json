@@ -9,13 +9,12 @@
 # distribution tree.  If you do not have access to this file, you may        #
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
-import json
 import logging
 
 from ..objid import getCollectionForId, getUuidFromId
 
 from ..hdf5dtype import createDataType
-from ..array_util import jsonToArray
+from ..array_util import jsonToArray, bytesToArray
 from .. import selections
 from ..h5reader import H5Reader
 from .httpconn import HttpConn
@@ -162,6 +161,10 @@ class HSDSReader(H5Reader):
         self._root_id = "g-" + h5json["root"]
         """
 
+    @property
+    def http_conn(self):
+        return self._http_conn
+
     def close(self):
         pass
 
@@ -183,15 +186,17 @@ class HSDSReader(H5Reader):
         if include_links:
             params["include_links"] = 1
 
-        rsp = self._http_conn.GET(req, params=params)
+        rsp = self.http_conn.GET(req, params=params)
 
         if rsp.status_code != 200:
             raise IOError(rsp.status_code, rsp.reason)
 
         obj_json = rsp.json()
-        if "hrefs" in obj_json:
-            # don't need these
-            del obj_json["hrefs"]
+        # remove any unneeded keys
+        redundant_keys = ("hrefs", "root", "domain", "bucket", "linkCount", "attributeCount")
+        for key in redundant_keys:
+            if key in obj_json:
+                del obj_json[key]
 
         self.log.debug(f"got json for id: {obj_id}: {obj_json}")
         return obj_json
@@ -208,7 +213,7 @@ class HSDSReader(H5Reader):
         params = {}
         params["IncludeData"] = 1 if includeData else 0
 
-        rsp = self._http_conn.GET(req, params=params)
+        rsp = self.http_conn.GET(req, params=params)
 
         if rsp.status_code in (404, 410):
             self.log.warning(f"attribute {name} not found")
@@ -254,28 +259,60 @@ class HSDSReader(H5Reader):
             self.log.warning(msg)
             return ValueError(msg)
 
-        params = {}
         if sel is None or sel.select_type == selections.H5S_SELECT_ALL:
-            pass  # just return the entire array
-        elif isinstance(sel, selections.SimpleSelection):
-            params["select"] = sel.getQueryParam()
+            query_param = None  # just return the entire array
+        elif isinstance(sel, (selections.SimpleSelection, selections.FancySelection)):
+            query_param = sel.getQueryParam()
         else:
-            raise NotImplementedError("selection type not supported")
+            raise NotImplementedError(f"selection type: {type(sel)} not supported")
+
+        mtype = dtype  # TBD - support read time dtype
+        mshape = sel.mshape
 
         req = f"/{collection}/{dset_id}/value"
-        rsp = self._http_conn.GET(req, params=params)
+        params = {}
+
+        if query_param:
+            params["select"] = query_param
+
+        if mtype.names != dtype.names:
+            params["fields"] = ":".join(mtype.names)
+
+        MAX_SELECT_QUERY_LEN = 100
+        if len(query_param) > MAX_SELECT_QUERY_LEN:
+            # use a post method to avoid possible long query strings
+            try:
+                rsp = self.http_conn.POST(req, body=params, format="binary")
+            except IOError as ioe:
+                self.log.info(f"got IOError: {ioe.errno}")
+                raise IOError(f"Error retrieving data: {ioe.errno}")
+        else:
+            # make a http GET
+            try:
+                rsp = self.http_conn.GET(req, params=params, format="binary")
+            except IOError as ioe:
+                self.log.info(f"got IOError: {ioe.errno}")
+                raise IOError(ioe.errno, "Error retrieving data")
+
         if rsp.status_code != 200:
-            self.log.error(f"GET {req} failed with status_code: {rsp.status_code}")
-            raise IOError(rsp.status_code, rsp.reason)
+            self.log.info(f"got http error: {rsp.status_code}")
+            raise IOError(rsp.status_code, "Error retrieving data")
 
-        rsp_json = rsp.json()
-        if "value" not in rsp_json:
-            self.log.warning(f"value key not found for {dset_id}")
-            return None
+        if rsp.is_binary:
+            # got binary response
+            self.log.info(f"binary response, {len(rsp.text)} bytes")
+            arr = bytesToArray(rsp.text, mtype, mshape)
+        else:
+            # got JSON response
+            # need some special conversion for compound types --
+            # each element must be a tuple, but the JSON decoder
+            # gives us a list instead.
+            self.log.info("json response")
 
-        self.log.debug(f"got rsp: {rsp_json}")
-        json_value = rsp_json["value"]
+            data = rsp.json()["value"]
+            # self.log.debug(data)
 
-        arr = jsonToArray(sel.mshape, dtype, json_value)
+            arr = jsonToArray(mshape, mtype, data)
+            self.log.debug(f"jsonToArray returned: {arr}")
 
         return arr

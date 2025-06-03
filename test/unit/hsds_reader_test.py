@@ -17,18 +17,6 @@ from h5json.hsdsstore.hsds_reader import HSDSReader
 from h5json import selections
 
 
-def get_endpoint():
-    return "http://hsds.hdf.test:5101"
-
-
-def get_username():
-    return "test_user1"
-
-
-def get_password():
-    return "test"
-
-
 class HSDSReaderTest(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(HSDSReaderTest, self).__init__(*args, **kwargs)
@@ -52,9 +40,6 @@ class HSDSReaderTest(unittest.TestCase):
         filepath = "/home/test_user1/test/tall.h5"
         kwargs = {"app_logger": self.log}
         with Hdf5db(**kwargs) as db:
-            kwargs["username"] = get_username()
-            kwargs["password"] = get_password()
-            kwargs["endpoint"] = get_endpoint()
             hsds_reader = HSDSReader(filepath, **kwargs)
             db.reader = hsds_reader
             root_id = db.getObjectIdByPath("/")
@@ -81,6 +66,16 @@ class HSDSReaderTest(unittest.TestCase):
             dset_shape = dset_json["shape"]
             self.assertEqual(dset_shape["class"], "H5S_SIMPLE")
             self.assertEqual(dset_shape["dims"], [10, 10])
+
+            # got the 5th row of the dataset
+            sel_row = selections.select((10, 10), (5, slice(0, 10)))
+            row = db.getDatasetValues(dset111_id, sel_row)
+            self.assertTrue(isinstance(row, np.ndarray))
+            self.assertEqual(row.shape, (10,))
+            for i in range(10):
+                v = row[i]
+                self.assertEqual(v, i * 5)
+
             sel_all = selections.select((10, 10), ...)
             arr = db.getDatasetValues(dset111_id, sel_all)
             self.assertTrue(isinstance(arr, np.ndarray))

@@ -83,5 +83,8 @@ jobs:
 
       - name: Run tests
         shell: bash
+        HS_ENDPOINT: http://localhost:5101
+        HS_USERNAME: test_user1
+        HS_PASSWORD: test
         run: |
           python testall.py

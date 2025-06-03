@@ -15,7 +15,7 @@ import sys
 import shutil
 import h5py
 
-unit_tests = (
+unit_tests = [
     "array_util_test",
     "objid_test",
     "hdf5dtype_test",
@@ -24,7 +24,19 @@ unit_tests = (
     "h5json_writer_test",
     "h5py_reader_test",
     "h5py_writer_test",
-)
+]
+
+use_hsds = True
+for key in ("HS_ENDPOINT", "HS_USERNAME", "HS_PASSWORD"):
+    if key not in os.environ:
+        use_hsds = False
+        print(f"not including HSDS tests, no {key} environment set")
+        break
+
+if use_hsds:
+    unit_tests.append("hsds_reader_test")
+unit_tests = tuple(unit_tests)
+
 integ_tests = ("h5tojson_test", "jsontoh5_test")
 
 # verify the hdf5 lib version is recent

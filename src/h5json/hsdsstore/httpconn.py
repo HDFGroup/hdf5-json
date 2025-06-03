@@ -14,9 +14,9 @@ from __future__ import absolute_import
 
 import os
 import sys
-import multiprocessing
-
+import time
 import base64
+
 import requests
 import requests_unixsocket
 from requests import ConnectionError
@@ -289,7 +289,7 @@ class HttpConn:
 
         if self._timeout != DEFAULT_TIMEOUT:
             self.log.info(f"HttpConn.init - timeout = {self._timeout}")
-        if endpoint is None:
+        if not endpoint:
             if "HS_ENDPOINT" in os.environ:
                 endpoint = os.environ["HS_ENDPOINT"]
 
@@ -299,21 +299,21 @@ class HttpConn:
 
         self._endpoint = endpoint
 
-        if username is None:
+        if not username:
             if "HS_USERNAME" in os.environ:
                 username = os.environ["HS_USERNAME"]
         if isinstance(username, str) and (not username or username.upper() == "NONE"):
             username = None
         self._username = username
 
-        if password is None:
+        if not password:
             if "HS_PASSWORD" in os.environ:
                 password = os.environ["HS_PASSWORD"]
         if isinstance(password, str) and (not password or password.upper() == "NONE"):
             password = None
         self._password = password
 
-        if bucket is None:
+        if not bucket:
             if "HS_BUCKET" in os.environ:
                 bucket = os.environ["HS_BUCKET"]
             if isinstance(bucket, str) and (not bucket or bucket.upper() == "NONE"):
@@ -479,7 +479,7 @@ class HttpConn:
         try:
             s = self.session
             stream = True  # tbd  - config for no streaming?
-
+            ts = time.time()
             rsp = s.get(
                 self._endpoint + req,
                 params=params,
@@ -488,13 +488,17 @@ class HttpConn:
                 timeout=self._timeout,
                 verify=self.verifyCert(),
             )
-            self.log.info(f"status: {rsp.status_code}")
+            elapsed = time.time() - ts
+            self.log.info(f"status: GET {rsp.status_code}, elapsed: {elapsed:.4f}")
         except ConnectionError as ce:
             self.log.error(f"connection error: {ce}")
             raise IOError("Connection Error")
         except Exception as e:
             self.log.error(f"got {type(e)} exception: {e}")
             raise IOError("Unexpected exception")
+
+        if rsp.status_code != 200:
+            self.log.warning(f"GET {req} returned status: {rsp.status_code}")
 
         return HttpResponse(rsp)
 
@@ -536,6 +540,7 @@ class HttpConn:
 
         try:
             s = self.session
+            ts = time.time()
             rsp = s.put(
                 self._endpoint + req,
                 data=data,
@@ -543,7 +548,8 @@ class HttpConn:
                 params=params,
                 verify=self.verifyCert(),
             )
-            self.log.info(f"status: {rsp.status_code}")
+            elapsed = time.time() - ts
+            self.log.info(f"status: PUT {rsp.status_code}, elapsed: {elapsed:.4f}")
         except ConnectionError as ce:
             self.log.error(f"connection error: {ce}")
             raise IOError("Connection Error")
@@ -551,7 +557,10 @@ class HttpConn:
         if rsp.status_code == 201 and req == "/":
             self.log.info("clearing domain_json cache")
             self._domain_json = None
+        if rsp.status_code not in (200, 201):
+            self.log.warning(f"got status code: {rsp.status_code} for PUT {req}")
         self.log.info(f"PUT returning: {rsp}")
+
         return HttpResponse(rsp)
 
     def POST(self, req, body=None, format="json", params=None, headers=None):
@@ -593,13 +602,14 @@ class HttpConn:
                 self.log.error(msg)
                 raise IOError("JSON encoding error")
         if format == "binary":
-            # recieve data as binary
+            # receive data as binary
             headers["accept"] = "application/octet-stream"
 
         self.log.info("POST: " + req)
 
         try:
             s = self.session
+            ts = time.time()
             rsp = s.post(
                 self._endpoint + req,
                 data=data,
@@ -607,12 +617,14 @@ class HttpConn:
                 params=params,
                 verify=self.verifyCert(),
             )
+            elapsed = time.time() - ts
+            self.log.info(f"status: POST {rsp.status_code}, elapsed: {elapsed:.4f}")
         except ConnectionError as ce:
             self.log.warning(f"connection error: {ce}")
             raise IOError(str(ce))
 
         if rsp.status_code not in (200, 201):
-            self.log.error(f"POST error: {rsp.status_code}")
+            self.log.error(f"got status_code: {rsp.status_code} for DELETE: {req}")
 
         return HttpResponse(rsp)
 
@@ -636,12 +648,12 @@ class HttpConn:
             raise IOError("Unable perform request (No write intent on file)")
 
         # try to do a DELETE of the resource
-
         headers = self.getHeaders(headers=headers)
 
         self.log.info("DEL: " + req)
         try:
             s = self.session
+            ts = time.time()
             rsp = s.delete(
                 self._endpoint + req,
                 headers=headers,
@@ -649,6 +661,8 @@ class HttpConn:
                 verify=self.verifyCert(),
             )
             self.log.info(f"status: {rsp.status_code}")
+            elapsed = time.time() - ts
+            self.log.info(f"status: DELETE {rsp.status_code}, elapsed: {elapsed:.4f}")
         except ConnectionError as ce:
             self.log.error(f"connection error: {ce}")
             raise IOError("Connection Error")
@@ -656,6 +670,9 @@ class HttpConn:
         if rsp.status_code == 200 and req == "/":
             self.log.info("clearing domain_json cache")
             self._domain_json = None
+
+        if rsp.status_code != 200:
+            self.log.warning(f"got status_code: {rsp.status_code} for DELETE {req}")
 
         return HttpResponse(rsp)
 
