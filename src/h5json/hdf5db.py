@@ -18,8 +18,8 @@ from .dset_util import resize_dataset
 from .objid import createObjId, getCollectionForId, isValidUuid, getUuidFromId
 from . import selections
 from .apiversion import _apiver
-from .reader.h5reader import H5Reader
-from .writer.h5writer import H5Writer
+from .h5reader import H5Reader
+from .h5writer import H5Writer
 
 
 class Hdf5db:
