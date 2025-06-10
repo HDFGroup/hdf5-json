@@ -13,7 +13,7 @@ import h5py
 import numpy as np
 import time
 
-from ..objid import getCollectionForId, isValidUuid, getUuidFromId, isObjId
+from ..objid import getCollectionForId, isValidUuid, createObjId
 from ..hdf5dtype import createDataType
 from ..h5py_util import is_reference, is_regionreference, has_reference, convert_dtype
 from ..array_util import jsonToArray
@@ -41,6 +41,7 @@ class H5pyWriter(H5Writer):
         else:
             self._init = True
         self._flush_time = 0.0
+        self._f = None  # h5py file handle
 
     def _copy_element(self, val, src_dt, tgt_dt, fout=None):
         """ convert the given dataset or attribute element to h5py equivalent """
@@ -390,40 +391,69 @@ class H5pyWriter(H5Writer):
     def flush(self):
         """ Write dirty items """
 
-        if not self.db:
+        if self.closed:
             # no db set yet
             return False
+        if not self._f:
+            raise IOError("open not called")
+        
         self.log.info("h5py_writer.flush()")
         root_id = self.db.root_id
         self._id_map[root_id] = "/"
-        mode = 'w' if self._init else 'a'
-        with h5py.File(self._filepath, mode=mode) as f:
-            if self.db.new_objects or self._init:
-                root_json = self.db.getObjectById(root_id)
+        
+        if self.db.new_objects or self._init:
+            root_json = self.db.getObjectById(root_id)
 
-                if "links" in root_json:
-                    root_links = root_json["links"]
-                    self._createObjects(f, root_links, visited=set((root_id,)))
-            # update attributes, dataset values
-            for obj_id in self._id_map:
-                if self.db.is_dirty(obj_id) or self._init:
-                    h5path = self._id_map[obj_id]
-                    obj = f[h5path]
-                    self.updateAttributes(obj_id, obj)
-                    collection = getCollectionForId(obj_id)
-                    if collection == "datasets":
-                        if self._init:
-                            self.initializeDatasetValues(obj_id, obj)
-                        else:
-                            self.updateDatasetValues(obj_id, obj)
-            # mark time write is complete
-            # updates before this time will not need to be written
-            # TBD: possible race condition with multithreading
-            self._flush_time = time.time()
+            if "links" in root_json:
+                root_links = root_json["links"]
+                self._createObjects(self._f, root_links, visited=set((root_id,)))
+        # update attributes, dataset values
+        for obj_id in self._id_map:
+            if self.db.is_dirty(obj_id) or self._init:
+                h5path = self._id_map[obj_id]
+                obj = self._f[h5path]
+                self.updateAttributes(obj_id, obj)
+                collection = getCollectionForId(obj_id)
+                if collection == "datasets":
+                    if self._init:
+                        self.initializeDatasetValues(obj_id, obj)
+                    else:
+                        self.updateDatasetValues(obj_id, obj)
+        # mark time write is complete
+        # updates before this time will not need to be written
+        # TBD: possible race condition with multithreading
+        self._flush_time = time.time()
 
         self._init = False  # done with init after first flush
         return True  # all objects written successfully
+    
+    def open(self):
+        """ open HDF5 file """
+        self.log.debug("h5pyWriter open")
+        if self.db is None:
+            # no db set yet
+            self.log.warning("no self.db db_ref")
+            raise ValueError("no db")
+        mode = 'w' if self._init else 'a'
+        self.log.info(f"creating h5py file: {self._filepath} mode: {mode}")
+        self._f = h5py.File(self._filepath, mode=mode) 
+        if self.db.root_id:
+            self._root_id = self.db.root_id
+        else:
+            self._root_id = createObjId(obj_type="groups")
+        return self._root_id
+
 
     def close(self):
         """ close storage handle """
+        self.log.debug("h5py_writer.close()")
+        if not self._f:
+            # no open on file
+            return
         self.flush()
+        self._f.close()
+        self._f = None
+
+    def isClosed(self):
+        """ return closed status """
+        return False if self._f else True

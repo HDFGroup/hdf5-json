@@ -35,7 +35,7 @@ class H5pyWriterTest(unittest.TestCase):
         self.log.setLevel(logging.DEBUG)
         # create logger
 
-        handler = logging.FileHandler("./hdf5dbtest.log")
+        handler = logging.FileHandler("./h5pywriterbtest.log")
         # add handler to logger
         self.log.addHandler(handler)
 
@@ -71,28 +71,27 @@ class H5pyWriterTest(unittest.TestCase):
             db.createSoftLink(g2_id, "slink", "somewhere")
             db.createExternalLink(g2_id, "extlink", "somewhere", "someplace")
             db.createCustomLink(g2_id, "cust", {"foo": "bar"})
-            db.flush()
-            with h5py.File(filepath) as f:
-                self.assertTrue("attr1", f.attrs)
-                self.assertTrue("attr2", f.attrs)
-                self.assertTrue("g1" in f)
-                g1 = f["g1"]
-                self.assertTrue("a1" in g1.attrs)
-                self.assertTrue("g1.1" in g1)
-                g11 = g1["g1.1"]
-                self.assertTrue("dset1.1.1" in g11)
-                dset = g11["dset1.1.1"]
-                self.assertEqual(dset.shape, (10, 10))
-                for i in range(10):
-                    for j in range(10):
-                        self.assertEqual(dset[i, j], i * j)
-                self.assertTrue("g2" in f)
-                g2 = f["g2"]
-                self.assertTrue("extlink" in g2)
-                self.assertTrue("slink" in g2)
 
+        # open file with h5py and verify changes
+        with h5py.File(filepath) as f:
+            self.assertTrue("attr1", f.attrs)
+            self.assertTrue("attr2", f.attrs)
+            self.assertTrue("g1" in f)
+            g1 = f["g1"]
+            self.assertTrue("a1" in g1.attrs)
+            self.assertTrue("g1.1" in g1)
+            g11 = g1["g1.1"]
+            self.assertTrue("dset1.1.1" in g11)
+            dset = g11["dset1.1.1"]
+            self.assertEqual(dset.shape, (10, 10))
+            for i in range(10):
+                for j in range(10):
+                    self.assertEqual(dset[i, j], i * j)
+            self.assertTrue("g2" in f)
+            g2 = f["g2"]
+            self.assertTrue("extlink" in g2)
+            self.assertTrue("slink" in g2)
             db.createAttribute(g1_id, "a2", "bye-bye")
-            db.flush()
 
             with h5py.File(filepath) as f:
                 g1 = f["g1"]
@@ -114,16 +113,16 @@ class H5pyWriterTest(unittest.TestCase):
             db.setDatasetValues(dset_111_id, sel, arr)
             db.flush()
 
-            with h5py.File(filepath) as f:
-                dset = f["/g1/g1.1/dset1.1.1"]
-                for i in range(10):
-                    for j in range(10):
-                        if i == 4 and j == 4:
-                            # this is the one element that was updated
-                            expected = 42
-                        else:
-                            expected = i * j
-                        self.assertEqual(dset[i, j], expected)
+        with h5py.File(filepath) as f:
+            dset = f["/g1/g1.1/dset1.1.1"]
+            for i in range(10):
+                for j in range(10):
+                    if i == 4 and j == 4:
+                        # this is the one element that was updated
+                        expected = 42
+                    else:
+                        expected = i * j
+                    self.assertEqual(dset[i, j], expected)
 
     def testNullSpaceAttribute(self):
 
@@ -487,6 +486,7 @@ class H5pyWriterTest(unittest.TestCase):
             with h5py.File(file_out) as f:
                 self.assertTrue("/g1/g1.1/dset1.1.1" in f)
                 dset111 = f["/g1/g1.1/dset1.1.1"]
+                print("dset111 attrs:", list(dset111.attrs.keys()))
                 self.assertEqual(len(dset111.attrs), 2)
 
             dset111_id = db.getObjectIdByPath("/g1/g1.1/dset1.1.1")

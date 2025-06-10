@@ -40,6 +40,7 @@ class H5pyReaderTest(unittest.TestCase):
         kwargs = {"app_logger": self.log}
         with Hdf5db(h5_reader=H5pyReader(filepath, **kwargs), **kwargs) as db:
             root_id = db.getObjectIdByPath("/")
+            print("got root_id:", root_id)
             root_json = db.getObjectById(root_id)
 
             root_attrs = root_json["attributes"]

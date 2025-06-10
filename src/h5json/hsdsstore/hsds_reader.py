@@ -33,7 +33,6 @@ class HSDSReader(H5Reader):
         username=None,
         password=None,
         bucket=None,
-        mode='r',
         api_key=None,
         use_session=True,
         expire_time=0,
@@ -63,9 +62,6 @@ class HSDSReader(H5Reader):
         if bucket:
             self.log.debug(f"    bucket: {bucket}")
             kwargs["bucket"] = bucket
-        if mode:
-            self.log.debug(f"    mode: {mode}")
-            kwargs["mode"] = mode
         if api_key:
             self.log.debug(f"    apI_key: {'*' * len(api_key)}")
             kwargs["api_key"] = api_key
@@ -88,10 +84,17 @@ class HSDSReader(H5Reader):
         if timeout:
             self.log.debug(f"    timeout: {timeout}")
             kwargs["timeout"] = timeout
+        # save these for when we create the connection
+        self._http_kwargs = kwargs
 
         super().__init__(domain_path, app_logger=app_logger)
 
-        http_conn = HttpConn(domain_path, **kwargs)
+    def open(self):
+        if self._http_conn:
+            return  # open already called
+        
+        kwargs = self._http_kwargs
+        http_conn = HttpConn(self.filepath, **kwargs)
 
         hsds_info = http_conn.serverInfo()
         self.log.debug(f"got hsds info: {hsds_info}")
@@ -122,22 +125,14 @@ class HSDSReader(H5Reader):
             http_conn.close()
             raise IOError(404, "Location is a folder, not a file")
 
-        root_uuid = domain_json["root"]
-
-        if mode in ("w", "w-", "x", "a"):
-            http_conn._mode = "r+"
+        root_id = domain_json["root"]
+        self._root_id = root_id
 
         """
         if "domain_objs" in root_json:
             domain_objs = root_json["domain_objs"]
             objdb.load(domain_objs)
-        """
-
-        self._root_id = root_uuid
-        self._verboseInfo = None  # additional state we'll get when requested
-        self._verboseUpdated = None  # when the verbose data was fetched
-        self._lastScan = None  # when summary stats where last updated by server
-
+        """ 
         if "limits" in domain_json:
             self._limits = domain_json["limits"]
         else:
@@ -150,23 +145,19 @@ class HSDSReader(H5Reader):
         self._http_conn = http_conn
         self._domain_json = domain_json
 
-        """
-        # parse the json file
-        h5json = json.loads(text)
+        return self._root_id
 
-        self._h5json = h5json
-
-        if "root" not in h5json:
-            raise Exception("no root key in input file")
-        self._root_id = "g-" + h5json["root"]
-        """
 
     @property
     def http_conn(self):
         return self._http_conn
 
     def close(self):
-        pass
+        if self._http_conn:
+            self._http_conn.close()
+
+    def isClosed(self):
+        return False is self._http_conn else True
 
     def get_root_id(self):
         """ Return root id """

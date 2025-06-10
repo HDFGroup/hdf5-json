@@ -10,6 +10,7 @@
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
 from abc import ABC, abstractmethod
+import weakref
 
 import logging
 
@@ -30,6 +31,25 @@ class H5Reader(ABC):
             self.log = app_logger
         else:
             self.log = logging.getLogger()
+
+    def set_db(self, db):
+        self._db_ref = weakref.ref(db)
+
+    @property
+    def db(self):
+        if not self._db_ref:
+            raise ValueError("db not available")
+        return self._db_ref()
+    
+    @property
+    def filepath(self):
+        """ return filepath """
+        return self._filepath
+    
+    @property
+    def closed(self):
+        """ return True if the reader handle is closed (or never opened) """
+        return self.isClosed()
 
     @abstractmethod
     def get_root_id(self):
@@ -59,6 +79,16 @@ class H5Reader(ABC):
         pass
 
     @abstractmethod
+    def open(self):
+        """ Open data source for reading """
+        pass
+
+    @abstractmethod
     def close(self):
         """ close any open handles to the storage """
+        pass
+
+    @abstractmethod
+    def isClosed(self):
+        """ return True if handle is closed """
         pass

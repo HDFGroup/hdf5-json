@@ -48,26 +48,32 @@ class Hdf5db:
 
         self._db = {}
 
-        self._reader = h5_reader
-        self._writer = h5_writer
+        self._new_objects = set()  # set of for newly created objects
+        self._dirty_objects = set()  # set of modified objects
+        self._deleted_objects = set() # set of deleted objects
 
-        self._new_objects = set()  # set of obj_id's
-        self._dirty_objects = set()  # set of obj_id's
+        self._root_id = None
 
-        if self._reader:
-            root_id = self._reader.get_root_id()
-            group_json = self._reader.getObjectById(root_id)
+        if h5_reader:
+            self._reader = h5_reader
+            self._reader.set_db(self)
         else:
-            root_id = createObjId(obj_type="groups")
-            # create a root group
-            group_json = {"links": {}, "attributes": {}, "cpl": {}}
-            group_json["created"] = time.time()
+            self._reader = None
 
-        if self._writer:
+        if h5_writer:
+            self._writer = h5_writer
             self._writer.set_db(self)
+        else:
+            self._writer = None
+            
+        #root_id = createObjId(obj_type="groups")
+        # create a root group
+        #group_json = {"links": {}, "attributes": {}, "cpl": {}}
+        #group_json["created"] = time.time()
 
-        self._db[root_id] = group_json
-        self._root_id = root_id
+         
+        #self._db[root_id] = group_json
+        # self._root_id = root_id
 
     @property
     def db(self):
@@ -86,6 +92,9 @@ class Hdf5db:
             self.flush()
         if self._reader:
             self._reader.close()
+        self._reader = value
+        self._reader.set_db(self)
+        """
         root_id = value.get_root_id()
         if not root_id:
             raise ValueError(f"reader {type(value)} unable to return root_id")
@@ -95,6 +104,7 @@ class Hdf5db:
         self._reader = value
         self._db[root_id] = group_json
         self._root_id = root_id
+        """
 
     @property
     def writer(self):
@@ -108,6 +118,7 @@ class Hdf5db:
             self._writer.close()
         self._writer = value
         if self._writer:
+            self.log.debug("writer set_db")
             self._writer.set_db(self)
 
     @property
@@ -132,6 +143,10 @@ class Hdf5db:
     @property
     def dirty_objects(self):
         return self._dirty_objects
+    
+    @property
+    def deleted_objects(self):
+        return self._deleted_objects
 
     def make_dirty(self, obj_id):
         """ Mark the object as dirty and update the lastModified timestamp """
@@ -161,6 +176,31 @@ class Hdf5db:
         self._new_objects = set()
         self._dirty_objects = set()
 
+    def open(self):
+        """ open reader and writer if set """
+        if self.root_id:
+            self.log.warning("root id already set, multiple db.open calls")
+            return self.root_id
+        
+        if self.writer and self.writer.append:
+            # append mode for the writer, open writer and get the root id
+            self._root_id = self.writer.open()
+        elif self.reader:
+            self._root_id = self.reader.open()
+        else:
+            # no root id set by writer or reader, initialize now
+            self._root_id = createObjId(obj_type="groups")
+            if self.writer:
+                # open writer in create mode now that we have a root id
+                self.writer.open()
+            
+            # create a root group just as a memory object
+            group_json = {"links": {}, "attributes": {}, "cpl": {}}
+            group_json["created"] = time.time()
+            self._db[self._root_id] = group_json
+
+        return self._root_id
+
     def close(self):
         """ close reader and writer handles """
         self.log.info("Hdf5db __close")
@@ -172,6 +212,10 @@ class Hdf5db:
         self._root_id = None
         self._db = {}
 
+    @property
+    def closed(self):
+        return False if self.root_id else True
+
     def __enter__(self):
         """ called on package init """
         self.log.info("Hdf5db __enter")
@@ -180,6 +224,7 @@ class Hdf5db:
     def __exit__(self, type, value, traceback):
         """ called on package exit """
         self.log.info("Hdf5db __exit")
+        print("__exit__")
         self.close()
 
     def getObjectById(self, obj_id):
@@ -190,6 +235,7 @@ class Hdf5db:
                 obj_json = self.reader.getObjectById(obj_id)
                 self.db[obj_id] = obj_json
             else:
+                print("keyerror - self.db:", self.db)
                 raise KeyError(f"obj_id: {obj_id} not found")
         obj_json = self.db[obj_id]
 
@@ -198,6 +244,9 @@ class Hdf5db:
     def getObjectIdByPath(self, h5path, parent_id=None):
         """ Return id for the given link path starting from parent_id if set,
         otherwise the root_id """
+
+        if self.closed:
+            self.open()  # initiate db
 
         if h5path == "/":
             return self.root_id  # just return root id
@@ -551,6 +600,8 @@ class Hdf5db:
         if obj_id in self._dirty_objects:
             self._dirty_objects.remove(obj_id)
 
+        self._deleted_objects.add(obj_id)
+
     def getLinks(self, grp_id):
         """ Get the links for the given group """
         grp_json = self.getObjectById(grp_id)
@@ -621,7 +672,8 @@ class Hdf5db:
 
     def createGroup(self, cpl=None):
         """ Create a new group """
-
+        if self.closed:
+            raise ValueError("db is closed")
         grp_id = createObjId("groups", root_id=self.root_id)
         group_json = {"attributes": {}, "links": {}}
         if cpl:
@@ -638,6 +690,8 @@ class Hdf5db:
         createCommittedType - creates new named datatype
         Returns item
         """
+        if self.closed:
+            raise ValueError("db is closed")
         self.log.info("createCommittedType")
         if cpl is None:
             cpl = {}
@@ -667,6 +721,8 @@ class Hdf5db:
         createDataset - creates new dataset given shape and datatype
         Returns obj_id
         """
+        if self.closed:
+            raise ValueError("db is closed")
         type_json = getTypeItem(dtype)
         if shape == "H5S_NULL":
             shape_json = {"class": "H5S_NULL"}

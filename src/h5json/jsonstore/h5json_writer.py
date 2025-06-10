@@ -13,7 +13,7 @@
 import json
 
 from ..h5writer import H5Writer
-from ..objid import getUuidFromId, getCollectionForId
+from ..objid import getUuidFromId, getCollectionForId, createObjId
 from ..array_util import bytesArrayToList
 from .. import selections
 
@@ -32,20 +32,40 @@ class H5JsonWriter(H5Writer):
         app_logger=None
     ):
         super().__init__(filepath, append=append, no_data=no_data, app_logger=app_logger)
+        if append:
+            raise ValueError("H5JsonWriter does not support append mode")
         self.alias_db = {}
         self.json = {}
-        self._root_uuid = None
+        self._root_id = None
 
     def flush(self):
         """ Write dirty items """
         # json writer doesn't support incremental updates, so we'll wait
         # for close to write out database
+        if not self._root_id:
+            msg = "flush called prior to open"
+            self.log.warning(msg)
+            raise IOError(msg)
+        
         self.log.info("flush")
         return False
+    
+    def open(self):
+        """ file open """
+        # no incremental updates with h5json writer, so just fetch the root_id here
+        if self.db.root_id:
+            self._root_id = self.db.root_id
+        else:
+            self._root_id = createObjId(obj_type="groups")
+        return self._root_id
 
     def close(self):
         """ close storage handle """
         self.dumpFile()
+
+    def isClosed(self):
+        """ return closed status """
+        return False if self._root_id else True
 
     def getAliasList(self, obj_id):
         """ return list of alias """

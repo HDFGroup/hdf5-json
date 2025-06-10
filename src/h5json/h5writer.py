@@ -39,12 +39,35 @@ class H5Writer(ABC):
 
     def set_db(self, db):
         self._db_ref = weakref.ref(db)
+        self.log.debug("writer set db ref")
+
+    @property
+    def filepath(self):
+        return self._filepath
+    
+    @property
+    def closed(self):
+        return self.isClosed()
 
     @property
     def db(self):
         if not self._db_ref:
-            raise ValueError("db not available")
+            self.log.debug("db not available")
+            return None
         return self._db_ref()
+    
+    @property
+    def append(self):
+        return self._append
+    
+    #property
+    def no_data(self):
+        return self._no_data
+    
+    @abstractmethod
+    def open(self):
+        """ open storage handle, return root_id"""
+        return None
 
     @abstractmethod
     def flush(self):
@@ -54,4 +77,9 @@ class H5Writer(ABC):
     @abstractmethod
     def close(self):
         """ close storage handle """
+        pass
+
+    @abstractmethod
+    def isClosed(self):
+        """ return True if handle is closed """
         pass

@@ -148,19 +148,44 @@ class H5pyReader(H5Reader):
             self.log = app_logger
         else:
             self.log = logging.getLogger()
+        if not h5py.is_hdf5(filepath):
+            self.log.warn(f"File: {filepath} is not an HDF5 file")
+            raise IOError("not an HDF5 file")
         super().__init__(filepath, app_logger=app_logger)
-        f = h5py.File(self._filepath)
+        self._f = None
+        self._root_id = None
+        
+
+    def open(self):
+        if self._f:
+            return  # already open
+        if self._id_map:
+            return  # objects already loaded
+        if not self._root_id:
+            # get the root id from db if available
+            if self.db.root_id:
+                self.log.info("H5pyReader: got root_id from db")
+                self._root_id = self.db.root_id
+            else:
+                self.log.info("H5pyReader: creating root id")
+                self._root_id = createObjId(obj_type="groups")
+        
+        f = h5py.File(self.filepath)
         self._f = f
-        self._root_id = createObjId(obj_type="groups")
         self._id_map[self._root_id] = f
         addr = h5py.h5o.get_info(f.id).addr
         self._addr_map[addr] = self._root_id
         f.visititems(self.visit)
 
+        return self._root_id
+
     def close(self):
         if self._f:
             self._f.close()
             self._f = None
+
+    def isClosed(self):
+        return False if self._f else True
 
     def get_root_id(self):
         """ Return root id """

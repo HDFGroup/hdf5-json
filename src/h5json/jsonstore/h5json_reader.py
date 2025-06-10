@@ -36,8 +36,14 @@ class H5JsonReader(H5Reader):
             self.log = logging.getLogger()
 
         super().__init__(filepath, app_logger=app_logger)
+        self._root_id = None
+        self._h5json = None
 
-        with open(filepath) as f:
+    def open(self):
+        if self._h5json:
+            return  # already read JSON file
+
+        with open(self.filepath) as f:
             text = f.read()
 
         # parse the json file
@@ -47,10 +53,19 @@ class H5JsonReader(H5Reader):
 
         if "root" not in h5json:
             raise Exception("no root key in input file")
+        
         self._root_id = "g-" + h5json["root"]
+        if self.db.root_id and self.db.root_id != self._root_id:
+            self.log.warning("h5json root id doesn't match db root id")
+            raise IOError("root id mismatch")
+
+        return self._root_id
 
     def close(self):
         pass
+
+    def isClosed(self):
+        return False if self._h5json else False
 
     def get_root_id(self):
         """ Return root id """
