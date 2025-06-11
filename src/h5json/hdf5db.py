@@ -165,9 +165,9 @@ class Hdf5db:
 
     def flush(self):
         """ write out any changes """
+        self.log.debug("db.flush()")
         if not self.writer:
             return  # nothing to do
-
         if not self.writer.flush():
             # flush not successful, don't clear dirty set
             return
@@ -179,25 +179,28 @@ class Hdf5db:
     def open(self):
         """ open reader and writer if set """
         if self.root_id:
-            self.log.warning("root id already set, multiple db.open calls")
-            return self.root_id
-        
-        if self.writer and self.writer.append:
-            # append mode for the writer, open writer and get the root id
-            self._root_id = self.writer.open()
-        elif self.reader:
-            self._root_id = self.reader.open()
-        else:
-            # no root id set by writer or reader, initialize now
-            self._root_id = createObjId(obj_type="groups")
+            self.log.debug("root id already set, re-open call")
             if self.writer:
-                # open writer in create mode now that we have a root id
                 self.writer.open()
+            if self.reader:
+                self.reader.open()
+        else:
+            if self.writer and self.writer.append:
+                # append mode for the writer, open writer and get the root id
+                self._root_id = self.writer.open()
+            elif self.reader:
+                self._root_id = self.reader.open()
+            else:
+                # no root id set by writer or reader, initialize now
+                self._root_id = createObjId(obj_type="groups")
+                if self.writer:
+                    # open writer in create mode now that we have a root id
+                    self.writer.open()
             
-            # create a root group just as a memory object
-            group_json = {"links": {}, "attributes": {}, "cpl": {}}
-            group_json["created"] = time.time()
-            self._db[self._root_id] = group_json
+                # create a root group just as a memory object
+                group_json = {"links": {}, "attributes": {}, "cpl": {}}
+                group_json["created"] = time.time()
+                self._db[self._root_id] = group_json
 
         return self._root_id
 
@@ -209,8 +212,8 @@ class Hdf5db:
             self.writer.close()
         if self.reader:
             self.reader.close()
-        self._root_id = None
-        self._db = {}
+        #self._root_id = None
+        #self._db = {}
 
     @property
     def closed(self):
@@ -224,7 +227,6 @@ class Hdf5db:
     def __exit__(self, type, value, traceback):
         """ called on package exit """
         self.log.info("Hdf5db __exit")
-        print("__exit__")
         self.close()
 
     def getObjectById(self, obj_id):
@@ -235,7 +237,6 @@ class Hdf5db:
                 obj_json = self.reader.getObjectById(obj_id)
                 self.db[obj_id] = obj_json
             else:
-                print("keyerror - self.db:", self.db)
                 raise KeyError(f"obj_id: {obj_id} not found")
         obj_json = self.db[obj_id]
 

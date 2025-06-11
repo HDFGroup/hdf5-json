@@ -47,30 +47,31 @@ class H5pyWriterTest(unittest.TestCase):
     def testSimple(self):
 
         filepath = "test/unit/out/h5py_writer_test_testSimple.h5"
-        with Hdf5db(app_logger=self.log) as db:
-            db.writer = H5pyWriter(filepath, no_data=False)
-            root_id = db.getObjectIdByPath("/")
-            db.createAttribute(root_id, "attr1", value=[1, 2, 3, 4])
-            db.createAttribute(root_id, "attr2", 42)
-            g1_id = db.createGroup()
-            db.createHardLink(root_id, "g1", g1_id)
-            db.createAttribute(g1_id, "a1", "hello")
-            g2_id = db.createGroup()
-            db.createHardLink(root_id, "g2", g2_id)
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5pyWriter(filepath, no_data=False)
+        root_id = db.open()
+        db.createAttribute(root_id, "attr1", value=[1, 2, 3, 4])
+        db.createAttribute(root_id, "attr2", 42)
+        g1_id = db.createGroup()
+        db.createHardLink(root_id, "g1", g1_id)
+        db.createAttribute(g1_id, "a1", "hello")
+        g2_id = db.createGroup()
+        db.createHardLink(root_id, "g2", g2_id)
 
-            g1_1_id = db.createGroup()
-            db.createHardLink(g1_id, "g1.1", g1_1_id)
-            dset_111_id = db.createDataset(shape=(10, 10), dtype=np.int32)
-            arr = np.zeros((10, 10), dtype=np.int32)
-            for i in range(10):
-                for j in range(10):
-                    arr[i, j] = i * j
-            sel_all = selections.select((10, 10), ...)
-            db.setDatasetValues(dset_111_id, sel_all, arr)
-            db.createHardLink(g1_1_id, "dset1.1.1", dset_111_id)
-            db.createSoftLink(g2_id, "slink", "somewhere")
-            db.createExternalLink(g2_id, "extlink", "somewhere", "someplace")
-            db.createCustomLink(g2_id, "cust", {"foo": "bar"})
+        g1_1_id = db.createGroup()
+        db.createHardLink(g1_id, "g1.1", g1_1_id)
+        dset_111_id = db.createDataset(shape=(10, 10), dtype=np.int32)
+        arr = np.zeros((10, 10), dtype=np.int32)
+        for i in range(10):
+            for j in range(10):
+                arr[i, j] = i * j
+        sel_all = selections.select((10, 10), ...)
+        db.setDatasetValues(dset_111_id, sel_all, arr)
+        db.createHardLink(g1_1_id, "dset1.1.1", dset_111_id)
+        db.createSoftLink(g2_id, "slink", "somewhere")
+        db.createExternalLink(g2_id, "extlink", "somewhere", "someplace")
+        db.createCustomLink(g2_id, "cust", {"foo": "bar"})
+        db.close()
 
         # open file with h5py and verify changes
         with h5py.File(filepath) as f:
@@ -91,27 +92,32 @@ class H5pyWriterTest(unittest.TestCase):
             g2 = f["g2"]
             self.assertTrue("extlink" in g2)
             self.assertTrue("slink" in g2)
-            db.createAttribute(g1_id, "a2", "bye-bye")
 
-            with h5py.File(filepath) as f:
-                g1 = f["g1"]
-                self.assertEqual(len(g1.attrs), 2)
-                self.assertTrue("a1" in g1.attrs)
-                self.assertTrue("a2" in g1.attrs)
+        db.open()
+        db.createAttribute(g1_id, "a2", "bye-bye")
+        db.close()
 
-            g21 = db.createGroup()
-            db.createHardLink(g2_id, "g2.1", g21)
-            db.flush()
+        with h5py.File(filepath) as f:
+            g1 = f["g1"]
+            self.assertEqual(len(g1.attrs), 2)
+            self.assertTrue("a1" in g1.attrs)
+            self.assertTrue("a2" in g1.attrs)
 
-            with h5py.File(filepath) as f:
-                g2 = f["g2"]
-                self.assertTrue("g2.1" in g2)
+        db.open()
+        g21 = db.createGroup()
+        db.createHardLink(g2_id, "g2.1", g21)
+        db.close()
 
-            sel = selections.select((10, 10), (slice(4, 5), slice(4, 5)))
-            arr = np.zeros((), dtype=np.int32)
-            arr[()] = 42
-            db.setDatasetValues(dset_111_id, sel, arr)
-            db.flush()
+        with h5py.File(filepath) as f:
+            g2 = f["g2"]
+            self.assertTrue("g2.1" in g2)
+
+        db.open()
+        sel = selections.select((10, 10), (slice(4, 5), slice(4, 5)))
+        arr = np.zeros((), dtype=np.int32)
+        arr[()] = 42
+        db.setDatasetValues(dset_111_id, sel, arr)
+        db.close()
 
         with h5py.File(filepath) as f:
             dset = f["/g1/g1.1/dset1.1.1"]

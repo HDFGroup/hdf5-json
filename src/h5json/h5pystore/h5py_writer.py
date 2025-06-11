@@ -384,20 +384,22 @@ class H5pyWriter(H5Writer):
         for name in attrs:
             attr_json = attrs[name]
             if "created" in attr_json and attr_json["created"] < self._flush_time:
-                # ttribute should be saved already
+                # attribute should be saved already
                 continue
             self.createAttribute(obj, name, attr_json)
 
     def flush(self):
         """ Write dirty items """
-
         if self.closed:
             # no db set yet
+            self.log.warning("h5py_writer - flush called but no db")
             return False
         if not self._f:
+            self.log.warning("h5py_writer file not open")
             raise IOError("open not called")
         
         self.log.info("h5py_writer.flush()")
+        
         root_id = self.db.root_id
         self._id_map[root_id] = "/"
         
@@ -434,9 +436,10 @@ class H5pyWriter(H5Writer):
             # no db set yet
             self.log.warning("no self.db db_ref")
             raise ValueError("no db")
-        mode = 'w' if self._init else 'a'
+        mode = 'a' if self._append else 'w'
         self.log.info(f"creating h5py file: {self._filepath} mode: {mode}")
-        self._f = h5py.File(self._filepath, mode=mode) 
+        self._f = h5py.File(self._filepath, mode=mode)
+        self._append = True  # switch to append mode for next file open 
         if self.db.root_id:
             self._root_id = self.db.root_id
         else:
