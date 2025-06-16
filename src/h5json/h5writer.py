@@ -44,7 +44,7 @@ class H5Writer(ABC):
     @property
     def filepath(self):
         return self._filepath
-    
+
     @property
     def closed(self):
         return self.isClosed()
@@ -55,15 +55,15 @@ class H5Writer(ABC):
             self.log.debug("db not available")
             return None
         return self._db_ref()
-    
+
     @property
     def append(self):
         return self._append
-    
-    #property
+
+    @property
     def no_data(self):
         return self._no_data
-    
+
     @abstractmethod
     def open(self):
         """ open storage handle, return root_id"""

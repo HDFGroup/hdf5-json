@@ -154,7 +154,6 @@ class H5pyReader(H5Reader):
         super().__init__(filepath, app_logger=app_logger)
         self._f = None
         self._root_id = None
-        
 
     def open(self):
         if self._f:
@@ -169,7 +168,7 @@ class H5pyReader(H5Reader):
             else:
                 self.log.info("H5pyReader: creating root id")
                 self._root_id = createObjId(obj_type="groups")
-        
+
         f = h5py.File(self.filepath)
         self._f = f
         self._id_map[self._root_id] = f

@@ -46,10 +46,10 @@ class H5JsonWriter(H5Writer):
             msg = "flush called prior to open"
             self.log.warning(msg)
             raise IOError(msg)
-        
+
         self.log.info("flush")
         return False
-    
+
     def open(self):
         """ file open """
         # no incremental updates with h5json writer, so just fetch the root_id here

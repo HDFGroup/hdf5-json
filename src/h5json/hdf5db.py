@@ -50,7 +50,7 @@ class Hdf5db:
 
         self._new_objects = set()  # set of for newly created objects
         self._dirty_objects = set()  # set of modified objects
-        self._deleted_objects = set() # set of deleted objects
+        self._deleted_objects = set()  # set of deleted objects
 
         self._root_id = None
 
@@ -65,15 +65,6 @@ class Hdf5db:
             self._writer.set_db(self)
         else:
             self._writer = None
-            
-        #root_id = createObjId(obj_type="groups")
-        # create a root group
-        #group_json = {"links": {}, "attributes": {}, "cpl": {}}
-        #group_json["created"] = time.time()
-
-         
-        #self._db[root_id] = group_json
-        # self._root_id = root_id
 
     @property
     def db(self):
@@ -143,7 +134,7 @@ class Hdf5db:
     @property
     def dirty_objects(self):
         return self._dirty_objects
-    
+
     @property
     def deleted_objects(self):
         return self._deleted_objects
@@ -178,6 +169,7 @@ class Hdf5db:
 
     def open(self):
         """ open reader and writer if set """
+        self.log.debug("db.open()")
         if self.root_id:
             self.log.debug("root id already set, re-open call")
             if self.writer:
@@ -185,23 +177,39 @@ class Hdf5db:
             if self.reader:
                 self.reader.open()
         else:
+            self.log.debug("db.open, getting root_id")
+
             if self.writer and self.writer.append:
                 # append mode for the writer, open writer and get the root id
+                self.log.debug("db.open, write append, getting root_id from writer")
                 self._root_id = self.writer.open()
+                if self.reader:
+                    reader_root_id = self.reader.open()
+                    if reader_root_id != self._root_id:
+                        # TBD: need someway to reconcile if both reader and writer have
+                        # an potentiated idea on what there root id is
+                        self.log.warn("reader root_id does not match writer root_id")
             elif self.reader:
+                self.log.debug("db.open, getting root_id from reader")
                 self._root_id = self.reader.open()
+                if self.writer:
+                    writer_root_id = self.writer.open()
+                    if writer_root_id != self._root_id:
+                        # TBD: same as above, need to deal with inconsistent root ids
+                        self.log.warning("writer root_id does not match reader root_id")
             else:
                 # no root id set by writer or reader, initialize now
                 self._root_id = createObjId(obj_type="groups")
                 if self.writer:
                     # open writer in create mode now that we have a root id
                     self.writer.open()
-            
+
                 # create a root group just as a memory object
                 group_json = {"links": {}, "attributes": {}, "cpl": {}}
                 group_json["created"] = time.time()
                 self._db[self._root_id] = group_json
 
+        self.log.debug(f"db.open() - returning root_id: {self._root_id}")
         return self._root_id
 
     def close(self):
@@ -212,8 +220,6 @@ class Hdf5db:
             self.writer.close()
         if self.reader:
             self.reader.close()
-        #self._root_id = None
-        #self._db = {}
 
     @property
     def closed(self):

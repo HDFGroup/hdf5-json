@@ -40,12 +40,12 @@ class H5Reader(ABC):
         if not self._db_ref:
             raise ValueError("db not available")
         return self._db_ref()
-    
+
     @property
     def filepath(self):
         """ return filepath """
         return self._filepath
-    
+
     @property
     def closed(self):
         """ return True if the reader handle is closed (or never opened) """

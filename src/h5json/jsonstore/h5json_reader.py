@@ -53,7 +53,7 @@ class H5JsonReader(H5Reader):
 
         if "root" not in h5json:
             raise Exception("no root key in input file")
-        
+
         self._root_id = "g-" + h5json["root"]
         if self.db.root_id and self.db.root_id != self._root_id:
             self.log.warning("h5json root id doesn't match db root id")

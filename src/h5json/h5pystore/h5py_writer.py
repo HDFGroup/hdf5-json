@@ -397,12 +397,12 @@ class H5pyWriter(H5Writer):
         if not self._f:
             self.log.warning("h5py_writer file not open")
             raise IOError("open not called")
-        
+
         self.log.info("h5py_writer.flush()")
-        
+
         root_id = self.db.root_id
         self._id_map[root_id] = "/"
-        
+
         if self.db.new_objects or self._init:
             root_json = self.db.getObjectById(root_id)
 
@@ -428,7 +428,7 @@ class H5pyWriter(H5Writer):
 
         self._init = False  # done with init after first flush
         return True  # all objects written successfully
-    
+
     def open(self):
         """ open HDF5 file """
         self.log.debug("h5pyWriter open")
@@ -439,13 +439,12 @@ class H5pyWriter(H5Writer):
         mode = 'a' if self._append else 'w'
         self.log.info(f"creating h5py file: {self._filepath} mode: {mode}")
         self._f = h5py.File(self._filepath, mode=mode)
-        self._append = True  # switch to append mode for next file open 
+        self._append = True  # switch to append mode for next file open
         if self.db.root_id:
             self._root_id = self.db.root_id
         else:
             self._root_id = createObjId(obj_type="groups")
         return self._root_id
-
 
     def close(self):
         """ close storage handle """
