@@ -416,7 +416,7 @@ class H5pyWriter(H5Writer):
                 obj = self._f[h5path]
                 self.updateAttributes(obj_id, obj)
                 collection = getCollectionForId(obj_id)
-                if collection == "datasets":
+                if collection == "datasets" and not self.no_data:
                     if self._init:
                         self.initializeDatasetValues(obj_id, obj)
                     else:

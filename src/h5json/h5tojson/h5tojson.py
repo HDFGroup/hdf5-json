@@ -12,7 +12,6 @@
 import sys
 import os.path as op
 import logging
-import logging.handlers
 
 from h5json import Hdf5db
 from h5json.jsonstore.h5json_writer import H5JsonWriter
@@ -33,28 +32,22 @@ def main():
             filename = sys.argv[i]
 
     # create logger
-    log = logging.getLogger("h5tojson")
-    # log.setLevel(logging.WARN)
-    log.setLevel(logging.INFO)
-    # add log handler
-    handler = logging.FileHandler("./h5tojson.log")
+    logfname = "h5tojson.log"
+    loglevel = logging.DEBUG
+    logging.basicConfig(filename=logfname, format='%(levelname)s %(asctime)s %(message)s', level=loglevel)
+    log = logging.getLogger()
 
-    # add handler to logger
-    log.addHandler(handler)
-
+    # check that the input file exists
     if not op.isfile(filename):
         sys.exit(f"Cannot find file: {filename}")
 
     log.info(f"h5tojson {filename}")
 
-    kwargs = {"app_logger": log}
-    reader = H5pyReader(filename, **kwargs)
-    writer = H5JsonWriter(None, no_data=no_data, **kwargs)
-    kwargs["h5_reader"] = reader
-    kwargs["h5_writer"] = writer
-
-    with Hdf5db(**kwargs) as db:
-        db.flush()
+    db = Hdf5db(app_logger=log)
+    db.reader = H5pyReader(filename, app_logger=log)
+    db.writer = H5JsonWriter(None, no_data=no_data, app_logger=log)
+    db.open()  # read HDF5 data into db
+    db.close()  # close will trigger write to json file
 
 
 if __name__ == "__main__":

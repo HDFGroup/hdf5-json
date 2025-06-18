@@ -227,7 +227,7 @@ class H5JsonWriter(H5Writer):
         if attributes:
             response["attributes"] = attributes
 
-        if not self._no_data:
+        if not self.no_data:
             if num_elements > 0:
                 sel_all = selections.select(dims, ...)
                 arr = self.db.getDatasetValues(obj_id, sel_all)
