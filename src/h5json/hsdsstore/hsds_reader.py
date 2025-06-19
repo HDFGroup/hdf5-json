@@ -86,13 +86,14 @@ class HSDSReader(H5Reader):
             kwargs["timeout"] = timeout
         # save these for when we create the connection
         self._http_kwargs = kwargs
+        self._http_conn = None
 
         super().__init__(domain_path, app_logger=app_logger)
 
     def open(self):
         if self._http_conn:
             return  # open already called
-        
+
         kwargs = self._http_kwargs
         http_conn = HttpConn(self.filepath, **kwargs)
 
@@ -132,7 +133,7 @@ class HSDSReader(H5Reader):
         if "domain_objs" in root_json:
             domain_objs = root_json["domain_objs"]
             objdb.load(domain_objs)
-        """ 
+        """
         if "limits" in domain_json:
             self._limits = domain_json["limits"]
         else:
@@ -147,7 +148,6 @@ class HSDSReader(H5Reader):
 
         return self._root_id
 
-
     @property
     def http_conn(self):
         return self._http_conn
@@ -157,7 +157,10 @@ class HSDSReader(H5Reader):
             self._http_conn.close()
 
     def isClosed(self):
-        return False is self._http_conn else True
+        if self._http_conn:
+            return False
+        else:
+            return True
 
     def get_root_id(self):
         """ Return root id """

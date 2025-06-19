@@ -61,6 +61,19 @@ class H5pyWriterTest(unittest.TestCase):
         g1_id = db.createGroup()
         db.createHardLink(root_id, "g1", g1_id)
         db.createAttribute(g1_id, "a1", "hello")
+        db.close()
+
+        # open file with h5py and verify changes
+        with h5py.File(filepath) as f:
+            self.assertTrue("attr1", f.attrs)
+            self.assertTrue("attr2", f.attrs)
+            self.assertEqual(len(f), 1)
+            self.assertTrue("g1" in f)
+            g1 = f["g1"]
+            self.assertTrue("a1" in g1.attrs)
+            self.assertEqual(len(g1), 0)
+
+        db.open()
         g2_id = db.createGroup()
         db.createHardLink(root_id, "g2", g2_id)
 

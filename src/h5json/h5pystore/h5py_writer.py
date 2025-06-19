@@ -409,6 +409,7 @@ class H5pyWriter(H5Writer):
             if "links" in root_json:
                 root_links = root_json["links"]
                 self._createObjects(self._f, root_links, visited=set((root_id,)))
+
         # update attributes, dataset values
         for obj_id in self._id_map:
             if self.db.is_dirty(obj_id) or self._init:

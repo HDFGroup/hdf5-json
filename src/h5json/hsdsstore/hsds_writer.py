@@ -10,6 +10,7 @@
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
 import logging
+import time
 
 from ..objid import getCollectionForId, getUuidFromId
 
@@ -111,6 +112,7 @@ class HSDSWriter(H5Writer):
         self._track_order = track_order
         self._linked_domain = linked_domain
         self._domain_json = None
+        self._last_flush_time = 0
 
     def open(self):
         """ setup domain for writing """
@@ -140,7 +142,7 @@ class HSDSWriter(H5Writer):
                 params["include_attrs"] = 1
                 params["include_links"] = 1
             """
-        
+
             domain_json = None
             rsp = http_conn.GET(req, params=params)
 
@@ -166,7 +168,7 @@ class HSDSWriter(H5Writer):
                         # failed to delete
                         http_conn.close()
                         raise IOError(rsp.status_code, rsp.reason)
-                        
+
             if not domain_json:
                 # domain doesn't exist, create it
                 body = {}
@@ -176,7 +178,7 @@ class HSDSWriter(H5Writer):
                 if self._owner:
                     body["owner"] = self._owner
                 if self._linked_domain:
-                    body["linked_domain"] = linked_domain
+                    body["linked_domain"] = self._linked_domain
                 if self._track_order:
                     create_props = {"CreateOrder": 1}
                     group_body = {"creationProperties": create_props}
@@ -200,7 +202,7 @@ class HSDSWriter(H5Writer):
             root_id = domain_json["root"]
 
             self._root_id = root_id
-       
+
             if "limits" in domain_json:
                 self._limits = domain_json["limits"]
             else:
@@ -214,11 +216,66 @@ class HSDSWriter(H5Writer):
 
         return self._root_id
 
-
     @property
     def http_conn(self):
         return self._http_conn
-    
+
+    def createObjects(self, obj_ids):
+        MAX_OBJECTS_PER_REQUEST = 1
+        collections = ("groups", "datasets", "datatypes")
+        col_items = {}
+        for collection in collections:
+            col_items[collection] = []
+
+        for obj_id in obj_ids:
+            if obj_id == self._root_id:
+                continue  # this was created when the domain was
+            collection = getCollectionForId(obj_id)
+            obj_json = self.db.getObjectById(obj_id)
+            item = {"id": obj_id}
+            for key in ("links", "attributes"):
+                if key in obj_json:
+                    item[key] = obj_json[key]
+            items = col_items[collection]
+            items.append(item)
+            if len(items) == MAX_OBJECTS_PER_REQUEST:
+                print("items:", items)
+                post_rsp = self.http_conn.POST("/" + collection, items)
+                print("post_rsp.status_code:", post_rsp.status_code)
+                if post_rsp.is_json:
+                    print("post_rsp.json:", post_rsp.json())
+                items.clear()
+
+        # handle any remainder items
+        for collection in collections:
+            items = col_items[collection]
+            if items:
+                self.http_conn.POST("/" + collection, items)
+
+    def updateLinks(self, grp_ids):
+        """ update any modified links of the given objects """
+
+        print("updateLinks:", grp_ids)
+        body = {}  # body will hold a map of grp ids to link lists
+
+        for grp_id in grp_ids:
+            if getCollectionForId(grp_id) != "groups":
+                continue  # ignore datasets and datatypes
+            grp_json = self.db.getObjectById(grp_id)
+            grp_links = grp_json["links"]
+            print(f"grp_id {grp_id} links: {grp_links}")
+            for link_json in grp_links:
+                if "created" not in link_json:
+                    self.log.error(f"hsds_writer> expected created timestamp in link: {link_json}")
+                created = link_json["created"]
+                if created > self._last_flush_time:
+                    # new link, add to our list
+                    if grp_id not in body:
+                        body[grp_id] = {}
+
+        if body:
+            print("updateLinks, body:", body)
+
     def flush(self):
         """ Write dirty items """
 
@@ -230,30 +287,31 @@ class HSDSWriter(H5Writer):
         self.log.debug(f"    dirty object count: {len(self.db.dirty_objects)}")
         self.log.debug(f"    deleted object count: {len(self.db.deleted_objects)}")
 
-        #root_id = self.db.root_id
         if self._init:
             # initialize all existing objects
-            self.log.debug("flush -- init is true")
+            self.log.debug(f"flush -- init is true, self.db: {self.db.db}")
             for obj_id in self.db:
                 self.log.debug(f"init: {obj_id}")
+            self.createObjects(self.db.db.keys())
             self._init = False
         elif self.db.new_objects:
             for obj_id in self.db.new_objects:
                 self.log.debug(f"new obj id: {obj_id}")
+            self.createObjects(self.db.new_objects)
 
         for obj_id in self.db.dirty_objects:
             self.log.debug(f"dirty object id: {obj_id}")
+            self.updateLinks(self.db.dirty_objects)
 
         for obj_id in self.db.deleted_objects:
             self.log.debug(f"deleted object: {obj_id}")
-        
+
+        self._last_flush_time = time.time()
         return True  # all objects written successfully
 
     def close(self):
         # over-ride of H5Writer method
         self.flush()
-        self.http_conn.close()
-        self._http_conn = None
 
     def isClosed(self):
         """ return closed status """
