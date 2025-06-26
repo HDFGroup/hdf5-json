@@ -14,8 +14,9 @@ import time
 
 from ..objid import getCollectionForId, getUuidFromId
 
-from ..hdf5dtype import createDataType
-from ..array_util import jsonToArray, bytesToArray
+from ..hdf5dtype import createDataType, isVlen
+from ..array_util import jsonToArray, bytesToArray, arrayToBytes, bytesArrayToList
+from ..dset_util import getNumElements
 from .. import selections
 from ..h5writer import H5Writer
 from .httpconn import HttpConn
@@ -121,6 +122,7 @@ class HSDSWriter(H5Writer):
             http_conn = self._http_conn
         else:
             kwargs = self._http_kwargs
+            kwargs["retries"] = 1  # tbd: test setting
             http_conn = HttpConn(self.filepath, **kwargs)
             if self._append:
                 http_conn._mode = "a"
@@ -220,10 +222,36 @@ class HSDSWriter(H5Writer):
     def http_conn(self):
         return self._http_conn
 
+    def getDatasetSize(self, dset_id):
+        """ Return the size of the given dataset """
+
+        dset_json = self.db.getObjectById(dset_id)
+        num_elements = getNumElements(dset_json)
+        dtype = self.db.getDtype(dset_json)
+        if isVlen(dtype):
+            item_size = 1024  # random guess at size of variable length types
+        else:
+            item_size = dtype.itemsize
+        return num_elements * item_size
+
     def createObjects(self, obj_ids):
-        MAX_OBJECTS_PER_REQUEST = 1
+        """ create the objects referenced in obj_ids """
+
+        MAX_INIT_SIZE = 4096  # max size to include init values in dataset creation
+
+        def multiPost(items):
+            self.log.debug(f"hsds_writer> POST request {collection} for {len(items)} objects")
+            post_rsp = self.http_conn.POST("/" + collection, items)
+            self.log.debug(f"hsds_writer> POST post_rsp.status_code: {post_rsp.status_code}")
+            if post_rsp.is_json:
+                self.log.debug(f"hsds_writer> post_rsp.json: {post_rsp.json()}")
+            items.clear()
+
+        self.log.debug(f"hsds_writer> createObjects, {len(obj_ids)} objects")
+        MAX_OBJECTS_PER_REQUEST = 3
         collections = ("groups", "datasets", "datatypes")
         col_items = {}
+        dset_value_update_ids = set()
         for collection in collections:
             col_items[collection] = []
 
@@ -233,48 +261,169 @@ class HSDSWriter(H5Writer):
             collection = getCollectionForId(obj_id)
             obj_json = self.db.getObjectById(obj_id)
             item = {"id": obj_id}
-            for key in ("links", "attributes"):
-                if key in obj_json:
+            self.log.debug(f"create id: {obj_id}")
+            for key in obj_json:  # ("links", "attributes"):
+                if key == "updates":
+                    # not part of the obj json
+                    continue
+                if key == "shape":
+                    # just send the dims, not the shape json
+                    shape_json = obj_json["shape"]
+                    if shape_json["class"] == "H5S_SIMPLE":
+                        dims = shape_json["dims"]
+                        item[key] = dims
+                else:
+                    # just copy the key value directly
                     item[key] = obj_json[key]
+
+            # initialize dataset values if provided and not too large
+            if "updates" in obj_json:
+                updates = obj_json["updates"]
+                if updates and len(updates) == 1 and self.getDatasetSize(obj_id) < MAX_INIT_SIZE:
+                    sel, arr = updates[0]
+                    if sel.select_type == selections.H5S_SELECT_ALL:
+                        value = bytesArrayToList(arr)
+                        item["value"] = value
+                        updates.clear()  # reset the update list
+                if updates:
+                    dset_value_update_ids.add(obj_id)  # will set dataset value below
+
+            # add to the list of new items for the given collection
             items = col_items[collection]
             items.append(item)
+
             if len(items) == MAX_OBJECTS_PER_REQUEST:
-                print("items:", items)
-                post_rsp = self.http_conn.POST("/" + collection, items)
-                print("post_rsp.status_code:", post_rsp.status_code)
-                if post_rsp.is_json:
-                    print("post_rsp.json:", post_rsp.json())
-                items.clear()
+                multiPost(items)
 
         # handle any remainder items
         for collection in collections:
             items = col_items[collection]
             if items:
-                self.http_conn.POST("/" + collection, items)
+                multiPost(items)
+
+        # write any initial dataset values
+        if dset_value_update_ids:
+            self.updateValues(dset_value_update_ids)
 
     def updateLinks(self, grp_ids):
         """ update any modified links of the given objects """
 
-        print("updateLinks:", grp_ids)
-        body = {}  # body will hold a map of grp ids to link lists
+        self.log.debug("hsds_writer> updateLinks")
+        items = {}  # dict which will hold a map of grp ids to links to create
+        count = 0
 
         for grp_id in grp_ids:
             if getCollectionForId(grp_id) != "groups":
                 continue  # ignore datasets and datatypes
             grp_json = self.db.getObjectById(grp_id)
             grp_links = grp_json["links"]
-            print(f"grp_id {grp_id} links: {grp_links}")
-            for link_json in grp_links:
+            for link_title in grp_links:
+                link_json = grp_links[link_title]
                 if "created" not in link_json:
                     self.log.error(f"hsds_writer> expected created timestamp in link: {link_json}")
                 created = link_json["created"]
                 if created > self._last_flush_time:
+                    self.log.debug(f"hsds_writer> {grp_id}: new link: {link_title}")
+                    count += 1
                     # new link, add to our list
-                    if grp_id not in body:
-                        body[grp_id] = {}
+                    if grp_id not in items:
+                        items[grp_id] = {"links": {}}
+                    links = items[grp_id]["links"]
+                    link_class = link_json["class"]
+                    new_link = {"class": link_class}
+                    # convert to hsds representation
+                    if link_class == "H5L_TYPE_HARD":
+                        new_link["id"] = link_json["id"]
+                    elif link_class == "H5L_TYPE_SOFT":
+                        new_link["h5path"] = link_json["h5path"]
+                    elif link_class == "H5L_TYPE_EXTERNAL":
+                        new_link["h5path"] = link_json["h5path"]
+                        new_link["h5domain"] = link_json["file"]  # use h5domain for file key
+                    elif link_class == "H5L_TYPE_USER_DEFINED":
+                        self.log.warning(f"ignoring user-defined link: {link_title}")
+                        continue
+                    else:
+                        raise IOError(f"unexpected link class: {link_class}")
+                    links[link_title] = new_link
+                    self.log.debug(f"setting link {link_title} to {new_link}")
 
-        if body:
-            print("updateLinks, body:", body)
+        if items:
+            body = {"grp_ids": items}
+            put_rsp = self.http_conn.PUT("/groups/" + self._root_id + "/links", body=body)
+            if put_rsp.status_code not in (200, 201):
+                self.log.error(f"failed to update links for request: {body}")
+                raise IOError("hsds_writer unable to update links")
+            else:
+                self.log.debug(f"hsds_writer> {grp_id} {count} links updated")
+
+    def updateAttributes(self, obj_ids):
+        """ update any modified links of the given objects """
+
+        self.log.debug("hsds_writer> updateAttributes")
+        items = {}  # dict which will hold a map of objects ids to attributes to create
+        count = 0
+
+        for obj_id in obj_ids:
+            obj_json = self.db.getObjectById(obj_id)
+            obj_attrs = obj_json["attributes"]
+            for attr_name in obj_attrs:
+                attr_json = obj_attrs[attr_name]
+                if "created" not in attr_json:
+                    self.log.error(f"hsds_writer> expected created timestamp in attr: {attr_json}")
+                created = attr_json["created"]
+                if created > self._last_flush_time:
+                    self.log.debug(f"hsds_writer> {obj_id} attribute {attr_name} created")
+                    count += 1
+                    # new attribute, add to our list
+                    if obj_id not in items:
+                        items[obj_id] = {"attributes": {}}
+                    attrs = items[obj_id]["attributes"]
+                    attrs[attr_name] = attr_json
+
+        if items:
+            body = {"obj_ids": items}
+            req = f"/groups/{self._root_id}/attributes"
+            put_rsp = self.http_conn.PUT(req, body=body)
+            if put_rsp.status_code not in (200, 201):
+                self.log.error(f"hsds_writer> put {req} failed, status: {put_rsp.status_code}")
+            else:
+                self.log.debug(f"hsds_writer> {count} attributes updated")
+
+    def updateValue(self, dset_id, sel, arr):
+        """ update the given dataset using selection and array """
+        self.log.debug("hsds_writer> updateValue")
+        params = {}
+        data = arrayToBytes(arr)
+        self.log.debug(f"writing binary data, {len(data)} bytes")
+
+        if sel.select_type != selections.H5S_SELECT_ALL:
+            select_param = sel.getQueryParam()
+            self.log.debug(f"got select query param: {select_param}")
+            params["select"] = select_param
+
+        req = f"/datasets/{dset_id}/value"
+        rsp = self.http_conn.PUT(req, body=data, params=params, format="binary")
+        if rsp.status_code != 200:
+            self.log.error(f"PUT {req} returned error: {rsp.status_code}")
+        else:
+            self.log.debug(f"PUT {len(data)} bytes successful")
+
+    def updateValues(self, dset_ids):
+        """ write any pending dataset values """
+
+        self.log.debug("hsds_writer> updateValues")
+        for dset_id in dset_ids:
+            if getCollectionForId(dset_id) != "datasets":
+                continue  # ignore groups and datatypes
+            dset_json = self.db.getObjectById(dset_id)
+            if "updates" not in dset_json:
+                continue
+            updates = dset_json["updates"]
+            if updates:
+                self.log.debug(f"hsds_writer> {dset_id} update count: {len(updates)}")
+                for (sel, arr) in updates:
+                    self.updateValue(dset_id, sel, arr)
+                updates.clear()
 
     def flush(self):
         """ Write dirty items """
@@ -286,27 +435,33 @@ class HSDSWriter(H5Writer):
         self.log.debug(f"    new object count: {len(self.db.new_objects)}")
         self.log.debug(f"    dirty object count: {len(self.db.dirty_objects)}")
         self.log.debug(f"    deleted object count: {len(self.db.deleted_objects)}")
-
         if self._init:
-            # initialize all existing objects
-            self.log.debug(f"flush -- init is true, self.db: {self.db.db}")
+            # initialize objects
+            self.log.debug(f"hsds_writer> flush -- init is True self.db: {self.db.db}")
             for obj_id in self.db:
                 self.log.debug(f"init: {obj_id}")
             self.createObjects(self.db.db.keys())
             self._init = False
         elif self.db.new_objects:
+            self.log.debug(f"hsds_writer> {len(self.db.new_objects)} objects to create")
             for obj_id in self.db.new_objects:
-                self.log.debug(f"new obj id: {obj_id}")
+                self.log.debug(f"hsds_writer> new obj id: {obj_id}")
             self.createObjects(self.db.new_objects)
+        else:
+            self.log.debug("no new objects to persist")
 
         for obj_id in self.db.dirty_objects:
-            self.log.debug(f"dirty object id: {obj_id}")
+            self.log.debug(f"hsds_writer> dirty object id: {obj_id}")
             self.updateLinks(self.db.dirty_objects)
+            self.updateAttributes(self.db.dirty_objects)
+            self.updateValues(self.db.dirty_objects)
 
         for obj_id in self.db.deleted_objects:
             self.log.debug(f"deleted object: {obj_id}")
 
+        self._init = False
         self._last_flush_time = time.time()
+        self.log.debug("hsds_writer> flush successful")
         return True  # all objects written successfully
 
     def close(self):

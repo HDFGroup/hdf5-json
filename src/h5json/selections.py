@@ -38,7 +38,7 @@ def select(obj, args):
     to __getitem__.  The arguments should be the following:
 
     obj
-        Datatset object
+        Dataset object
 
     args
         Either a single argument or a tuple of arguments.  See below for

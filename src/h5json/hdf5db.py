@@ -731,7 +731,9 @@ class Hdf5db:
         if self.closed:
             raise ValueError("db is closed")
         type_json = getTypeItem(dtype)
-        if shape == "H5S_NULL":
+        if shape is None:
+            raise ValueError("shape not set")
+        elif shape == "H5S_NULL":
             shape_json = {"class": "H5S_NULL"}
         elif shape == ():
             shape_json = {"class": "H5S_SCALAR"}

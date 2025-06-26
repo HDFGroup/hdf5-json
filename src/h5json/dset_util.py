@@ -11,6 +11,7 @@
 ##############################################################################
 
 import time
+import numpy as np
 
 
 def resize_dataset(dset_json, shape):
@@ -40,3 +41,16 @@ def resize_dataset(dset_json, shape):
 
     shape_json["dims"] = list(shape)
     dset_json["modified"] = time.time()
+
+
+def getNumElements(dset_json):
+    shape_json = dset_json["shape"]
+    shape_class = shape_json["class"]
+    if shape_class == "H5S_NULL":
+        num_elements = 0
+    elif shape_class == "H5S_SCALAR":
+        num_elements = 1
+    elif shape_class == "H5S_SIMPLE":
+        dims = shape_json["dims"]
+        num_elements = int(np.prod(dims))
+    return num_elements

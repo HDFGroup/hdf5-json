@@ -72,8 +72,8 @@ class H5pyWriterTest(unittest.TestCase):
             g1 = f["g1"]
             self.assertTrue("a1" in g1.attrs)
             self.assertEqual(len(g1), 0)
-
         db.open()
+
         g2_id = db.createGroup()
         db.createHardLink(root_id, "g2", g2_id)
 
@@ -96,8 +96,11 @@ class H5pyWriterTest(unittest.TestCase):
         with h5py.File(filepath) as f:
             self.assertTrue("attr1", f.attrs)
             self.assertTrue("attr2", f.attrs)
+            self.assertEqual(len(f), 2)
             self.assertTrue("g1" in f)
+            self.assertTrue("g2" in f)
             g1 = f["g1"]
+            self.assertEqual(len(g1), 1)
             self.assertTrue("a1" in g1.attrs)
             self.assertTrue("g1.1" in g1)
             g11 = g1["g1.1"]
