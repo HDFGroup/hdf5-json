@@ -35,9 +35,9 @@ Social = "https://twitter.com/hdf5"
 Discussion = "https://forum.hdfgroup.org"
 
 [project.scripts]
-h5tojson = "h5json.h5tojson.h5tojson:main"
-jsontoh5 = "h5json.jsontoh5.jsontoh5:main"
-h5jvalidate = "h5json.validator.validator:main"
+h5tojson = "h5json.apps.h5tojson:main"
+jsontoh5 = "h5json.apps.jsontoh5:main"
+h5jvalidate = "h5json.apps.validator:main"
 
 [project.optional-dependencies]
 dev = ["check-manifest"]
@@ -54,10 +54,8 @@ packages = [
     "h5json.jsonstore",
     "h5json.h5pystore",
     "h5json.hsdsstore",
-    "h5json.h5tojson",
-    "h5json.jsontoh5",
     "h5json.schema",
-    "h5json.validator",
+    "h5json.apps",
 ]
 package-data = { "h5json.schema" = ["*.schema.json"] }
 platforms = ["any"]
