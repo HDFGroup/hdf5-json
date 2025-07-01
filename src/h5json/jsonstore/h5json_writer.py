@@ -40,15 +40,15 @@ class H5JsonWriter(H5Writer):
 
     def flush(self):
         """ Write dirty items """
-        # json writer doesn't support incremental updates, so we'll wait
-        # for close to write out database
+         
         if not self._root_id:
             msg = "flush called prior to open"
             self.log.warning(msg)
             raise IOError(msg)
 
         self.log.info("flush")
-        return False
+        self.dumpFile()
+        return True
 
     def open(self):
         """ file open """
@@ -61,7 +61,8 @@ class H5JsonWriter(H5Writer):
 
     def close(self):
         """ close storage handle """
-        self.dumpFile()
+        self.flush()
+        self._root_id = None
 
     def isClosed(self):
         """ return closed status """
@@ -276,6 +277,7 @@ class H5JsonWriter(H5Writer):
 
         self.json["apiVersion"] = db_version_info["hdf5-json-version"]
         self.json["root"] = getUuidFromId(self._root_uuid)
+
 
         self.updateAliasList()  # create alias_db with obj_id to alias list dict
 

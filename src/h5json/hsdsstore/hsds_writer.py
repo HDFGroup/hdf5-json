@@ -12,10 +12,10 @@
 import logging
 import time
 
-from ..objid import getCollectionForId, getUuidFromId
+from ..objid import getCollectionForId
 
-from ..hdf5dtype import createDataType, isVlen
-from ..array_util import jsonToArray, bytesToArray, arrayToBytes, bytesArrayToList
+from ..hdf5dtype import isVlen
+from ..array_util import arrayToBytes, bytesArrayToList
 from ..dset_util import getNumElements
 from .. import selections
 from ..h5writer import H5Writer
@@ -117,6 +117,9 @@ class HSDSWriter(H5Writer):
 
     def open(self):
         """ setup domain for writing """
+        if not self._db_ref:
+            # no db set yet
+            raise IOError("DB not set")
 
         if self._http_conn:
             http_conn = self._http_conn
@@ -241,10 +244,10 @@ class HSDSWriter(H5Writer):
 
         def multiPost(items):
             self.log.debug(f"hsds_writer> POST request {collection} for {len(items)} objects")
+            for item in items:
+                self.log.debug(f"hsds_writer> POST item: {item}")
             post_rsp = self.http_conn.POST("/" + collection, items)
             self.log.debug(f"hsds_writer> POST post_rsp.status_code: {post_rsp.status_code}")
-            if post_rsp.is_json:
-                self.log.debug(f"hsds_writer> post_rsp.json: {post_rsp.json()}")
             items.clear()
 
         self.log.debug(f"hsds_writer> createObjects, {len(obj_ids)} objects")
@@ -265,6 +268,12 @@ class HSDSWriter(H5Writer):
             for key in obj_json:  # ("links", "attributes"):
                 if key == "updates":
                     # not part of the obj json
+                    continue
+                if key == "attributes":
+                    # will update attribute later
+                    continue
+                if key == "links":
+                    # links will also be updated later
                     continue
                 if key == "shape":
                     # just send the dims, not the shape json
@@ -304,6 +313,17 @@ class HSDSWriter(H5Writer):
         # write any initial dataset values
         if dset_value_update_ids:
             self.updateValues(dset_value_update_ids)
+
+    def deleteObjects(self, obj_ids):
+        """ remove the given obj ids from the HSDS store """
+
+        # no multi-delete operation yet, so delete one by one
+        for obj_id in obj_ids:
+            collection = getCollectionForId(obj_id)
+            req = f"/{collection}/{obj_id}"
+            http_rsp = self.http_conn.DELETE(req)
+            if http_rsp.status_code not in (200, 410):
+                self.log.error(f"got {http_rsp.status_code} for DELETE {req}")
 
     def updateLinks(self, grp_ids):
         """ update any modified links of the given objects """
@@ -425,44 +445,59 @@ class HSDSWriter(H5Writer):
                     self.updateValue(dset_id, sel, arr)
                 updates.clear()
 
+
     def flush(self):
         """ Write dirty items """
-
-        if not self.db:
+        if self.closed:
             # no db set yet
-            return False
+            self.log.warning("hsds_writer> flush called but no db")
+            return IOError("writer is closed")
+        if not self._http_conn:
+            self.log.warning("hsds_writer no http connection")
+            raise IOError("no http connection")
+        
         self.log.info("hsds_writer.flush()")
         self.log.debug(f"    new object count: {len(self.db.new_objects)}")
         self.log.debug(f"    dirty object count: {len(self.db.dirty_objects)}")
         self.log.debug(f"    deleted object count: {len(self.db.deleted_objects)}")
+        root_id = self._root_id
+        dirty_ids = self.db.dirty_objects.copy()
         if self._init:
             # initialize objects
-            self.log.debug(f"hsds_writer> flush -- init is True self.db: {self.db.db}")
-            for obj_id in self.db:
-                self.log.debug(f"init: {obj_id}")
-            self.createObjects(self.db.db.keys())
+            self.log.debug(f"hsds_writer> flush -- init is True self.db: {len(self.db.db)} objects")
+            self.db.readAll()
+            self.log.debug(f"hsds_writer>flush, init after readAll, {len(self.db.db)} objects")
+            obj_ids = set(self.db.db.keys())
+            obj_ids.remove(root_id)  # root group created when domain was
+            self.log.debug(f"init createObjects: {obj_ids}")
+            self.createObjects(obj_ids)
+            dirty_ids.update(obj_ids)
+            dirty_ids.add(root_id)  # add back root for attribute and link creation
             self._init = False
         elif self.db.new_objects:
             self.log.debug(f"hsds_writer> {len(self.db.new_objects)} objects to create")
             for obj_id in self.db.new_objects:
                 self.log.debug(f"hsds_writer> new obj id: {obj_id}")
             self.createObjects(self.db.new_objects)
+            dirty_ids.update(self.db.new_objects)
         else:
             self.log.debug("no new objects to persist")
 
-        for obj_id in self.db.dirty_objects:
-            self.log.debug(f"hsds_writer> dirty object id: {obj_id}")
-            self.updateLinks(self.db.dirty_objects)
-            self.updateAttributes(self.db.dirty_objects)
-            self.updateValues(self.db.dirty_objects)
+        if dirty_ids:
+            self.log.debug(f"hsds_writer> dirty ids: {dirty_ids}")
+            self.updateLinks(dirty_ids)
+            self.updateAttributes(dirty_ids)
+            if not self._no_data:
+                self.updateValues(dirty_ids)
 
-        for obj_id in self.db.deleted_objects:
-            self.log.debug(f"deleted object: {obj_id}")
-
-        self._init = False
+        if self.db.deleted_objects:
+            self.log.debug(f"deleted ids: {self.db.deleted_objects}")
+            self.deleteObjects(self.db.deleted_objects)
+        
         self._last_flush_time = time.time()
         self.log.debug("hsds_writer> flush successful")
-        return True  # all objects written successfully
+        # all objects written successfully
+        return True
 
     def close(self):
         # over-ride of H5Writer method

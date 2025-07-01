@@ -12,6 +12,7 @@
 import h5py
 import numpy as np
 import logging
+import time
 
 from ..objid import createObjId, getCollectionForId
 from ..hdf5dtype import getTypeItem, isOpaqueDtype
@@ -126,6 +127,7 @@ class H5pyReader(H5Reader):
             tgt_arr[...] = src_arr[...]
         return tgt_arr
 
+    """
     def visit(self, path, obj):
         name = obj.__class__.__name__
         self.log.info(f"visit: {path} name: {name}")
@@ -136,6 +138,7 @@ class H5pyReader(H5Reader):
 
         addr = h5py.h5o.get_info(obj.id).addr
         self._addr_map[addr] = obj_id
+    """
 
     def __init__(
         self,
@@ -174,11 +177,15 @@ class H5pyReader(H5Reader):
         self._id_map[self._root_id] = f
         addr = h5py.h5o.get_info(f.id).addr
         self._addr_map[addr] = self._root_id
-        f.visititems(self.visit)
+        #f.visititems(self.visit)
+
+        print("h5py_reader keys:", list(self.db.db.keys()))
 
         return self._root_id
 
     def close(self):
+        # close h5py handles in map dict
+        self._id_map = {}
         if self._f:
             self._f.close()
             self._f = None
@@ -261,7 +268,8 @@ class H5pyReader(H5Reader):
         else:
             pass  # no data
 
-        # timestamps will be added by getAttributeItem()
+        
+        item['created'] = time.time()  # TBD: get attribute creation time from h5py?
         return item
 
     def getAttributes(self, obj_id, include_data=True):
@@ -306,6 +314,8 @@ class H5pyReader(H5Reader):
                 item["id"] = None
             else:
                 item["id"] = self._addr_map[addr]
+            
+        item['created'] = time.time()  # TBD: get the link creation time from h5py?
 
         return item
 
@@ -428,7 +438,8 @@ class H5pyReader(H5Reader):
         self.log.info(f"getDataset alias: [{dset.name}]")
 
         item = {"alias": dset.name}
-
+        print("dset:", dset)
+        print("dset type:", type(dset))
         typeid = dset.id.get_type()
         if h5py.h5t.TypeID.committed(typeid):
             type_uuid = None
@@ -468,21 +479,60 @@ class H5pyReader(H5Reader):
         item["cpl"] = self._getHDF5DatasetCreationProperties(dset, type_item["class"])
 
         return item
+    
+    def _getHardLinkIds(self, parent):
+        """ create any ids for hard links of the group """
+
+        self.log.debug(f"h5pyreader> _getHardlinkIds for {parent.name}")
+        for link_name in parent:
+            self.log.debug(f"h5py_reader> check link: {link_name}")
+
+            try:
+                linkObj = parent.get(link_name, None, False, True)
+                linkClass = linkObj.__class__.__name__
+            except TypeError:
+                # UDLink? Go on to the next link
+                continue
+            if linkClass != "HardLink":
+                self.log.debug(f"h5py_reader> ignoring {link_name} - type: {linkClass}")
+            else:
+                # get the linked object
+                obj = parent[link_name]
+                addr = h5py.h5o.get_info(obj.id).addr
+                if addr not in self._addr_map:
+                    name = obj.__class__.__name__
+                    obj_id = createObjId(obj_type=name, root_id=self._root_id)  # create uuid
+                    self.log.debug(f"h5py_reader> creating obj_id: {obj_id} for obj: {obj.name}")
+                    self._id_map[obj_id] = obj
+                    self._addr_map[addr] = obj_id
+                else:
+                    obj_id = self._addr_map[addr]
+                    if obj_id not in self._id_map:
+                        self.log.debug(f"h5py_reader> adding obj for {obj_id} to id_map")
+                        self._id_map = obj
+                    else:
+                        self.log.debug("h5py_reader> obj {obj_id} already in id_map")
 
     def getObjectById(self, obj_id, include_attrs=True, include_links=True):
         """ return object with given id """
         if obj_id not in self._id_map:
             raise KeyError(f"{obj_id} not found")
         h5obj = self._id_map[obj_id]
+        print("h5obj:", h5obj)
+        print("h5obj.name:", h5obj.name)
+        print("h5obj type:", type(h5obj))
         if isinstance(h5obj, h5py.Group):
+            self._getHardLinkIds(h5obj)
             obj_json = self._getGroup(h5obj, include_links=include_links)
         elif isinstance(h5obj, h5py.Dataset):
             obj_json = self._getDataset(h5obj)
         elif isinstance(h5obj, h5py.Datatype):
-            obj_json = self._getDatatype(h5obj)
+            obj_json = self._getDataset(h5obj)
         else:
-            raise TypeError(f"unexpected object type: {type(h5obj)}")
-
+            msg = f"unexpected object type: {type(h5obj)}"
+            self.log.error(msg)
+            raise TypeError(msg)
+            
         if include_attrs:
             attributes = self.getAttributes(obj_id)
             obj_json["attributes"] = attributes

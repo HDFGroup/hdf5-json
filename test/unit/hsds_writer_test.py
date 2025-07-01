@@ -17,6 +17,7 @@ import numpy as np
 from h5json import Hdf5db
 from h5json.hsdsstore.httpconn import HttpConn
 from h5json.hsdsstore.hsds_writer import HSDSWriter
+from h5json.h5pystore.h5py_reader import H5pyReader
 from h5json.hdf5dtype import special_dtype, Reference
 from h5json import selections
 
@@ -36,10 +37,10 @@ class HSDSWriterTest(unittest.TestCase):
 
     def testSimple(self):
 
-        domain_path = "/home/test_user1/writer_test.h5"
+        domain_path = "hdf5://home/test_user1/test/writer_test.h5"
 
         db = Hdf5db(app_logger=self.log)
-        db.writer = HSDSWriter(domain_path)
+        db.writer = HSDSWriter(domain_path, app_logger=self.log)
         root_id = db.open()
         http_conn = HttpConn(domain_path, mode='r', retries=1)
 
@@ -157,6 +158,51 @@ class HSDSWriterTest(unittest.TestCase):
         self.assertTrue("value" in rsp_json)
         rsp_value = rsp_json["value"]
         self.assertEqual(rsp_value, 42)
+
+        db.close()
+
+    def testH5PyToHS(self):
+        # test reading from HDF5 file and writing to HSDS
+
+        file_path = "data/hdf5/tall.h5"
+        domain_path = "hdf5://home/test_user1/test/hsds_writer_test_tall.h5"
+         
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5pyReader(file_path)
+        db.writer = HSDSWriter(domain_path)
+        root_id = db.open()
+        #db.readAll()
+        root_json = db.getObjectById(root_id)
+        db.flush()
+
+        # validate - get the root group and see if counts are correct
+        http_conn = HttpConn(domain_path, mode='r', retries=1)
+        http_rsp = http_conn.GET(f"/groups/{root_id}")
+        self.assertEqual(http_rsp.status_code, 200)
+        root_json = http_rsp.json()
+        self.assertEqual(root_json["id"], root_id)
+        # attribute count should still be zero (hasn't been flushed yet)
+        self.assertEqual(root_json["attributeCount"], 2)
+        # same for link count
+        self.assertEqual(root_json["linkCount"], 2)
+
+        # get the g1 hard link
+        http_rsp = http_conn.GET(f"/groups/{root_id}/links/g1")
+        self.assertEqual(http_rsp.status_code, 200)
+        rsp_json = http_rsp.json()
+        g1_link = rsp_json["link"]
+        g1_id = g1_link["id"]
+
+        # get the g1 group json
+        http_rsp = http_conn.GET(f"/groups/{g1_id}")
+        self.assertEqual(http_rsp.status_code, 200)
+        g1_json = http_rsp.json()
+        self.assertEqual(g1_json["attributeCount"], 0)
+        self.assertEqual(g1_json["linkCount"], 2)
+
+
+
+
 
         db.close()
 

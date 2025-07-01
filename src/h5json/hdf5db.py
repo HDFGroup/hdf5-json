@@ -109,7 +109,6 @@ class Hdf5db:
             self._writer.close()
         self._writer = value
         if self._writer:
-            self.log.debug("writer set_db")
             self._writer.set_db(self)
 
     @property
@@ -161,11 +160,40 @@ class Hdf5db:
             return  # nothing to do
         if not self.writer.flush():
             # flush not successful, don't clear dirty set
-            return
+            self.log.error("writer flush failed")
+            raise IOError("writer flush failed")
 
-        # reset new and dirty sets
+        # reset new, dirty and deleted sets
         self._new_objects = set()
         self._dirty_objects = set()
+        self._deleted_objects = set()
+
+    def readAll(self):
+        """ read all meta data objects from reader and save to db """
+
+        self.log.debug("readAll")
+        if self.closed:
+            raise IOError("database is not open")
+        
+        if not self.reader:
+            self.log.debug("no reader set")
+            # no reader, nothing to do
+            return
+        
+        obj_ids = set()
+        obj_ids.add(self.root_id)
+        while obj_ids:
+            obj_id = obj_ids.pop()
+            self.log.debug(f"readAll, get {obj_id}")
+            obj_json = self.getObjectById(obj_id)  # will add obj_id to db if not already present
+            if getCollectionForId(obj_id) == "groups":
+                # add any hard links to the set
+                links = obj_json["links"]
+                for title in links:
+                    link_json = links[title]
+                    if "id" in link_json:
+                        link_id = link_json["id"]
+                        obj_ids.add(link_id)
 
     def open(self):
         """ open reader and writer if set """
@@ -196,10 +224,16 @@ class Hdf5db:
                     writer_root_id = self.writer.open()
                     if writer_root_id != self._root_id:
                         # TBD: same as above, need to deal with inconsistent root ids
-                        self.log.warning("writer root_id does not match reader root_id")
+                        msg = "writer root_id does not match reader root_id"
+                        self.log.error(msg)
+                        raise IOError(msg)
+                    else:
+                        self.log.debug('writer and reader root ids match!')
             else:
                 # no root id set by writer or reader, initialize now
-                self._root_id = createObjId(obj_type="groups")
+                root_id = createObjId(obj_type="groups")
+                self.log.debug(f"no reader or writer, creating new root id: {root_id}")
+                self._root_id = root_id
                 if self.writer:
                     # open writer in create mode now that we have a root id
                     self.writer.open()
@@ -215,6 +249,7 @@ class Hdf5db:
     def close(self):
         """ close reader and writer handles """
         self.log.info("Hdf5db __close")
+        
         self.flush()
         if self.writer:
             self.writer.close()
@@ -237,6 +272,7 @@ class Hdf5db:
 
     def getObjectById(self, obj_id):
         """ return object with given id """
+        self.log.debug(f"getObjectById {obj_id}")
         if obj_id not in self.db:
             if self.reader:
                 # load the obj from the reader
@@ -251,9 +287,6 @@ class Hdf5db:
     def getObjectIdByPath(self, h5path, parent_id=None):
         """ Return id for the given link path starting from parent_id if set,
         otherwise the root_id """
-
-        if self.closed:
-            self.open()  # initiate db
 
         if h5path == "/":
             return self.root_id  # just return root id
