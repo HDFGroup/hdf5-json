@@ -22,6 +22,150 @@ from .h5reader import H5Reader
 from .h5writer import H5Writer
 
 
+class H5NullReader(H5Reader):
+    """
+    This class can be used by HDF5DB as a default no-op reader
+    """
+
+    def __init__(
+        self,
+        filepath,
+        app_logger=None
+    ):
+        if app_logger:
+            self.log = app_logger
+        else:
+            self.log = logging.getLogger()
+
+        super().__init__(filepath, app_logger=app_logger)
+        self.log.debug("H5NullReader.__init__")
+
+        self._root_id = None
+        self._is_closed = True
+
+    def get_root_id(self):
+        """ Return root id """
+        return self._root_id
+
+    def getObjectById(self, obj_id, include_attrs=True, include_links=True):
+        """ return object with given id """
+
+        if obj_id != self._root_id:
+            raise KeyError(f"{obj_id} not found")
+
+        # create a root group with no links or attributes
+        group_json = {"links": {}, "attributes": {}, "cpl": {}}
+        group_json["created"] = time.time()
+
+        return group_json
+
+    def getAttribute(self, obj_id, name, includeData=True):
+        """
+        Get attribute given an object id and name
+        returns: JSON object
+        """
+        raise IOError("not supported")
+
+    def getDatasetValues(self, obj_id, sel=None, dtype=None):
+        """
+        Get values from dataset identified by obj_id.
+        If a slices list or tuple is provided, it should have the same
+        number of elements as the rank of the dataset.
+        """
+
+        # just return a zero array
+        arr = np.zeros(sel.shape, dtype=dtype)
+
+        return arr
+
+    def open(self):
+        """ Open data source for reading """
+        self.log.debug("H5NullReader open")
+        if self.db is None:
+            # no db set yet
+            self.log.warning("no self.db db_ref")
+            raise ValueError("no db")
+
+        if self._is_closed:
+            if not self._root_id:
+                if self.db.root_id:
+                    # use the db root id
+                    self._root_id = self.db.root_id
+                else:
+                    # create a new root id
+                    self._root_id = createObjId(obj_type="groups")
+            self._is_closed = False
+        return self._root_id
+
+    def close(self):
+        """ close any open handles to the storage """
+        self._is_closed = True
+
+    def isClosed(self):
+        """ return True if handle is closed """
+        return self._is_closed
+
+
+class H5NullWriter(H5Writer):
+    """
+    This class can be used by HDF5DB as a default no-op writer
+    """
+
+    def __init__(
+        self,
+        filepath,
+        append=False,
+        no_data=False,
+        app_logger=None
+    ):
+        if app_logger:
+            self.log = app_logger
+        else:
+            self.log = logging.getLogger()
+
+        if append:
+            raise IOError("append is not supprot for H5NullWriter")
+
+        super().__init__(filepath, no_data=no_data, app_logger=app_logger)
+        self.log.debug("H5NullWriter.__init__")
+        self._root_id = None
+        self._is_closed = True
+
+    def open(self):
+        """ open storage handle, return root_id"""
+        self.log.debug("H5NullWriter open")
+        if not self._is_closed:
+            return self._root_id  # already open
+
+        if self.db is None:
+            # no db set yet
+            self.log.warning("no self.db db_ref")
+            raise ValueError("no db")
+
+        if not self._root_id:
+            if self.db.root_id:
+                self._root_id = self.db.root_id
+            else:
+                self._root_id = createObjId(obj_type="groups")
+        self._is_closed = False
+        return self._root_id
+
+    def flush(self):
+        """ Write dirty items """
+        self.log.debug("H5NullWriter> flush")
+        # Null writer is unable to actually persist anything, so return False
+        return False
+
+    def close(self):
+        """ close storage handle """
+        self.log.debug("H5NullWriter.close")
+        self._is_closed = True
+
+    def isClosed(self):
+        """ return True if handle is closed """
+        return self._is_closed
+
+
 class Hdf5db:
     """
     This class is used to manage id lookup tables for primary HDF objects (Groups, Datasets,
@@ -79,23 +223,12 @@ class Hdf5db:
     @reader.setter
     def reader(self, value: H5Reader):
         """ set the reader """
-        if self._writer:
+        if self._writer and not self._writer.isClosed():
             self.flush()
-        if self._reader:
+        if self._reader and not self._reader.isClosed():
             self._reader.close()
         self._reader = value
         self._reader.set_db(self)
-        """
-        root_id = value.get_root_id()
-        if not root_id:
-            raise ValueError(f"reader {type(value)} unable to return root_id")
-        group_json = value.getObjectById(root_id)
-        if not group_json:
-            raise ValueError(f"reader {type(value)} unable to return group json")
-        self._reader = value
-        self._db[root_id] = group_json
-        self._root_id = root_id
-        """
 
     @property
     def writer(self):
@@ -156,17 +289,17 @@ class Hdf5db:
     def flush(self):
         """ write out any changes """
         self.log.debug("db.flush()")
-        if not self.writer:
-            return  # nothing to do
+        self._checkWriter()
         if not self.writer.flush():
             # flush not successful, don't clear dirty set
             self.log.error("writer flush failed")
-            raise IOError("writer flush failed")
+            return False
 
         # reset new, dirty and deleted sets
         self._new_objects = set()
         self._dirty_objects = set()
         self._deleted_objects = set()
+        return True
 
     def readAll(self):
         """ read all meta data objects from reader and save to db """
@@ -174,12 +307,7 @@ class Hdf5db:
         self.log.debug("readAll")
         if self.closed:
             raise IOError("database is not open")
-        
-        if not self.reader:
-            self.log.debug("no reader set")
-            # no reader, nothing to do
-            return
-        
+
         obj_ids = set()
         obj_ids.add(self.root_id)
         while obj_ids:
@@ -198,50 +326,48 @@ class Hdf5db:
     def open(self):
         """ open reader and writer if set """
         self.log.debug("db.open()")
-        if self.root_id:
-            self.log.debug("root id already set, re-open call")
-            if self.writer:
-                self.writer.open()
-            if self.reader:
-                self.reader.open()
-        else:
-            self.log.debug("db.open, getting root_id")
 
-            if self.writer and self.writer.append:
-                # append mode for the writer, open writer and get the root id
-                self.log.debug("db.open, write append, getting root_id from writer")
-                self._root_id = self.writer.open()
-                if self.reader:
-                    reader_root_id = self.reader.open()
-                    if reader_root_id != self._root_id:
-                        # TBD: need someway to reconcile if both reader and writer have
-                        # an potentiated idea on what there root id is
-                        self.log.warn("reader root_id does not match writer root_id")
-            elif self.reader:
-                self.log.debug("db.open, getting root_id from reader")
-                self._root_id = self.reader.open()
-                if self.writer:
-                    writer_root_id = self.writer.open()
-                    if writer_root_id != self._root_id:
-                        # TBD: same as above, need to deal with inconsistent root ids
-                        msg = "writer root_id does not match reader root_id"
-                        self.log.error(msg)
-                        raise IOError(msg)
-                    else:
-                        self.log.debug('writer and reader root ids match!')
+        if self.reader is None:
+            self.reader = H5NullReader(None, app_logger=self.log)
+            self._reader.set_db(self)
+
+        if self.writer is None:
+            self.writer = H5NullWriter(None, app_logger=self.log)
+            self._writer.set_db(self)
+
+        if not self.reader.isClosed():
+            self.log.debug("db is already opened")
+            raise IOError("db is already opened")
+            return self._root_id
+
+        if self.writer.append:
+            # append mode for the writer, first open writer and get the root id
+            self.log.debug("db.open, write append, getting root_id from writer")
+            writer_root_id = self.writer.open()
+            if self._root_id:
+                if writer_root_id != self._root_id:
+                    raise IOError("writer root id does not match reader root id")
             else:
-                # no root id set by writer or reader, initialize now
-                root_id = createObjId(obj_type="groups")
-                self.log.debug(f"no reader or writer, creating new root id: {root_id}")
-                self._root_id = root_id
-                if self.writer:
-                    # open writer in create mode now that we have a root id
-                    self.writer.open()
+                self._root_id = writer_root_id
 
-                # create a root group just as a memory object
-                group_json = {"links": {}, "attributes": {}, "cpl": {}}
-                group_json["created"] = time.time()
-                self._db[self._root_id] = group_json
+            # now open reader
+            reader_root_id = self.reader.open()
+            if reader_root_id != self._root_id:
+                raise IOError("writer root id does not match reader root id")
+
+        else:
+            # open reader first and get root id
+            reader_root_id = self.reader.open()
+            if self._root_id:
+                if reader_root_id != self._root_id:
+                    raise IOError("writer root id does not match reader root id")
+            else:
+                self._root_id = reader_root_id
+
+            # now open writer
+            writer_root_id = self.writer.open()
+            if writer_root_id != self._root_id:
+                raise IOError("writer root id does not match reader root id")
 
         self.log.debug(f"db.open() - returning root_id: {self._root_id}")
         return self._root_id
@@ -249,7 +375,7 @@ class Hdf5db:
     def close(self):
         """ close reader and writer handles """
         self.log.info("Hdf5db __close")
-        
+
         self.flush()
         if self.writer:
             self.writer.close()
@@ -258,7 +384,14 @@ class Hdf5db:
 
     @property
     def closed(self):
-        return False if self.root_id else True
+        if self.reader:
+            return self.reader.isClosed()
+        elif self.writer:
+            return self.writer.isClosed()
+        elif self._root_id:
+            return True
+        else:
+            return False
 
     def __enter__(self):
         """ called on package init """
@@ -270,16 +403,28 @@ class Hdf5db:
         self.log.info("Hdf5db __exit")
         self.close()
 
+    def _checkReader(self):
+        """ check the reader is set and open """
+        if self.reader is None:
+            raise IOError("reader not set")
+        if self.reader.closed:
+            raise IOError("reader is closed")
+
+    def _checkWriter(self):
+        """ check the writer is set and open """
+        if self.writer is None:
+            raise IOError("writer not set")
+        if self.writer.closed:
+            raise IOError("writer is closed")
+
     def getObjectById(self, obj_id):
         """ return object with given id """
         self.log.debug(f"getObjectById {obj_id}")
+        self._checkReader()
         if obj_id not in self.db:
-            if self.reader:
-                # load the obj from the reader
-                obj_json = self.reader.getObjectById(obj_id)
-                self.db[obj_id] = obj_json
-            else:
-                raise KeyError(f"obj_id: {obj_id} not found")
+            # load the obj from the reader
+            obj_json = self.reader.getObjectById(obj_id)
+            self.db[obj_id] = obj_json
         obj_json = self.db[obj_id]
 
         return obj_json
@@ -538,6 +683,8 @@ class Hdf5db:
         number of elements as the rank of the dataset.
         """
         self.log.info(f"getDatasetValues dset_id: {dset_id}, sel: {sel}")
+
+        self._checkReader()
         dset_json = self.getObjectById(dset_id)
         shape_json = dset_json["shape"]
         if not isinstance(sel, selections.Selection):
@@ -560,11 +707,7 @@ class Hdf5db:
             rank = len(dims)
 
         dtype = self.getDtype(dset_json)
-        if self.reader:
-            arr = self.reader.getDatasetValues(dset_id, sel, dtype=dtype)
-        else:
-            # TBD: Initialize with fill value if non-zero
-            arr = np.zeros(sel.shape, dtype=dtype)
+        arr = self.reader.getDatasetValues(dset_id, sel, dtype=dtype)
 
         if "updates" in dset_json:
             # apply any non-flushed changes that intersect the current selection

@@ -62,10 +62,10 @@ class H5JsonReader(H5Reader):
         return self._root_id
 
     def close(self):
-        pass
+        self._h5json = None
 
     def isClosed(self):
-        return False if self._h5json else False
+        return False if self._h5json else True
 
     def get_root_id(self):
         """ Return root id """

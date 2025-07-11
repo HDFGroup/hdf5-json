@@ -445,7 +445,6 @@ class HSDSWriter(H5Writer):
                     self.updateValue(dset_id, sel, arr)
                 updates.clear()
 
-
     def flush(self):
         """ Write dirty items """
         if self.closed:
@@ -455,7 +454,7 @@ class HSDSWriter(H5Writer):
         if not self._http_conn:
             self.log.warning("hsds_writer no http connection")
             raise IOError("no http connection")
-        
+
         self.log.info("hsds_writer.flush()")
         self.log.debug(f"    new object count: {len(self.db.new_objects)}")
         self.log.debug(f"    dirty object count: {len(self.db.dirty_objects)}")
@@ -493,7 +492,7 @@ class HSDSWriter(H5Writer):
         if self.db.deleted_objects:
             self.log.debug(f"deleted ids: {self.db.deleted_objects}")
             self.deleteObjects(self.db.deleted_objects)
-        
+
         self._last_flush_time = time.time()
         self.log.debug("hsds_writer> flush successful")
         # all objects written successfully

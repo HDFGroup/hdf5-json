@@ -40,7 +40,7 @@ class H5JsonWriter(H5Writer):
 
     def flush(self):
         """ Write dirty items """
-         
+
         if not self._root_id:
             msg = "flush called prior to open"
             self.log.warning(msg)
@@ -277,7 +277,6 @@ class H5JsonWriter(H5Writer):
 
         self.json["apiVersion"] = db_version_info["hdf5-json-version"]
         self.json["root"] = getUuidFromId(self._root_uuid)
-
 
         self.updateAliasList()  # create alias_db with obj_id to alias list dict
 

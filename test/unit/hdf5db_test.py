@@ -50,7 +50,7 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertFalse(db.closed)
         self.assertEqual(db.getObjectIdByPath("/"), root_id)
         db.close()
-        #self.assertTrue(db.closed)
+        self.assertTrue(db.closed)
         obj_id = db.open()
         self.assertEqual(obj_id, root_id)
         db.close()
@@ -394,8 +394,8 @@ class Hdf5dbTest(unittest.TestCase):
         ncols = 10
         shape = (nrows, ncols)
         dtype = np.int32
-        
-        db = Hdf5db(app_logger=self.log)  
+
+        db = Hdf5db(app_logger=self.log)
         root_id = db.open()
         dset_id = db.createDataset(shape, dtype=dtype)
         db.createHardLink(root_id, "dset", dset_id)
@@ -448,7 +448,7 @@ class Hdf5dbTest(unittest.TestCase):
         maxdims = (None, ncols * 2)
 
         db = Hdf5db(app_logger=self.log)
-            
+
         root_id = db.open()
         dset_id = db.createDataset(shape, maxdims=maxdims, dtype=dtype)
         db.createHardLink(root_id, "dset", dset_id)

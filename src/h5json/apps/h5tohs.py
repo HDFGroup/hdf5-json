@@ -17,9 +17,11 @@ from h5json import Hdf5db
 from h5json.hsdsstore.hsds_writer import HSDSWriter
 from h5json.h5pystore.h5py_reader import H5pyReader
 
+
 def usage():
     print(f"usage: {sys.argv[0]} [-h] [--nodata] <hdf5_file> <hsds_domain>")
     sys.exit(0)
+
 
 def main():
     no_data = False
@@ -58,6 +60,7 @@ def main():
     db.open()  # read HDF5 data into db
 
     db.close()  # close will trigger write to HSDS
+
 
 if __name__ == "__main__":
     main()

@@ -28,7 +28,7 @@ class H5pyReaderTest(unittest.TestCase):
         else:
             lhStdout = None
 
-        self.log.setLevel(logging.INFO)
+        self.log.setLevel(logging.DEBUG)
         handler = logging.FileHandler("./h5json_reader_test.log")
         # add handler to logger
         self.log.addHandler(handler)
@@ -40,7 +40,9 @@ class H5pyReaderTest(unittest.TestCase):
         filepath = "data/json/tall.json"
         db = Hdf5db(app_logger=self.log)
         db.reader = H5JsonReader(filepath, app_logger=self.log)
+        self.assertTrue(db.closed)
         root_id = db.open()
+        self.assertTrue(root_id)
         root_json = db.getObjectById(root_id)
 
         root_attrs = root_json["attributes"]

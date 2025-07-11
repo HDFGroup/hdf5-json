@@ -20,6 +20,7 @@ from h5json import Hdf5db
 from h5json.jsonstore.h5json_reader import H5JsonReader
 from h5json.h5pystore.h5py_writer import H5pyWriter
 from h5json.hdf5dtype import special_dtype, Reference
+from h5json.objid import isRootObjId, isSchema2Id
 from h5json import selections
 
 
@@ -45,6 +46,21 @@ class H5pyWriterTest(unittest.TestCase):
             self.log.removeHandler(lhStdout)
         # self.log.propagate = False  # prevent log out going to stdout
         self.log.info("init!")
+
+    def testOpen(self):
+        filepath = "test/unit/out/h5py_writer_test_testOpen.h5"
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5pyWriter(filepath)
+        root_id = db.open()
+        self.assertTrue(isSchema2Id(root_id))
+        self.assertTrue(isRootObjId(root_id))
+        self.assertFalse(db.closed)
+        self.assertEqual(db.getObjectIdByPath("/"), root_id)
+        db.close()
+        self.assertTrue(db.closed)
+        obj_id = db.open()
+        self.assertEqual(obj_id, root_id)
+        db.close()
 
     def testSimple(self):
 
@@ -518,6 +534,7 @@ class H5pyWriterTest(unittest.TestCase):
         db.open()
         # close should create everything the json reader read to the output file
         db.close()
+        self.assertTrue(db.closed)
 
         with h5py.File(file_out) as f:
             self.assertTrue("/g1/g1.1/dset1.1.1" in f)
@@ -525,8 +542,11 @@ class H5pyWriterTest(unittest.TestCase):
             self.assertEqual(len(dset111.attrs), 2)
 
         db.open()
+        self.assertFalse(db.closed)
         dset111_id = db.getObjectIdByPath("/g1/g1.1/dset1.1.1")
         db.createAttribute(dset111_id, "attr3", "hello")
+        self.assertFalse(db.closed)
+        print("test - db.close()")
         db.close()
 
         with h5py.File(file_out) as f:

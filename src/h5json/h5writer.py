@@ -67,7 +67,7 @@ class H5Writer(ABC):
     @abstractmethod
     def open(self):
         """ open storage handle, return root_id"""
-        return None
+        pass
 
     @abstractmethod
     def flush(self):

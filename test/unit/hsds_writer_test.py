@@ -166,12 +166,11 @@ class HSDSWriterTest(unittest.TestCase):
 
         file_path = "data/hdf5/tall.h5"
         domain_path = "hdf5://home/test_user1/test/hsds_writer_test_tall.h5"
-         
+
         db = Hdf5db(app_logger=self.log)
         db.reader = H5pyReader(file_path)
         db.writer = HSDSWriter(domain_path)
         root_id = db.open()
-        #db.readAll()
         root_json = db.getObjectById(root_id)
         db.flush()
 
@@ -199,10 +198,6 @@ class HSDSWriterTest(unittest.TestCase):
         g1_json = http_rsp.json()
         self.assertEqual(g1_json["attributeCount"], 0)
         self.assertEqual(g1_json["linkCount"], 2)
-
-
-
-
 
         db.close()
 

@@ -388,7 +388,6 @@ class H5pyWriter(H5Writer):
                 continue
             self.createAttribute(obj, name, attr_json)
 
-        
     def flush(self):
         """ Write dirty items """
         if self.closed:
