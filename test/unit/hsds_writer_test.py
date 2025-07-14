@@ -199,6 +199,46 @@ class HSDSWriterTest(unittest.TestCase):
         self.assertEqual(g1_json["attributeCount"], 0)
         self.assertEqual(g1_json["linkCount"], 2)
 
+        # get the g1.1 link
+        http_rsp = http_conn.GET(f"/groups/{g1_id}/links/g1.1")
+        self.assertEqual(http_rsp.status_code, 200)
+        rsp_json = http_rsp.json()
+        g1_1_link = rsp_json["link"]
+        g1_1_id = g1_1_link["id"]
+
+        # Get the g1.1 json
+        http_rsp = http_conn.GET(f"/groups/{g1_1_id}")
+        self.assertEqual(http_rsp.status_code, 200)
+        g1_json = http_rsp.json()
+        self.assertEqual(g1_json["attributeCount"], 0)
+        self.assertEqual(g1_json["linkCount"], 2)
+
+        # get the dset1.1.1 link
+        http_rsp = http_conn.GET(f"/groups/{g1_1_id}/links/dset1.1.1")
+        self.assertEqual(http_rsp.status_code, 200)
+        rsp_json = http_rsp.json()
+        dset1_1_1_link = rsp_json["link"]
+        dset1_1_1_id = dset1_1_1_link["id"]
+
+        # get the dset1.1.1 json
+        http_rsp = http_conn.GET(f"/datasets/{dset1_1_1_id}")
+        self.assertEqual(http_rsp.status_code, 200)
+        dset1_1_1_json = http_rsp.json()
+        dset1_1_1_shape = dset1_1_1_json["shape"]
+        self.assertEqual(dset1_1_1_shape["class"], "H5S_SIMPLE")
+
+        # get the dset1_1_1 data
+        http_rsp = http_conn.GET(f"/datasets/{dset1_1_1_id}/value")
+        self.assertEqual(http_rsp.status_code, 200)
+        rsp_json = http_rsp.json()
+        dset1_1_1_value = rsp_json["value"]
+        self.assertEqual(len(dset1_1_1_value), 10)
+        for i in range(10):
+            row = dset1_1_1_value[i]
+            self.assertEqual(len(row), 10)
+            for j in range(10):
+                self.assertEqual(row[j], i * j)
+
         db.close()
 
 

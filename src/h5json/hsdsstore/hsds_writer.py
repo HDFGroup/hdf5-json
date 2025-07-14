@@ -436,14 +436,31 @@ class HSDSWriter(H5Writer):
             if getCollectionForId(dset_id) != "datasets":
                 continue  # ignore groups and datatypes
             dset_json = self.db.getObjectById(dset_id)
-            if "updates" not in dset_json:
+            dset_shape = dset_json["shape"]
+            dset_class = dset_shape['class']
+            if dset_class == "H5S_NULL":
+                # no data to update
                 continue
-            updates = dset_json["updates"]
-            if updates:
-                self.log.debug(f"hsds_writer> {dset_id} update count: {len(updates)}")
-                for (sel, arr) in updates:
-                    self.updateValue(dset_id, sel, arr)
-                updates.clear()
+            if self._init:
+                # get all data for the dataset
+                # TBD: do this by chunks
+                if dset_class == "H5S_SCALAR":
+                    dset_dims = []
+                else:
+                    dset_dims = dset_shape["dims"]
+                sel_all = selections.select(dset_dims, ...)
+                arr = self.db.getDatasetValues(dset_id, sel_all)
+                if arr is not None:
+                    self.updateValue(dset_id, sel_all, arr)
+            else:
+                if "updates" not in dset_json:
+                    continue
+                updates = dset_json["updates"]
+                if updates:
+                    self.log.debug(f"hsds_writer> {dset_id} update count: {len(updates)}")
+                    for (sel, arr) in updates:
+                        self.updateValue(dset_id, sel, arr)
+                    updates.clear()
 
     def flush(self):
         """ Write dirty items """
@@ -472,6 +489,9 @@ class HSDSWriter(H5Writer):
             self.createObjects(obj_ids)
             dirty_ids.update(obj_ids)
             dirty_ids.add(root_id)  # add back root for attribute and link creation
+            if not self._no_data:
+                # initialize dataset values
+                self.updateValues(obj_ids)
             self._init = False
         elif self.db.new_objects:
             self.log.debug(f"hsds_writer> {len(self.db.new_objects)} objects to create")
