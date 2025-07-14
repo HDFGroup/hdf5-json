@@ -16,7 +16,7 @@ from ..objid import getCollectionForId
 
 from ..hdf5dtype import isVlen
 from ..array_util import arrayToBytes, bytesArrayToList
-from ..dset_util import getNumElements
+from ..dset_util import getNumElements, getDims
 from .. import selections
 from ..h5writer import H5Writer
 from .httpconn import HttpConn
@@ -251,7 +251,7 @@ class HSDSWriter(H5Writer):
             items.clear()
 
         self.log.debug(f"hsds_writer> createObjects, {len(obj_ids)} objects")
-        MAX_OBJECTS_PER_REQUEST = 3
+        MAX_OBJECTS_PER_REQUEST = 300
         collections = ("groups", "datasets", "datatypes")
         col_items = {}
         dset_value_update_ids = set()
@@ -286,15 +286,25 @@ class HSDSWriter(H5Writer):
                     item[key] = obj_json[key]
 
             # initialize dataset values if provided and not too large
-            if "updates" in obj_json:
-                updates = obj_json["updates"]
-                if updates and len(updates) == 1 and self.getDatasetSize(obj_id) < MAX_INIT_SIZE:
+            if collection == "datasets":
+                dset_dims = getDims(obj_json)  # will be None for null space datasets
+                dset_size = self.getDatasetSize(obj_id)  # number of bytes defined by the shape
+                init_arr = None  # data to be passed to post create method
+                updates = obj_json.get("updates")
+                if updates and len(updates) == 1 and dset_size < MAX_INIT_SIZE:
                     sel, arr = updates[0]
                     if sel.select_type == selections.H5S_SELECT_ALL:
-                        value = bytesArrayToList(arr)
-                        item["value"] = value
+                        init_arr = arr
                         updates.clear()  # reset the update list
-                if updates:
+                if self._init and init_arr is None and dset_dims is not None:
+                    # get all values from dataset if small enough
+                    if dset_size < MAX_INIT_SIZE:
+                        sel_all = selections.select(dset_dims, ...)
+                        init_arr = self.db.getDatasetValues(obj_id, sel_all)
+                if init_arr is not None:
+                    value = bytesArrayToList(init_arr)
+                    item["value"] = value
+                elif updates or self._init:
                     dset_value_update_ids.add(obj_id)  # will set dataset value below
 
             # add to the list of new items for the given collection
@@ -436,18 +446,13 @@ class HSDSWriter(H5Writer):
             if getCollectionForId(dset_id) != "datasets":
                 continue  # ignore groups and datatypes
             dset_json = self.db.getObjectById(dset_id)
-            dset_shape = dset_json["shape"]
-            dset_class = dset_shape['class']
-            if dset_class == "H5S_NULL":
+            dset_dims = getDims(dset_json)
+            if dset_dims is None:
                 # no data to update
                 continue
             if self._init:
                 # get all data for the dataset
                 # TBD: do this by chunks
-                if dset_class == "H5S_SCALAR":
-                    dset_dims = []
-                else:
-                    dset_dims = dset_shape["dims"]
                 sel_all = selections.select(dset_dims, ...)
                 arr = self.db.getDatasetValues(dset_id, sel_all)
                 if arr is not None:
@@ -491,7 +496,8 @@ class HSDSWriter(H5Writer):
             dirty_ids.add(root_id)  # add back root for attribute and link creation
             if not self._no_data:
                 # initialize dataset values
-                self.updateValues(obj_ids)
+                pass
+                # self.updateValues(obj_ids)
             self._init = False
         elif self.db.new_objects:
             self.log.debug(f"hsds_writer> {len(self.db.new_objects)} objects to create")

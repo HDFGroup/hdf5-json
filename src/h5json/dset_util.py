@@ -43,14 +43,24 @@ def resize_dataset(dset_json, shape):
     dset_json["modified"] = time.time()
 
 
-def getNumElements(dset_json):
+def getDims(dset_json):
+    """ return extents of the dataset shape as a tuple """
     shape_json = dset_json["shape"]
     shape_class = shape_json["class"]
     if shape_class == "H5S_NULL":
-        num_elements = 0
+        dims = None
     elif shape_class == "H5S_SCALAR":
-        num_elements = 1
+        dims = ()
     elif shape_class == "H5S_SIMPLE":
-        dims = shape_json["dims"]
-        num_elements = int(np.prod(dims))
-    return num_elements
+        dims = tuple(shape_json["dims"])
+    else:
+        raise ValueError(f"Unexpected shape class: {shape_class}")
+    return dims
+
+
+def getNumElements(dset_json):
+    """ return the number of elements defined by the dataset's shape
+        returns None for null shape, 1 for scalar shape, and product of
+        extents otherwise """
+
+    return int(np.prod(getDims(dset_json)))

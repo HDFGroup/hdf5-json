@@ -41,9 +41,7 @@ class H5pyReaderTest(unittest.TestCase):
         db = Hdf5db(app_logger=self.log)
         db.reader = H5pyReader(filepath, app_logger=self.log)
         root_id = db.open()
-        print("got root_id:", root_id)
         root_json = db.getObjectById(root_id)
-        print("got root_json:", root_json)
         root_attrs = root_json["attributes"]
         self.assertEqual(len(root_attrs), 2)
         self.assertEqual(list(root_attrs.keys()), ["attr1", "attr2"])
