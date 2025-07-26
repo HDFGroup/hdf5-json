@@ -64,3 +64,29 @@ def getNumElements(dset_json):
         extents otherwise """
 
     return int(np.prod(getDims(dset_json)))
+
+
+def getDatasetLayout(dset_json):
+    """ Return layout json from creation property list or layout json """
+    layout = None
+
+    if "creationProperties" in dset_json:
+        cp = dset_json["creationProperties"]
+        if "layout" in cp:
+            layout = cp["layout"]
+    if not layout and "layout" in dset_json:
+        layout = dset_json["layout"]
+    if not layout:
+        # no layout for {dset_json
+        return None
+    return layout
+
+
+def getDatasetLayoutClass(dset_json):
+    """ return layout class """
+    layout = getDatasetLayout(dset_json)
+    if layout and "class" in layout:
+        layout_class = layout["class"]
+    else:
+        layout_class = None
+    return layout_class

@@ -45,11 +45,11 @@ class HSDSReaderTest(unittest.TestCase):
         root_id = db.open()
         root_json = db.getObjectById(root_id)
         self.assertTrue("id" in root_json)
-        """
-        TBD
+
         root_attrs = root_json["attributes"]
         self.assertEqual(len(root_attrs), 2)
         self.assertEqual(list(root_attrs.keys()), ["attr1", "attr2"])
+
         root_links = root_json["links"]
         self.assertEqual(len(root_links), 2)
         self.assertEqual(list(root_links.keys()), ["g1", "g2"])
@@ -57,11 +57,13 @@ class HSDSReaderTest(unittest.TestCase):
         self.assertEqual(g1_link["class"], "H5L_TYPE_HARD")
         g1_id = g1_link["id"]
         self.assertEqual(g1_id, db.getObjectIdByPath("/g1/"))
+
         dset111_id = db.getObjectIdByPath("/g1/g1.1/dset1.1.1")
         dset_json = db.getObjectById(dset111_id)
         dset_type = dset_json["type"]
         self.assertEqual(dset_type["class"], "H5T_INTEGER")
         self.assertEqual(dset_type["base"], "H5T_STD_I32BE")
+
         dset_attrs = dset_json["attributes"]
         self.assertEqual(len(dset_attrs), 2)
         self.assertEqual(list(dset_attrs.keys()), ["attr1", "attr2"])
@@ -101,7 +103,6 @@ class HSDSReaderTest(unittest.TestCase):
         self.assertEqual(attr3_type["base"], "H5T_STD_I64LE")
         attr3_value = attr3_json["value"]
         self.assertEqual(attr3_value, 42)
-        """
 
         db.close()
 
