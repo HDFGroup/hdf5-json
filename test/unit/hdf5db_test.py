@@ -53,6 +53,8 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertTrue(db.closed)
         obj_id = db.open()
         self.assertEqual(obj_id, root_id)
+        root_json = db.getObjectById(root_id)
+        self.assertFalse("id" in root_json)
         db.close()
 
     def testWith(self):

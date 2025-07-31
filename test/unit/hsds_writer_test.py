@@ -11,12 +11,14 @@
 ##############################################################################
 import unittest
 import logging
+import random
+import string
 import requests
-import os
 import numpy as np
 from h5json import Hdf5db
 from h5json.hsdsstore.httpconn import HttpConn
 from h5json.hsdsstore.hsds_writer import HSDSWriter
+from h5json.hsdsstore.hsds_reader import HSDSReader
 from h5json.h5pystore.h5py_reader import H5pyReader
 from h5json.hdf5dtype import special_dtype, Reference
 from h5json import selections
@@ -42,6 +44,10 @@ class HSDSWriterTest(unittest.TestCase):
         db = Hdf5db(app_logger=self.log)
         db.writer = HSDSWriter(domain_path, app_logger=self.log)
         root_id = db.open()
+
+        stats = db.writer.getStats()
+        for k in ("created", "lastModified", "owner"):
+            self.assertTrue(k in stats)
         http_conn = HttpConn(domain_path, mode='r', retries=1)
 
         db.createAttribute(root_id, "attr1", value=[1, 2, 3, 4])
@@ -61,8 +67,9 @@ class HSDSWriterTest(unittest.TestCase):
         self.assertEqual(root_json["attributeCount"], 0)
         # same for link count
         self.assertEqual(root_json["linkCount"], 0)
-
+        self.assertTrue(db.writer.lastModified is None)  # no write yet
         db.flush()
+        self.assertTrue(db.writer.lastModified > 0)  # timestamp should be updated
 
         # validate - get the root group again and see if counts are updated
         http_rsp = http_conn.GET(f"/groups/{root_id}")
@@ -159,7 +166,33 @@ class HSDSWriterTest(unittest.TestCase):
         rsp_value = rsp_json["value"]
         self.assertEqual(rsp_value, 42)
 
+        # create a dataset and try to read from it
+        dset_222_id = db.createDataset(shape=(10, 10), dtype=np.int32)
+        sel_all = selections.select((10, 10), ...)
+        arr = db.getDatasetValues(dset_222_id, sel_all)
+        self.assertTrue((arr == 0).all())
+
         db.close()
+
+    def testReaderWriter(self):
+        # try reading and writer to an HSDS domain
+        # create a random string so we don't try to open an existing file
+        filename = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        domain_path = "/home/test_user1/test/" + filename + ".h5"
+        db = Hdf5db(app_logger=self.log)
+        db.writer = HSDSWriter(domain_path, app_logger=self.log)
+        self.assertEqual(db.writer.filepath, domain_path)
+        root_id = db.open()
+        self.assertTrue(root_id)
+        db.reader = HSDSReader(domain_path, app_logger=self.log)
+        db.close()
+        root_id2 = db.open()
+        self.assertEqual(root_id, root_id2)
+        root_json = db.getObjectById(root_id)
+        self.assertTrue("id" not in root_json)
+        self.assertTrue("created" in root_json)
+        self.assertTrue(root_json["created"] > 0)
+        self.assertTrue(db.writer.lastModified is None)  # no flush yet
 
     def testH5PyToHS(self):
         # test reading from HDF5 file and writing to HSDS

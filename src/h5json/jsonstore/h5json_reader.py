@@ -11,6 +11,7 @@
 ##############################################################################
 import json
 import logging
+from os import stat as os_stat
 
 from ..objid import getCollectionForId, getUuidFromId
 
@@ -215,3 +216,16 @@ class H5JsonReader(H5Reader):
             raise NotImplementedError("selection type not supported")
 
         return arr
+
+    def getStats(self):
+        """ return a dictionary object with at minimum the following keys:
+            'created': creation time
+            'lastModified': modificationTime
+            'owner': owner name
+        """
+        stat_info = os_stat(self.filepath)
+        stats = {}
+        stats['created'] = stat_info.st_ctime
+        stats["lastModified"] = stat_info.st_mtime
+        stats['owner'] = stat_info.st_uid  # TBD: convert to username?
+        return stats

@@ -11,6 +11,7 @@
 ##############################################################################
 import h5py
 import numpy as np
+from os import stat as os_stat
 import time
 
 from ..objid import getCollectionForId, isValidUuid, createObjId
@@ -460,3 +461,16 @@ class H5pyWriter(H5Writer):
     def isClosed(self):
         """ return closed status """
         return False if self._f else True
+
+    def getStats(self):
+        """ return a dictionary object with at minimum the following keys:
+            'created': creation time
+            'lastModified': modificationTime
+            'owner': owner name
+        """
+        stat_info = os_stat(self.filepath)
+        stats = {}
+        stats['created'] = stat_info.st_ctime
+        stats["lastModified"] = stat_info.st_mtime
+        stats['owner'] = stat_info.st_uid  # TBD: convert to username?
+        return stats

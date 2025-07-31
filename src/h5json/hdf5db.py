@@ -105,6 +105,18 @@ class H5NullReader(H5Reader):
         """ return True if handle is closed """
         return self._is_closed
 
+    def getStats(self):
+        """ return a dictionary object with at minimum the following keys:
+            'created': creation time
+            'lastModified': modificationTime
+            'owner': owner name
+        """
+        stats = {}
+        stats['created'] = 0
+        stats["lastModified"] = 0
+        stats['owner'] = ""
+        return stats
+
 
 class H5NullWriter(H5Writer):
     """
@@ -164,6 +176,18 @@ class H5NullWriter(H5Writer):
     def isClosed(self):
         """ return True if handle is closed """
         return self._is_closed
+
+    def getStats(self):
+        """ return a dictionary object with at minimum the following keys:
+            'created': creation time
+            'lastModified': modificationTime
+            'owner': owner name
+        """
+        stats = {}
+        stats['created'] = 0
+        stats["lastModified"] = 0
+        stats['owner'] = ""
+        return stats
 
 
 class Hdf5db:
@@ -417,11 +441,11 @@ class Hdf5db:
         if self.writer.closed:
             raise IOError("writer is closed")
 
-    def getObjectById(self, obj_id):
+    def getObjectById(self, obj_id, refresh=False):
         """ return object with given id """
         self.log.debug(f"getObjectById {obj_id}")
         self._checkReader()
-        if obj_id not in self.db:
+        if obj_id not in self.db or refresh:
             # load the obj from the reader
             obj_json = self.reader.getObjectById(obj_id)
             self.db[obj_id] = obj_json

@@ -11,6 +11,8 @@
 ##############################################################################
 import unittest
 import logging
+import random
+import string
 import numpy as np
 from h5json import Hdf5db
 from h5json.hsdsstore.hsds_reader import HSDSReader
@@ -105,6 +107,20 @@ class HSDSReaderTest(unittest.TestCase):
         self.assertEqual(attr3_value, 42)
 
         db.close()
+
+    def testNoFile(self):
+        # create a random string so we don't try to open an existing file
+        filename = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        filepath = "/home/test_user1/test/" + filename
+        kwargs = {"app_logger": self.log}
+        db = Hdf5db(**kwargs)
+        hsds_reader = HSDSReader(filepath, **kwargs)
+        db.reader = hsds_reader
+        try:
+            db.open()
+            self.assertTrue(False)
+        except IOError as ioe:
+            self.assertEqual(ioe.errno, 404)
 
 
 if __name__ == "__main__":

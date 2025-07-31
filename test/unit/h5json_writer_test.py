@@ -70,7 +70,9 @@ class H5JsonWriterTest(unittest.TestCase):
         db.createSoftLink(g2_id, "slink", "somewhere")
         db.createExternalLink(g2_id, "extlink", "somewhere", "someplace")
         db.createCustomLink(g2_id, "cust", {"foo": "bar"})
+        self.assertTrue(db.writer.lastModified is None)  # no update yet
         db.flush()
+        self.assertTrue(db.writer.lastModified > 0)  # timestamp should be updated
 
     def testNullSpaceAttribute(self):
 

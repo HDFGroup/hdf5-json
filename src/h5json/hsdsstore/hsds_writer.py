@@ -385,6 +385,7 @@ class HSDSWriter(H5Writer):
                 raise IOError("hsds_writer unable to update links")
             else:
                 self.log.debug(f"hsds_writer> {grp_id} {count} links updated")
+                self._lastModified = time.time()
 
     def updateAttributes(self, obj_ids):
         """ update any modified links of the given objects """
@@ -418,6 +419,7 @@ class HSDSWriter(H5Writer):
                 self.log.error(f"hsds_writer> put {req} failed, status: {put_rsp.status_code}")
             else:
                 self.log.debug(f"hsds_writer> {count} attributes updated")
+                self._lastModified = time.time()
 
     def updateValue(self, dset_id, sel, arr):
         """ update the given dataset using selection and array """
@@ -437,6 +439,7 @@ class HSDSWriter(H5Writer):
             self.log.error(f"PUT {req} returned error: {rsp.status_code}")
         else:
             self.log.debug(f"PUT {len(data)} bytes successful")
+            self._lastModified = time.time()
 
     def updateValues(self, dset_ids):
         """ write any pending dataset values """
@@ -476,7 +479,6 @@ class HSDSWriter(H5Writer):
         if not self._http_conn:
             self.log.warning("hsds_writer no http connection")
             raise IOError("no http connection")
-
         self.log.info("hsds_writer.flush()")
         self.log.debug(f"    new object count: {len(self.db.new_objects)}")
         self.log.debug(f"    dirty object count: {len(self.db.dirty_objects)}")
@@ -535,3 +537,15 @@ class HSDSWriter(H5Writer):
     def get_root_id(self):
         """ Return root id """
         return self._root_id
+
+    def getStats(self):
+        """ return a dictionary object with at minimum the following keys:
+            'created': creation time
+            'lastModified': modificationTime
+            'owner': owner name
+        """
+        stats = {}
+        stats['created'] = 0
+        stats["lastModified"] = 0
+        stats['owner'] = ""
+        return stats

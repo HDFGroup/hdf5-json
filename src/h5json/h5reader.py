@@ -92,3 +92,12 @@ class H5Reader(ABC):
     def isClosed(self):
         """ return True if handle is closed """
         pass
+
+    @abstractmethod
+    def getStats(self):
+        """ return a dictionary object with at minimum the following keys:
+            'created': creation time
+            'lastModified': modificationTime
+            'owner': owner name
+        """
+        pass

@@ -310,3 +310,15 @@ class HSDSReader(H5Reader):
             self.log.debug(f"jsonToArray returned: {arr}")
 
         return arr
+
+    def getStats(self):
+        """ return a dictionary object with at minimum the following keys:
+            'created': creation time
+            'lastModified': modificationTime
+            'owner': owner name
+        """
+        stats = {}
+        stats['created'] = 0
+        stats["lastModified"] = 0
+        stats['owner'] = ""
+        return stats

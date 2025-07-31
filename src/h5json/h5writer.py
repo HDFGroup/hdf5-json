@@ -32,6 +32,7 @@ class H5Writer(ABC):
         self._no_data = no_data
         self._filepath = filepath
         self._db_ref = None
+        self._lastModified = None
         if app_logger:
             self.log = app_logger
         else:
@@ -48,6 +49,10 @@ class H5Writer(ABC):
     @property
     def closed(self):
         return self.isClosed()
+
+    @property
+    def lastModified(self):
+        return self._lastModified
 
     @property
     def db(self):
@@ -82,4 +87,13 @@ class H5Writer(ABC):
     @abstractmethod
     def isClosed(self):
         """ return True if handle is closed """
+        pass
+
+    @abstractmethod
+    def getStats(self):
+        """ return a dictionary object with at minimum the following keys:
+            'created': creation time
+            'lastModified': modificationTime
+            'owner': owner name
+        """
         pass

@@ -11,6 +11,8 @@
 ##############################################################################
 
 import json
+from os import stat as os_stat
+import time
 
 from ..h5writer import H5Writer
 from ..objid import getUuidFromId, getCollectionForId, createObjId
@@ -292,3 +294,17 @@ class H5JsonWriter(H5Writer):
                 json.dump(self.json, f, ensure_ascii=ensure_ascii, indent=indent)
         else:
             print(json.dumps(self.json, sort_keys=True, ensure_ascii=ensure_ascii, indent=indent))
+        self._lastModified = time.time()  # update timestamp
+
+    def getStats(self):
+        """ return a dictionary object with at minimum the following keys:
+            'created': creation time
+            'lastModified': modificationTime
+            'owner': owner name
+        """
+        stat_info = os_stat(self.filepath)
+        stats = {}
+        stats['created'] = stat_info.st_ctime
+        stats["lastModified"] = stat_info.st_mtime
+        stats['owner'] = stat_info.st_uid  # TBD: convert to username?
+        return stats
