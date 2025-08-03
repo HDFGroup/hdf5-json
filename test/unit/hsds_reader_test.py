@@ -45,6 +45,22 @@ class HSDSReaderTest(unittest.TestCase):
         hsds_reader = HSDSReader(filepath, **kwargs)
         db.reader = hsds_reader
         root_id = db.open()
+
+        # check domain stats
+        stats = db.reader.getStats()
+        self.assertTrue(stats["created"] > 0)
+        self.assertTrue(stats["lastModified"] > 0)
+        self.assertTrue(stats["owner"])
+        self.assertTrue("compressors" in stats)
+        self.assertTrue(len(stats["compressors"]) > 0)
+        self.assertTrue("limits" in stats)
+        self.assertTrue(len(stats["limits"]) > 0)
+
+        db.close()
+        self.assertTrue(db.closed)
+        obj_id = db.open()
+        self.assertEqual(obj_id, root_id)
+
         root_json = db.getObjectById(root_id)
         self.assertTrue("id" in root_json)
 

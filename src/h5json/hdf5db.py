@@ -362,7 +362,6 @@ class Hdf5db:
         if not self.reader.isClosed():
             self.log.debug("db is already opened")
             raise IOError("db is already opened")
-            return self._root_id
 
         if self.writer.append:
             # append mode for the writer, first open writer and get the root id
@@ -377,14 +376,14 @@ class Hdf5db:
             # now open reader
             reader_root_id = self.reader.open()
             if reader_root_id != self._root_id:
-                raise IOError("writer root id does not match reader root id")
+                raise IOError("db root id does not match reader root id")
 
         else:
             # open reader first and get root id
             reader_root_id = self.reader.open()
             if self._root_id:
                 if reader_root_id != self._root_id:
-                    raise IOError("writer root id does not match reader root id")
+                    raise IOError("reader root id does not match reader root id")
             else:
                 self._root_id = reader_root_id
 
@@ -431,14 +430,14 @@ class Hdf5db:
         """ check the reader is set and open """
         if self.reader is None:
             raise IOError("reader not set")
-        if self.reader.closed:
+        if self.reader.isClosed():
             raise IOError("reader is closed")
 
     def _checkWriter(self):
         """ check the writer is set and open """
         if self.writer is None:
             raise IOError("writer not set")
-        if self.writer.closed:
+        if self.writer.isClosed():
             raise IOError("writer is closed")
 
     def getObjectById(self, obj_id, refresh=False):

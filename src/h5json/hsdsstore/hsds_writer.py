@@ -109,11 +109,10 @@ class HSDSWriter(H5Writer):
         self._http_conn = None
         self._root_id = None
         self._append = append
-        self._owner = owner
         self._track_order = track_order
         self._linked_domain = linked_domain
-        self._domain_json = None
         self._last_flush_time = 0
+        self._stats = {"created": 0, "lastModified": 0, "owner": ""}
 
     def open(self):
         """ setup domain for writing """
@@ -133,91 +132,84 @@ class HSDSWriter(H5Writer):
             hsds_info = http_conn.serverInfo()
             self.log.debug(f"got hsds info: {hsds_info}")
 
-        if not self._domain_json:
-            # haven't fetched the domain json yet, do it now
+        # fetch the domain json
 
-            # try to do a GET from the domain
-            req = "/"
-            params = {}
-            """
-            if max_objects is None or max_objects > 0:
-                # get object meta objects
-                # TBD: have hsds support a max limit of objects to return
-                params["getobjs"] = 1
-                params["include_attrs"] = 1
-                params["include_links"] = 1
-            """
+        # try to do a GET from the domain
+        req = "/"
+        params = {}
+        """
+        if max_objects is None or max_objects > 0:
+            # get object meta objects
+            # TBD: have hsds support a max limit of objects to return
+            params["getobjs"] = 1
+            params["include_attrs"] = 1
+            params["include_links"] = 1
+        """
 
-            domain_json = None
-            rsp = http_conn.GET(req, params=params)
+        domain_json = None
+        rsp = http_conn.GET(req, params=params)
 
-            if rsp.status_code not in (200, 404, 410):
-                msg = f"Got status code: {rsp.status_code} on initial domain get"
-                self.log.warning(msg)
-                raise IOError(msg)
+        if rsp.status_code not in (200, 404, 410):
+            msg = f"Got status code: {rsp.status_code} on initial domain get"
+            self.log.warning(msg)
+            raise IOError(msg)
 
-            if rsp.status_code == 200:
-                if self._append:
-                    # domain exists already
-                    domain_json = rsp.json()
-                    if "root" not in domain_json:
-                        # this a folder not a domain
-                        self.log.warning(f"folder: {self.filepath} has no root property")
-                        http_conn.close()
-                        raise IOError(404, "Location is a folder, not a file")
-                else:
-                    # not append - delete existing domain
-                    self.log.info(f"sending delete request for {self.filepath}")
-                    delete_rsp = http_conn.DELETE(req, params=params)
-                    if delete_rsp.status_code not in (200, 410):
-                        # failed to delete
-                        http_conn.close()
-                        raise IOError(rsp.status_code, rsp.reason)
-
-            if not domain_json:
-                # domain doesn't exist, create it
-                body = {}
-                if self.db.root_id:
-                    # initialize domain using the db's root_id
-                    body["root_id"] = self.db.root_id
-                if self._owner:
-                    body["owner"] = self._owner
-                if self._linked_domain:
-                    body["linked_domain"] = self._linked_domain
-                if self._track_order:
-                    create_props = {"CreateOrder": 1}
-                    group_body = {"creationProperties": create_props}
-                    body["group"] = group_body
-                rsp = http_conn.PUT(req, params=params, body=body)
-                if rsp.status_code != 201:
+        if rsp.status_code == 200:
+            if self._append:
+                # domain exists already
+                domain_json = rsp.json()
+                if "root" not in domain_json:
+                    # this a folder not a domain
+                    self.log.warning(f"folder: {self.filepath} has no root property")
+                    http_conn.close()
+                    raise IOError(404, "Location is a folder, not a file")
+            else:
+                # not append - delete existing domain
+                self.log.info(f"sending delete request for {self.filepath}")
+                delete_rsp = http_conn.DELETE(req, params=params)
+                if delete_rsp.status_code not in (200, 410):
+                    # failed to delete
                     http_conn.close()
                     raise IOError(rsp.status_code, rsp.reason)
-                domain_json = rsp.json()
-                self.log.info(f"got rsp on PUT domain: {domain_json}")
-                if "root" not in domain_json:
-                    http_conn.close()
-                    raise IOError(404, "Unexpected error")
 
-            self.log.debug(f"got domain_json: {domain_json}")
-
+        if not domain_json:
+            # domain doesn't exist, create it
+            body = {}
+            if self.db.root_id:
+                # initialize domain using the db's root_id
+                body["root_id"] = self.db.root_id
+            if self._owner:
+                body["owner"] = self._owner
+            if self._linked_domain:
+                body["linked_domain"] = self._linked_domain
+            if self._track_order:
+                create_props = {"CreateOrder": 1}
+                group_body = {"creationProperties": create_props}
+                body["group"] = group_body
+            rsp = http_conn.PUT(req, params=params, body=body)
+            if rsp.status_code != 201:
+                http_conn.close()
+                raise IOError(rsp.status_code, rsp.reason)
+            domain_json = rsp.json()
+            self.log.info(f"got rsp on PUT domain: {domain_json}")
             if "root" not in domain_json:
                 http_conn.close()
-                raise IOError(404, "Location is a folder, not a file")
+                raise IOError(404, "Unexpected error")
 
-            root_id = domain_json["root"]
+        self.log.debug(f"got domain_json: {domain_json}")
 
-            self._root_id = root_id
+        if "root" not in domain_json:
+            http_conn.close()
+            raise IOError(404, "Location is a folder, not a file")
 
-            if "limits" in domain_json:
-                self._limits = domain_json["limits"]
-            else:
-                self._limits = None
-            if "version" in domain_json:
-                self._version = domain_json["version"]
-            else:
-                self._version = None
+        root_id = domain_json["root"]
 
-            self._domain_json = domain_json
+        self._root_id = root_id
+
+        # update stats
+        for key in ("created", "lastModified", "owner", "limits", "version", "compressors"):
+            if key in domain_json:
+                self._stats[key] = domain_json[key]
 
         return self._root_id
 
@@ -544,8 +536,4 @@ class HSDSWriter(H5Writer):
             'lastModified': modificationTime
             'owner': owner name
         """
-        stats = {}
-        stats['created'] = 0
-        stats["lastModified"] = 0
-        stats['owner'] = ""
-        return stats
+        return self._stats

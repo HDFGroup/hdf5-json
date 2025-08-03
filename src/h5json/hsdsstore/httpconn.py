@@ -258,7 +258,6 @@ class HttpConn:
         bucket=None,
         api_key=None,
         mode="a",
-        use_session=True,
         expire_time=1.0,
         max_objects=None,
         max_age=1.0,
@@ -270,7 +269,6 @@ class HttpConn:
         self._domain = domain_name
         self._mode = mode
         self._domain_json = None
-        self._use_session = use_session
         self._retries = retries
         self._timeout = timeout
         self._api_key = api_key
@@ -283,7 +281,7 @@ class HttpConn:
             self.log = logging
         else:
             self.log = logging.getLogger(logger)
-        msg = f"HttpConn.init(domain: {domain_name} use_session: {use_session} "
+        msg = f"HttpConn.init(domain: {domain_name}"
         msg += f"expire_time: {expire_time:6.2f} sec retries: {retries}"
         self.log.debug(msg)
 
@@ -354,12 +352,6 @@ class HttpConn:
                 )
             else:
                 self.log.error(f"Unknown openid provider: {provider}")
-
-    def __del__(self):
-        if self._s:
-            self.log.debug("close session")
-            self._s.close()
-            self._s = None
 
     def getHeaders(self, username=None, password=None, headers=None):
 
@@ -447,6 +439,8 @@ class HttpConn:
     def GET(self, req, format="json", params=None, headers=None):
         if self._endpoint is None:
             raise IOError("object not initialized")
+        if not self._s:
+            raise IOError("http session is closed")
         # check that domain is defined (except for some specific requests)
         if req not in ("/domains", "/about", "/info", "/") and self._domain is None:
             raise IOError(f"no domain defined: req: {req}")
@@ -477,7 +471,7 @@ class HttpConn:
                 self.log.debug(f"GET params {k}:{v}")
 
         try:
-            s = self.session
+            s = self._s
             stream = True  # tbd  - config for no streaming?
             ts = time.time()
             rsp = s.get(
@@ -507,6 +501,8 @@ class HttpConn:
             raise IOError("object not initialized")
         if self._domain is None:
             raise IOError("no domain defined")
+        if not self._s:
+            raise IOError("http session is closed")
 
         if params:
             self.log.info(f"PUT params: {params}")
@@ -539,7 +535,7 @@ class HttpConn:
         self.log.info(f"PUT: {req} format: {format} [{len(data)} bytes]")
 
         try:
-            s = self.session
+            s = self._s
             ts = time.time()
             rsp = s.put(
                 self._endpoint + req,
@@ -568,6 +564,8 @@ class HttpConn:
             raise IOError("object not initialized")
         if self._domain is None:
             raise IOError("no domain defined")
+        if not self._s:
+            raise IOError("http session is closed")
 
         if params is None:
             params = {}
@@ -608,7 +606,7 @@ class HttpConn:
         self.log.info("POST: " + req)
 
         try:
-            s = self.session
+            s = self._s
             ts = time.time()
             rsp = s.post(
                 self._endpoint + req,
@@ -631,6 +629,8 @@ class HttpConn:
     def DELETE(self, req, params=None, headers=None):
         if self._endpoint is None:
             raise IOError("object not initialized")
+        if not self._s:
+            raise IOError("http session is closed")
 
         if req not in ("/domains", "/") and self._domain is None:
             raise IOError("no domain defined")
@@ -652,9 +652,8 @@ class HttpConn:
 
         self.log.info("DEL: " + req)
         try:
-            s = self.session
             ts = time.time()
-            rsp = s.delete(
+            rsp = self._s.delete(
                 self._endpoint + req,
                 headers=headers,
                 params=params,
@@ -676,54 +675,48 @@ class HttpConn:
 
         return HttpResponse(rsp)
 
-    @property
-    def session(self):
-        # create a session object to re-use http connection when possible
-        s = requests
-        retries = self._retries
-        backoff_factor = 1
-        status_forcelist = (500, 502, 503, 504)
-
-        if self._use_session:
-            if self._s is None:
-                if self._endpoint.startswith("http+unix://"):
-                    self.log.debug(f"create unixsocket session: {self._endpoint}")
-                    s = requests_unixsocket.Session()
-                else:
-                    # regular request session
-                    s = requests.Session()
-
-                retry = Retry(
-                    total=retries,
-                    read=retries,
-                    connect=retries,
-                    backoff_factor=backoff_factor,
-                    status_forcelist=status_forcelist,
-                )
-
-                s.mount(
-                    "http://",
-                    HTTPAdapter(max_retries=retry, pool_connections=16, pool_maxsize=16),
-                )
-                s.mount(
-                    "https://",
-                    HTTPAdapter(max_retries=retry, pool_connections=16, pool_maxsize=16),
-                )
-                self._s = s
-            else:
-                s = self._s
-        return s
-
     def add_external_ref(self, fid):
         # this is used by the group class to keep references to external links open
         if fid.__class__.__name__ != "FileID":
             raise TypeError("add_external_ref, expected FileID type")
         self._external_refs.append(fid)
 
+    def open(self):
+        if self._s:
+            return  # already open
+
+        retries = self._retries
+        backoff_factor = 1
+        status_forcelist = (500, 502, 503, 504)
+        if self._endpoint.startswith("http+unix://"):
+            self.log.debug(f"create unixsocket session: {self._endpoint}")
+            s = requests_unixsocket.Session()
+        else:
+            # regular request session
+            s = requests.Session()
+
+            retry = Retry(
+                total=retries,
+                read=retries,
+                connect=retries,
+                backoff_factor=backoff_factor,
+                status_forcelist=status_forcelist,
+            )
+            kwargs = {"max_retries": retry, "pool_connections": 16, "pool_maxsize": 16}
+            s.mount("http://", HTTPAdapter(**kwargs))
+            s.mount("https://", HTTPAdapter(**kwargs))
+            self._s = s
+
     def close(self):
         if self._s:
             self._s.close()
             self._s = None
+
+    def isClosed(self):
+        if self._s is None:
+            return True
+        else:
+            return False
 
     @property
     def domain(self):

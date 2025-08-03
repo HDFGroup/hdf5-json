@@ -87,15 +87,21 @@ class HSDSReader(H5Reader):
         # save these for when we create the connection
         self._http_kwargs = kwargs
         self._http_conn = None
+        self._stats = {"created": 0, "lastModified": 0, "owner": ""}
 
         super().__init__(domain_path, app_logger=app_logger)
 
     def open(self):
-        if self._http_conn:
-            return  # open already called
+        if self._http_conn and not self._http_conn.isClosed():
+            return self._root_id  # open already called
 
-        kwargs = self._http_kwargs
-        http_conn = HttpConn(self.filepath, **kwargs)
+        if self._http_conn:
+            http_conn = self._http_conn
+        else:
+            kwargs = self._http_kwargs
+            http_conn = HttpConn(self.filepath, **kwargs)
+
+        http_conn.open()
 
         hsds_info = http_conn.serverInfo()
         self.log.debug(f"got hsds info: {hsds_info}")
@@ -122,6 +128,11 @@ class HSDSReader(H5Reader):
         domain_json = rsp.json()
         self.log.debug(f"got domain_json: {domain_json}")
 
+        # update stats
+        for key in ("created", "lastModified", "owner", "limits", "version", "compressors"):
+            if key in domain_json:
+                self._stats[key] = domain_json[key]
+
         if "root" not in domain_json:
             http_conn.close()
             raise IOError(404, "Location is a folder, not a file")
@@ -134,17 +145,8 @@ class HSDSReader(H5Reader):
             domain_objs = root_json["domain_objs"]
             objdb.load(domain_objs)
         """
-        if "limits" in domain_json:
-            self._limits = domain_json["limits"]
-        else:
-            self._limits = None
-        if "version" in domain_json:
-            self._version = domain_json["version"]
-        else:
-            self._version = None
 
         self._http_conn = http_conn
-        self._domain_json = domain_json
 
         return self._root_id
 
@@ -157,10 +159,10 @@ class HSDSReader(H5Reader):
             self._http_conn.close()
 
     def isClosed(self):
-        if self._http_conn:
-            return False
-        else:
+        if not self._http_conn:
             return True
+        else:
+            return self._http_conn.isClosed()
 
     def get_root_id(self):
         """ Return root id """
@@ -317,8 +319,4 @@ class HSDSReader(H5Reader):
             'lastModified': modificationTime
             'owner': owner name
         """
-        stats = {}
-        stats['created'] = 0
-        stats["lastModified"] = 0
-        stats['owner'] = ""
-        return stats
+        return self._stats
