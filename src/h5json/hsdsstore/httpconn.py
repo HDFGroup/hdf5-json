@@ -682,6 +682,7 @@ class HttpConn:
         self._external_refs.append(fid)
 
     def open(self):
+        self.log.debug("http_conn.open")
         if self._s:
             return  # already open
 
@@ -705,10 +706,12 @@ class HttpConn:
             kwargs = {"max_retries": retry, "pool_connections": 16, "pool_maxsize": 16}
             s.mount("http://", HTTPAdapter(**kwargs))
             s.mount("https://", HTTPAdapter(**kwargs))
-            self._s = s
+        self.log.debug("Httpconn set self._s")
+        self._s = s
 
     def close(self):
         if self._s:
+            self.log.debug("http_conn.close")
             self._s.close()
             self._s = None
 

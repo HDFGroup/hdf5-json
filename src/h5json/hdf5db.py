@@ -381,14 +381,17 @@ class Hdf5db:
         else:
             # open reader first and get root id
             reader_root_id = self.reader.open()
+            self.log.debug(f"got reader root_id:  {reader_root_id}")
+
             if self._root_id:
                 if reader_root_id != self._root_id:
                     raise IOError("reader root id does not match reader root id")
             else:
                 self._root_id = reader_root_id
-
+            self.log.debug("open writer")
             # now open writer
             writer_root_id = self.writer.open()
+            self.log.debug(f"got writer root_id: {writer_root_id}")
             if writer_root_id != self._root_id:
                 raise IOError("writer root id does not match reader root id")
 

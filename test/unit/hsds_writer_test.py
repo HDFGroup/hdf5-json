@@ -49,6 +49,7 @@ class HSDSWriterTest(unittest.TestCase):
         for k in ("created", "lastModified", "owner"):
             self.assertTrue(k in stats)
         http_conn = HttpConn(domain_path, mode='r', retries=1)
+        http_conn.open()
 
         db.createAttribute(root_id, "attr1", value=[1, 2, 3, 4])
         db.createAttribute(root_id, "attr2", 42)
@@ -186,6 +187,14 @@ class HSDSWriterTest(unittest.TestCase):
         self.assertTrue(root_id)
         db.reader = HSDSReader(domain_path, app_logger=self.log)
         db.close()
+        """
+        db.writer = HSDSWriter(domain, **kwargs)
+        root_id = db.open()
+        db.close()
+        # now set the reader
+        db.reader = HSDSReader(domain, **kwargs)
+        db.open()
+        """
         root_id2 = db.open()
         self.assertEqual(root_id, root_id2)
         root_json = db.getObjectById(root_id)
@@ -209,6 +218,7 @@ class HSDSWriterTest(unittest.TestCase):
 
         # validate - get the root group and see if counts are correct
         http_conn = HttpConn(domain_path, mode='r', retries=1)
+        http_conn.open()
         http_rsp = http_conn.GET(f"/groups/{root_id}")
         self.assertEqual(http_rsp.status_code, 200)
         root_json = http_rsp.json()

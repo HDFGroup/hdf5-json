@@ -110,6 +110,7 @@ class HSDSWriter(H5Writer):
         self._root_id = None
         self._append = append
         self._track_order = track_order
+        self._owner = owner
         self._linked_domain = linked_domain
         self._last_flush_time = 0
         self._stats = {"created": 0, "lastModified": 0, "owner": ""}
@@ -120,17 +121,24 @@ class HSDSWriter(H5Writer):
             # no db set yet
             raise IOError("DB not set")
 
-        if self._http_conn:
-            http_conn = self._http_conn
-        else:
+        if self._http_conn and not self._http_conn.isClosed():
+            return self._root_id
+
+        if not self._http_conn:
             kwargs = self._http_kwargs
             kwargs["retries"] = 1  # tbd: test setting
             http_conn = HttpConn(self.filepath, **kwargs)
             if self._append:
                 http_conn._mode = "a"
+                self.log.debug("hsdswriter - set http_conn mode to a")
             self._http_conn = http_conn
-            hsds_info = http_conn.serverInfo()
-            self.log.debug(f"got hsds info: {hsds_info}")
+
+        http_conn = self._http_conn
+        self.log.debug("hsdswriter - open http conn")
+        http_conn.open()
+
+        hsds_info = self._http_conn.serverInfo()
+        self.log.debug(f"got hsds info: {hsds_info}")
 
         # fetch the domain json
 
@@ -148,6 +156,7 @@ class HSDSWriter(H5Writer):
 
         domain_json = None
         rsp = http_conn.GET(req, params=params)
+        self.log.debug(f"hsdswriter initial get status_code: {rsp.status_code}")
 
         if rsp.status_code not in (200, 404, 410):
             msg = f"Got status code: {rsp.status_code} on initial domain get"
@@ -165,6 +174,7 @@ class HSDSWriter(H5Writer):
                     raise IOError(404, "Location is a folder, not a file")
             else:
                 # not append - delete existing domain
+                self.log.info("hsds_writer - delete domain")
                 self.log.info(f"sending delete request for {self.filepath}")
                 delete_rsp = http_conn.DELETE(req, params=params)
                 if delete_rsp.status_code not in (200, 410):
@@ -174,6 +184,7 @@ class HSDSWriter(H5Writer):
 
         if not domain_json:
             # domain doesn't exist, create it
+            self.log.debug("hsds_writer create domain")
             body = {}
             if self.db.root_id:
                 # initialize domain using the db's root_id
@@ -203,6 +214,7 @@ class HSDSWriter(H5Writer):
             raise IOError(404, "Location is a folder, not a file")
 
         root_id = domain_json["root"]
+        self.log.debug("hsds_writer got root_id:", root_id)
 
         self._root_id = root_id
 
