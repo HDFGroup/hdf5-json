@@ -214,7 +214,7 @@ class HSDSWriter(H5Writer):
             raise IOError(404, "Location is a folder, not a file")
 
         root_id = domain_json["root"]
-        self.log.debug("hsds_writer got root_id:", root_id)
+        self.log.debug(f"hsds_writer got root_id: {root_id}")
 
         self._root_id = root_id
 

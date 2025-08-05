@@ -12,6 +12,7 @@
 from abc import ABC, abstractmethod
 import weakref
 import logging
+from .objid import createObjId
 
 
 class H5Writer(ABC):
@@ -97,3 +98,75 @@ class H5Writer(ABC):
             'owner': owner name
         """
         pass
+
+
+class H5NullWriter(H5Writer):
+    """
+    This class can be used by HDF5DB as a default no-op writer
+    """
+
+    def __init__(
+        self,
+        filepath,
+        append=False,
+        no_data=False,
+        app_logger=None
+    ):
+        if app_logger:
+            self.log = app_logger
+        else:
+            self.log = logging.getLogger()
+
+        if append:
+            raise IOError("append is not supprot for H5NullWriter")
+
+        super().__init__(filepath, no_data=no_data, app_logger=app_logger)
+        self.log.debug("H5NullWriter.__init__")
+        self._root_id = None
+        self._is_closed = True
+
+    def open(self):
+        """ open storage handle, return root_id"""
+        self.log.debug("H5NullWriter open")
+        if not self._is_closed:
+            return self._root_id  # already open
+
+        if self.db is None:
+            # no db set yet
+            self.log.warning("no self.db db_ref")
+            raise ValueError("no db")
+
+        if not self._root_id:
+            if self.db.root_id:
+                self._root_id = self.db.root_id
+            else:
+                self._root_id = createObjId(obj_type="groups")
+        self._is_closed = False
+        return self._root_id
+
+    def flush(self):
+        """ Write dirty items """
+        self.log.debug("H5NullWriter> flush")
+        # Null writer is unable to actually persist anything, so return False
+        return False
+
+    def close(self):
+        """ close storage handle """
+        self.log.debug("H5NullWriter.close")
+        self._is_closed = True
+
+    def isClosed(self):
+        """ return True if handle is closed """
+        return self._is_closed
+
+    def getStats(self):
+        """ return a dictionary object with at minimum the following keys:
+            'created': creation time
+            'lastModified': modificationTime
+            'owner': owner name
+        """
+        stats = {}
+        stats['created'] = 0
+        stats["lastModified"] = 0
+        stats['owner'] = ""
+        return stats

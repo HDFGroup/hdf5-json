@@ -10,8 +10,10 @@
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
 import logging
+import time
+import numpy as np
 
-from ..objid import getCollectionForId, getUuidFromId
+from ..objid import getCollectionForId, getUuidFromId, createObjId
 
 from ..hdf5dtype import createDataType
 from ..array_util import jsonToArray, bytesToArray

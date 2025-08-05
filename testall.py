@@ -24,6 +24,8 @@ unit_tests = [
     "h5json_writer_test",
     "h5py_reader_test",
     "h5py_writer_test",
+    "hsds_reader_test",
+    "hsds_writer_test",
 ]
 
 use_hsds = True
@@ -60,7 +62,6 @@ for file_name in unit_tests:
     if rc != 0:
         sys.exit("FAILED")
 shutil.rmtree("./out", ignore_errors=True)
-os.remove("hdf5dbtest.log")
 
 os.chdir("test/integ")
 
@@ -77,8 +78,6 @@ for file_name in integ_tests:
         sys.exit("FAILED")
 shutil.rmtree("./h5_out", ignore_errors=True)
 shutil.rmtree("./json_out", ignore_errors=True)
-os.remove("h5tojson.log")
-os.remove("jsontoh5.log")
 
 os.chdir("..")
 print("Testing suite: Success!")
