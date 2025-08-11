@@ -118,7 +118,7 @@ class H5NullWriter(H5Writer):
             self.log = logging.getLogger()
 
         if append:
-            raise IOError("append is not supprot for H5NullWriter")
+            raise IOError("append is not supported for H5NullWriter")
 
         super().__init__(filepath, no_data=no_data, app_logger=app_logger)
         self.log.debug("H5NullWriter.__init__")

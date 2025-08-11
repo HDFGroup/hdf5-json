@@ -111,6 +111,12 @@ class HSDSWriterTest(unittest.TestCase):
         db.createCustomLink(g2_id, "cust", {"foo": "bar"})
         db.flush()
 
+        # create a link, then delete before flushing
+        tmp_grp_id = db.createGroup("tmp_group")
+        db.createHardLink(g1_1_id, "tmp_group", tmp_grp_id)
+        db.deleteLink(g1_1_id, "tmp_group")
+        db.flush()
+
         # validate - check that links got updated
         http_rsp = http_conn.GET(f"/groups/{g2_id}/links")
         self.assertEqual(http_rsp.status_code, 200)

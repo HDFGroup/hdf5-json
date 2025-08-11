@@ -651,8 +651,12 @@ class Hdf5db:
         links = grp_json["links"]
         names = []
         for name in links:
-            if links[name] is not None:
-                names.append(name)
+            link_json = links[name]
+            if link_json is None:
+                continue
+            if "DELETE" in link_json:
+                continue  # deleted link
+            names.append(name)
         return names
 
     def getLink(self, grp_id, name):
@@ -663,11 +667,12 @@ class Hdf5db:
         if name not in links:
             self.log.info(f"Link [{name}] not found in {grp_id}")
             return None
-        if links[name] is None:
+        link_json = links[name]
+        if "DELETED" in link_json:
             self.log.info(f"Link {name} in {grp_id} has been deleted")
             return None
 
-        return links[name]
+        return link_json
 
     def _addLink(self, grp_id, name, link_json):
         obj_json = self.getObjectById(grp_id)
@@ -708,8 +713,11 @@ class Hdf5db:
         links = grp_json["links"]
         if name not in links:
             raise KeyError(f"Link [{name}] not found in {grp_id}")
-        links[name] = None  # mark for deletion
+        link_json = links[name]
+        link_json["DELETE"] = time.time()  # mark for deletion
         self.make_dirty(grp_id)
+        grp_json = self.getObjectById(grp_id)
+        links = grp_json["links"]
 
     def createGroup(self, cpl=None):
         """ Create a new group """

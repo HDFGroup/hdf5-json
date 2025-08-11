@@ -268,9 +268,19 @@ class H5pyWriter(H5Writer):
     def _createObjects(self, parent, links_json, visited=set()):
         """ create child object in the given group, recurse for any sub-groups """
 
-        for title in links_json:
+        titles = list(links_json.keys())
+        for title in titles:
             link_json = links_json[title]
             link_class = link_json["class"]
+            if "DELETE" in link_json:
+                if title in parent:
+                    # delete the link
+                    self.log.debug(f"deleting link {title}")
+                    del parent[title]
+                # update the link json
+                del links_json[title]
+                continue
+
             if link_class == "H5L_TYPE_SOFT" and title not in parent:
                 h5path = link_json["h5path"]
                 parent[title] = h5py.SoftLink(h5path)

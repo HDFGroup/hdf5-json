@@ -150,6 +150,17 @@ class H5pyWriterTest(unittest.TestCase):
             g2 = f["g2"]
             self.assertTrue("g2.1" in g2)
 
+        # create a link, then delete before flushing
+        db.open()
+        tmp_grp_id = db.createGroup("tmp_group")
+        db.createHardLink(g2_id, "tmp_group", tmp_grp_id)
+        db.deleteLink(g2_id, "tmp_group")
+        db.close()
+
+        with h5py.File(filepath) as f:
+            g2 = f["g2"]
+            self.assertFalse("tmp_group" in g2)
+
         db.open()
         sel = selections.select((10, 10), (slice(4, 5), slice(4, 5)))
         arr = np.zeros((), dtype=np.int32)
@@ -546,7 +557,6 @@ class H5pyWriterTest(unittest.TestCase):
         dset111_id = db.getObjectIdByPath("/g1/g1.1/dset1.1.1")
         db.createAttribute(dset111_id, "attr3", "hello")
         self.assertFalse(db.closed)
-        print("test - db.close()")
         db.close()
 
         with h5py.File(file_out) as f:

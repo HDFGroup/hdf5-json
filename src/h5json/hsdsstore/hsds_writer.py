@@ -344,6 +344,7 @@ class HSDSWriter(H5Writer):
 
         self.log.debug("hsds_writer> updateLinks")
         items = {}  # dict which will hold a map of grp ids to links to create
+        removals = {}  # map of grp_ids to link titles to be deleted
         count = 0
 
         for grp_id in grp_ids:
@@ -351,12 +352,23 @@ class HSDSWriter(H5Writer):
                 continue  # ignore datasets and datatypes
             grp_json = self.db.getObjectById(grp_id)
             grp_links = grp_json["links"]
-            for link_title in grp_links:
+            link_titles = list(grp_links.keys())
+            for link_title in link_titles:
                 link_json = grp_links[link_title]
                 if "created" not in link_json:
                     self.log.error(f"hsds_writer> expected created timestamp in link: {link_json}")
                 created = link_json["created"]
-                if created > self._last_flush_time:
+                if "DELETE" in link_json:
+                    if created > self._last_flush_time:
+                        # link hasn't been created yet
+                        msg = f"hsds_writer> {grp_id}: link: {link_title} deleted before flush"
+                        self.log.debug(msg)
+                    else:
+                        # link has been persisted, remove
+                        if grp_id not in removals:
+                            removals[grp_id] = set()
+                        removals[grp_id].add(link_title)
+                elif created > self._last_flush_time:
                     self.log.debug(f"hsds_writer> {grp_id}: new link: {link_title}")
                     count += 1
                     # new link, add to our list
@@ -380,6 +392,27 @@ class HSDSWriter(H5Writer):
                         raise IOError(f"unexpected link class: {link_class}")
                     links[link_title] = new_link
                     self.log.debug(f"setting link {link_title} to {new_link}")
+                else:
+                    self.log.debug(f"link {link_title} has already been persisted")
+
+        if removals:
+            # TBD: hsds doesn't have a multiple object link deletion operation yet
+            # so make one request per object id
+            for grp_id in removals:
+                titles = removals[grp_id]
+                params = {"titles": "/".join(titles)}
+                del_rsp = self.http_conn.DELETE("/groups/" + grp_id + links, params=params)
+                if del_rsp.status_code != 200:
+                    self.log.error("failed to delete links for grp: {grp_id} titles: {titles}")
+                    raise IOError("hsds_writer failed to delete links")
+                else:
+                    self.log.debug(f"hsds_writer> {grp_id} deleted {len(titles)} links")
+                    self._lastModified = time.time()
+                    # remove links from link_json in db
+                    grp_json = self.db.getObjectById(grp_id)
+                    grp_links = grp_json["links"]
+                    for title in titles:
+                        del grp_links[title]
 
         if items:
             body = {"grp_ids": items}
