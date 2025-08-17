@@ -424,11 +424,24 @@ class HSDSWriter(H5Writer):
                 self.log.debug(f"hsds_writer> {grp_id} {count} links updated")
                 self._lastModified = time.time()
 
+    def _deleteAttribute(self, obj_id, attr_name):
+        # delete the given attribute
+
+        col_name = getCollectionForId(obj_id)
+        req = f"/{col_name}/{obj_id}/attributes/{attr_name}"
+        http_rsp = self.http_conn.DELETE(req)
+        if http_rsp.status_code != 200:
+            self.log.error("failed to delete attribute for obj: {obj_id} name: {attr_name}")
+            raise IOError("hsds_writer failed to delete attribute")
+
     def updateAttributes(self, obj_ids):
         """ update any modified links of the given objects """
 
         self.log.debug("hsds_writer> updateAttributes")
         items = {}  # dict which will hold a map of objects ids to attributes to create
+        removals = {}  # map of obj_ids to attributes to be deleted
+        separator = '|'  # use this character to join attribute names for deletion
+
         count = 0
 
         for obj_id in obj_ids:
@@ -436,10 +449,26 @@ class HSDSWriter(H5Writer):
             obj_attrs = obj_json["attributes"]
             for attr_name in obj_attrs:
                 attr_json = obj_attrs[attr_name]
+
                 if "created" not in attr_json:
                     self.log.error(f"hsds_writer> expected created timestamp in attr: {attr_json}")
                 created = attr_json["created"]
-                if created > self._last_flush_time:
+                if "DELETED" in attr_json:
+                    if created > self._last_flush_time:
+                        # attribute hasn't been created yet
+                        msg = f"hsds_writer> {obj_id}: attr: {attr_name} deleted before flush"
+                        self.log.debug(msg)
+                    else:
+                        # attribute has been persisted, remove
+                        if attr_name.find(separator) != -1:
+                            # need to delete individually
+                            self._deleteAttribute(obj_id, attr_name)
+                        else:
+                            # can delete in a batch
+                            if obj_id not in removals:
+                                removals[obj_id] = set()
+                            removals[obj_id].add(attr_name)
+                elif created > self._last_flush_time:
                     self.log.debug(f"hsds_writer> {obj_id} attribute {attr_name} created")
                     count += 1
                     # new attribute, add to our list
@@ -447,6 +476,24 @@ class HSDSWriter(H5Writer):
                         items[obj_id] = {"attributes": {}}
                     attrs = items[obj_id]["attributes"]
                     attrs[attr_name] = attr_json
+                else:
+                    self.log.debug(f"hsds_writer> {obj_id}: attr: {attr_name} has already been deleted")
+
+        if removals:
+            # TBD: hsds doesn't have a multiple object attribute deletion operation yet
+            # so make one request per object id
+            # Delete with custom separator
+
+            for obj_id in removals:
+                attr_names = removals[obj_id]
+                params = {"attr_names": separator.join(attr_names)}
+                params["separator"] = separator
+                collection = getCollectionForId(obj_id)
+                req = f"/{collection}/{obj_id}/attributes"
+                rsp = self.http_conn.DELETE(req, params=params)
+                if rsp.status_code != 200:
+                    self.log.error("failed to delete attribute for obj: {obj_id}")
+                    raise IOError("hsds_writer failed to delete attributes")
 
         if items:
             body = {"obj_ids": items}

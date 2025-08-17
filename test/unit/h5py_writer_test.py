@@ -132,13 +132,28 @@ class H5pyWriterTest(unittest.TestCase):
             self.assertTrue("slink" in g2)
 
         db.open()
+        db.createAttribute(g1_id, "a1", "hello")
         db.createAttribute(g1_id, "a2", "bye-bye")
+        self.assertEqual(len(db.getAttributes(g1_id)), 2)
         db.close()
 
         with h5py.File(filepath) as f:
             g1 = f["g1"]
             self.assertEqual(len(g1.attrs), 2)
             self.assertTrue("a1" in g1.attrs)
+            self.assertTrue("a2" in g1.attrs)
+
+        db.open()
+        # test deleting an attribute
+        db.deleteAttribute(g1_id, "a1")
+        self.assertEqual(len(db.getAttributes(g1_id)), 1)
+        self.assertEqual(db.getAttribute(g1_id, "a1"), None)
+        db.close()
+
+        with h5py.File(filepath) as f:
+            g1 = f["g1"]
+            self.assertEqual(len(g1.attrs), 1)
+            self.assertFalse("a1" in g1.attrs)
             self.assertTrue("a2" in g1.attrs)
 
         db.open()
@@ -154,7 +169,11 @@ class H5pyWriterTest(unittest.TestCase):
         db.open()
         tmp_grp_id = db.createGroup("tmp_group")
         db.createHardLink(g2_id, "tmp_group", tmp_grp_id)
+        del_link = db.getLink(g2_id, "tmp_group")
+        self.assertTrue(del_link is not None)
         db.deleteLink(g2_id, "tmp_group")
+        self.assertEqual(db.getLink(g2_id, "tmp_group"), None)
+
         db.close()
 
         with h5py.File(filepath) as f:

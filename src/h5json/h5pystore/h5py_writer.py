@@ -394,6 +394,13 @@ class H5pyWriter(H5Writer):
         attrs = obj_json["attributes"]
         for name in attrs:
             attr_json = attrs[name]
+            if "DELETED" in attr_json:
+                if name in obj.attrs:
+                    # delete the attribute
+                    self.log.debug(f"h5py_writer - delete attribute {name}")
+                    del obj.attrs[name]
+                else:
+                    pass  # already deleted or never added
             if "created" in attr_json and attr_json["created"] < self._flush_time:
                 # attribute should be saved already
                 continue

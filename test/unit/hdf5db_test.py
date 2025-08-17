@@ -139,6 +139,17 @@ class Hdf5dbTest(unittest.TestCase):
 
         ret = db.getLink(g2_id, "not_a_link")
         self.assertTrue(ret is None)
+
+        db.createAttribute(g1_id, "a1", "hello")
+        db.createAttribute(g1_id, "a2", "bye-bye")
+        self.assertEqual(len(db.getAttributes(g1_id)), 2)
+        a1_attr = db.getAttribute(g1_id, "a1")
+        self.assertEqual(a1_attr["value"], "hello")
+
+        db.deleteAttribute(g1_id, "a1")
+        self.assertEqual(len(db.getAttributes(g1_id)), 1)
+        self.assertEqual(db.getAttribute(g1_id, "a1"), None)
+
         db.close()
 
     def testNullSpaceAttribute(self):

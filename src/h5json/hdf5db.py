@@ -377,28 +377,6 @@ class Hdf5db:
 
         return dtype
 
-    def getAttribute(self, obj_id, name, includeData=True):
-        """
-        Get attribute given an object id and name
-        returns: JSON object
-        """
-
-        obj_json = self.getObjectById(obj_id)
-        attrs = obj_json["attributes"]
-
-        if name not in attrs:
-            msg = f"Attribute: [{name}] not found in object: {obj_id}"
-            self.log.info(msg)
-            return None
-        if attrs[name] is None:
-            msg = f"Attribute: [{name}] has been deleted"
-            self.log.info(None)
-            return None
-
-        attr_json = attrs[name]
-
-        return attr_json
-
     def getAttributes(self, obj_id):
         """
         Get attributes given an object id and name
@@ -408,15 +386,39 @@ class Hdf5db:
         obj_json = self.getObjectById(obj_id)
         attrs = obj_json["attributes"]
         names = []
+
         for name in attrs:
-            if attrs[name] is not None:
-                names.append(name)
+            attr_json = attrs[name]
+            if attr_json is None:
+                continue
+            if "DELETED" in attr_json:
+                continue  # deleted attr
+            names.append(name)
 
         return names
+
+    def getAttribute(self, obj_id, name, includeData=True):
+        """
+        Get attribute given an object id and name
+        returns: JSON object
+        """
+
+        attr_names = self.getAttributes(obj_id)
+        if name not in attr_names:
+            return None
+
+        obj_json = self.getObjectById(obj_id)
+        attrs = obj_json["attributes"]
+
+        attr_json = attrs[name]
+
+        return attr_json
 
     def getAttributeValue(self, obj_id, name):
         """ Return NDArray of the given attribute value """
         attr_json = self.getAttribute(obj_id, name)
+        if attr_json is None:
+            raise KeyError(f"attribute {name} not found")
         shape_json = attr_json["shape"]
         if shape_json["class"] == "H5S_NULL":
             # no value for empty shape attributes
@@ -530,7 +532,8 @@ class Hdf5db:
         attrs_json = obj_json["attributes"]
         if name not in attrs_json:
             raise KeyError(f"attribute [{name}] not found in {obj_id}")
-        attrs_json[name] = None  # mark key for deletion
+        attr_json = attrs_json[name]
+        attr_json["DELETED"] = time.time()  # mark key for deletion
 
         self.make_dirty(obj_id)
 

@@ -125,8 +125,49 @@ class HSDSWriterTest(unittest.TestCase):
         g2links = g2links_json["links"]
         self.assertTrue(len(g2links), 2)  # custom link will be ignored
 
+        db.createAttribute(g1_id, "a1", "hello")
         db.createAttribute(g1_id, "a2", "bye-bye")
         db.flush()
+
+        # validate - check that attributes got created
+        http_rsp = http_conn.GET(f"/groups/{g1_id}/attributes")
+        self.assertEqual(http_rsp.status_code, 200)
+        rsp_json = http_rsp.json()
+        attrs_json = rsp_json["attributes"]
+        self.assertEqual(len(attrs_json), 2)
+
+        # delete an attribute
+        db.deleteAttribute(g1_id, "a1")
+        db.flush()
+
+        # validate - check that the attribute got deleted
+        http_rsp = http_conn.GET(f"/groups/{g1_id}/attributes")
+        self.assertEqual(http_rsp.status_code, 200)
+        rsp_json = http_rsp.json()
+        attrs_json = rsp_json["attributes"]
+        self.assertEqual(len(attrs_json), 1)
+
+        # create an attribute that happens to use the separator character
+        db.createAttribute(g1_id, "a|z", "goofy")
+        db.flush()
+
+        # validate - check that attributes got created
+        http_rsp = http_conn.GET(f"/groups/{g1_id}/attributes")
+        self.assertEqual(http_rsp.status_code, 200)
+        rsp_json = http_rsp.json()
+        attrs_json = rsp_json["attributes"]
+        self.assertEqual(len(attrs_json), 2)
+
+        # delete an attribute
+        db.deleteAttribute(g1_id, "a|z")
+        db.flush()
+
+        # validate - check that the attribute got deleted
+        http_rsp = http_conn.GET(f"/groups/{g1_id}/attributes")
+        self.assertEqual(http_rsp.status_code, 200)
+        rsp_json = http_rsp.json()
+        attrs_json = rsp_json["attributes"]
+        self.assertEqual(len(attrs_json), 1)
 
         g21 = db.createGroup()
         db.createHardLink(g2_id, "g2.1", g21)
