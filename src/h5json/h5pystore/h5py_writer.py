@@ -272,7 +272,7 @@ class H5pyWriter(H5Writer):
         for title in titles:
             link_json = links_json[title]
             link_class = link_json["class"]
-            if "DELETE" in link_json:
+            if "DELETED" in link_json:
                 if title in parent:
                     # delete the link
                     self.log.debug(f"deleting link {title}")

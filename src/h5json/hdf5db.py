@@ -654,7 +654,7 @@ class Hdf5db:
             link_json = links[name]
             if link_json is None:
                 continue
-            if "DELETE" in link_json:
+            if "DELETED" in link_json:
                 continue  # deleted link
             names.append(name)
         return names
@@ -714,7 +714,7 @@ class Hdf5db:
         if name not in links:
             raise KeyError(f"Link [{name}] not found in {grp_id}")
         link_json = links[name]
-        link_json["DELETE"] = time.time()  # mark for deletion
+        link_json["DELETED"] = time.time()  # mark for deletion
         self.make_dirty(grp_id)
         grp_json = self.getObjectById(grp_id)
         links = grp_json["links"]

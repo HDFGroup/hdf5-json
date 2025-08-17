@@ -358,7 +358,7 @@ class HSDSWriter(H5Writer):
                 if "created" not in link_json:
                     self.log.error(f"hsds_writer> expected created timestamp in link: {link_json}")
                 created = link_json["created"]
-                if "DELETE" in link_json:
+                if "DELETED" in link_json:
                     if created > self._last_flush_time:
                         # link hasn't been created yet
                         msg = f"hsds_writer> {grp_id}: link: {link_title} deleted before flush"
