@@ -729,9 +729,9 @@ class Hdf5db:
         grp_id = createObjId("groups", root_id=self.root_id)
         group_json = {"attributes": {}, "links": {}}
         if cpl:
-            group_json["cpl"] = cpl
+            group_json["creationProperties"] = cpl
         else:
-            group_json["cpl"] = {}
+            group_json["creationProperties"] = {}
         group_json["created"] = time.time()
         self.db[grp_id] = group_json
         self._new_objects.add(grp_id)
@@ -756,7 +756,7 @@ class Hdf5db:
 
         type_json = getTypeItem(dt)  # get canonical json description of datatype
 
-        ctype_json = {"type": type_json, "attributes": {}, "cpl": cpl}
+        ctype_json = {"type": type_json, "attributes": {}, "creationProperties": cpl}
         ctype_json["created"] = time.time()
         self.db[ctype_id] = ctype_json
         self._new_objects.add(ctype_id)
@@ -795,9 +795,9 @@ class Hdf5db:
 
         dset_json = {"shape": shape_json, "type": type_json, "attributes": {}}
         if cpl:
-            dset_json["cpl"] = cpl
+            dset_json["creationProperties"] = cpl
         else:
-            dset_json["cpl"] = {}
+            dset_json["creationProperties"] = {}
 
         dset_id = createObjId("datasets", root_id=self.root_id)
         self.db[dset_id] = dset_json
