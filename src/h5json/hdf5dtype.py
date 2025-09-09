@@ -46,8 +46,8 @@ class Reference:
             self._id = getHashTagForId(bind)
 
     def __repr__(self):
-        # TBD: this is not consistent with hsds or h5py...
-        return f"<HDF5 object reference: {self._id}>"
+        # return canonical uuid
+        return f"{self._id}"
 
     def tolist(self):
         if type(self._id) is not str:
