@@ -376,7 +376,7 @@ class HSDSWriter(H5Writer):
                         items[grp_id] = {"links": {}}
                     links = items[grp_id]["links"]
                     link_class = link_json["class"]
-                    new_link = {"class": link_class}
+                    new_link = {"class": link_class, "created": created}
                     # convert to hsds representation
                     if link_class == "H5L_TYPE_HARD":
                         new_link["id"] = link_json["id"]

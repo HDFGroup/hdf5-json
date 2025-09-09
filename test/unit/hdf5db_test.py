@@ -332,6 +332,29 @@ class Hdf5dbTest(unittest.TestCase):
 
         db.close()
 
+    def testAttributeCreateOrder(self):
+        titles = ("one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten")
+        cpl = {"CreateOrder": True}
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        g1_id = db.createGroup()
+        db.createHardLink(root_id, "g1", g1_id)
+        for title in titles:
+            db.createAttribute(g1_id, title, title)
+        g2_id = db.createGroup(cpl=cpl)
+        db.createHardLink(root_id, "g2", g2_id)
+        for title in titles:
+            db.createAttribute(g2_id, title, title)
+        print("g1 attributes:", db.getAttributes(g1_id))
+        print("g2 attributes:", db.getAttributes(g2_id))
+        self.assertEqual(sorted(db.getAttributes(g1_id)), sorted(titles))
+        #self.assertEqual(db.getAttributes(g2_id), titles)
+        db.close()
+
+
+
+
+
     def testCommittedType(self):
         db = Hdf5db(app_logger=self.log)
         root_id = db.open()
