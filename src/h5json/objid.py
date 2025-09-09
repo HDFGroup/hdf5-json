@@ -130,6 +130,29 @@ def getCollectionForId(obj_id):
     return collection
 
 
+def getHashTagForId(id):
+    """ Return canonical <collection_char>-<UUID> """
+
+    if not isinstance(id, str):
+        raise ValueError("Expected string type")
+
+    if not id:
+        raise ValueError("Empty id")
+
+    parts = id.split("/")
+    tag = parts[-1]
+
+    # add a prefix tag if not already present
+    if len(tag) < UUID_LEN:
+        raise ValueError(f"unexpected uuid: {tag}")
+    if tag[1] != '-':
+        if len(parts) != 2:
+            raise ValueError(f"unexpected obj id: {id}")
+        collection = parts[0]
+        tag = _getPrefixForCollection(collection) + '-' + tag
+    return tag
+
+
 def isRootObjId(id):
     """returns true if this is a root id (only for v2 schema)"""
     if not isSchema2Id(id):

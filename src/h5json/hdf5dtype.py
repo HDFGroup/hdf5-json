@@ -13,6 +13,8 @@
 import weakref
 import numpy as np
 
+from .objid import getHashTagForId
+
 
 numpy_integer_types = (np.int8, np.uint8, np.int16, np.int16, np.int32, np.uint32, np.int64, np.uint64)
 numpy_float_types = (np.float16, np.float32, np.float64)
@@ -28,42 +30,43 @@ class Reference:
         """Low-level identifier appropriate for this object"""
         return self._id
 
-    @property
-    def objref(self):
-        """Weak reference to object"""
-        return self._objref  # return weak ref to ref'd object
-
     def __init__(self, bind):
         """Create a new reference by binding to
-        a group/dataset/committed type
+        a uuid
         """
-        self._id = bind._id
-        self._objref = weakref.ref(bind)
+        if not bind:
+            self._id = None
+        else:
+            if isinstance(bind, bytes):
+                bind = bind.decode()
+
+            if not isinstance(bind, str):
+                raise TypeError("Expected string id")
+
+            self._id = getHashTagForId(bind)
 
     def __repr__(self):
         # TBD: this is not consistent with hsds or h5py...
-        if not isinstance(self._id.id, str):
-            raise TypeError("Expected string id")
-        item = None
-
-        collection_type = self._id.collection_type
-        item = f"{collection_type}/{self._id.id}"
-        return item
+        return f"<HDF5 object reference: {self._id}>"
 
     def tolist(self):
-        if type(self._id.id) is not str:
+        if type(self._id) is not str:
             raise TypeError("Expected string id")
-        if self._id.objtype_code == "d":
+        if not self._id:
+            return [("",),]
+
+        objtype_code = self._id[0]
+        if objtype_code == "d":
             return [
-                ("datasets/" + self._id.id),
+                ("datasets/" + self._id),
             ]
-        elif self._id.objtype_code == "g":
+        elif objtype_code == "g":
             return [
-                ("groups/" + self._id.id),
+                ("groups/" + self._id),
             ]
-        elif self._id.objtype_code == "t":
+        elif objtype_code == "t":
             return [
-                ("datatypes/" + self._id.id),
+                ("datatypes/" + self._id),
             ]
         else:
             raise TypeError("Unexpected id type")

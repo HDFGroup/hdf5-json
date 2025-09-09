@@ -15,7 +15,7 @@ import logging
 from .hdf5dtype import getTypeItem, createDataType, Reference, special_dtype
 from .array_util import jsonToArray, bytesArrayToList
 from .dset_util import resize_dataset
-from .objid import createObjId, getCollectionForId, isValidUuid, getUuidFromId
+from .objid import createObjId, getCollectionForId, isValidUuid, getUuidFromId, getHashTagForId
 from . import selections
 from .apiversion import _apiver
 from .h5reader import H5Reader, H5NullReader
@@ -279,11 +279,12 @@ class Hdf5db:
         """ return object with given id """
         self.log.debug(f"getObjectById {obj_id}")
         self._checkReader()
-        if obj_id not in self.db or refresh:
+        tag = getHashTagForId(obj_id)
+        if tag not in self.db or refresh:
             # load the obj from the reader
             obj_json = self.reader.getObjectById(obj_id)
-            self.db[obj_id] = obj_json
-        obj_json = self.db[obj_id]
+            self.db[tag] = obj_json
+        obj_json = self.db[tag]
 
         return obj_json
 

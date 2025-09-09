@@ -345,15 +345,9 @@ class Hdf5dbTest(unittest.TestCase):
         db.createHardLink(root_id, "g2", g2_id)
         for title in titles:
             db.createAttribute(g2_id, title, title)
-        print("g1 attributes:", db.getAttributes(g1_id))
-        print("g2 attributes:", db.getAttributes(g2_id))
         self.assertEqual(sorted(db.getAttributes(g1_id)), sorted(titles))
-        #self.assertEqual(db.getAttributes(g2_id), titles)
+        self.assertEqual(tuple(db.getAttributes(g2_id)), titles)
         db.close()
-
-
-
-
 
     def testCommittedType(self):
         db = Hdf5db(app_logger=self.log)
