@@ -10,10 +10,8 @@
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
 import logging
-import time
-import numpy as np
 
-from ..objid import getCollectionForId, getUuidFromId, createObjId
+from ..objid import getCollectionForId, getUuidFromId
 
 from ..hdf5dtype import createDataType
 from ..array_util import jsonToArray, bytesToArray
@@ -277,7 +275,7 @@ class HSDSReader(H5Reader):
             params["fields"] = ":".join(mtype.names)
 
         MAX_SELECT_QUERY_LEN = 100
-        if len(query_param) > MAX_SELECT_QUERY_LEN:
+        if query_param and len(query_param) > MAX_SELECT_QUERY_LEN:
             # use a post method to avoid possible long query strings
             try:
                 rsp = self.http_conn.POST(req, body=params, format="binary")
