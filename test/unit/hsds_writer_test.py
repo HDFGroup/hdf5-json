@@ -244,22 +244,41 @@ class HSDSWriterTest(unittest.TestCase):
         self.assertTrue(db.writer.lastModified is None)  # no flush yet
 
         # create a scalar dataset
-        dset_id = db.createDataset(shape=(), dtype=np.int32)
-        dset_json = db.getObjectById(dset_id)
+        dsetA_id = db.createDataset(shape=(), dtype=np.int32)
+        dset_json = db.getObjectById(dsetA_id)
         self.assertTrue("created" in dset_json)
         dset_create_time = dset_json["created"]
         self.assertTrue(dset_create_time > 0)
 
+        db.createHardLink(root_id, "dset_a", dsetA_id)
+
         arr = np.zeros((), dtype=np.int32)
         arr[()] = 42
         sel_all = selections.select((), ...)
-        db.setDatasetValues(dset_id, sel_all, arr)
-        dset_json = db.getObjectById(dset_id)
+        db.setDatasetValues(dsetA_id, sel_all, arr)
+
+        dset_json = db.getObjectById(dsetA_id)
         self.assertTrue("lastModified" in dset_json)
         self.assertTrue(dset_json["lastModified"] > dset_create_time)
 
-        arr = db.getDatasetValues(dset_id, sel_all)
+        arr = db.getDatasetValues(dsetA_id, sel_all)
         self.assertEqual(arr[()], 42)
+
+        # create a scalar dataset with string
+        dt_str = special_dtype(vlen=str)
+        dsetB_id = db.createDataset(shape=(), dtype=dt_str)
+        dset_json = db.getObjectById(dsetB_id)
+        db.createHardLink(root_id, "dset_b", dsetB_id)
+
+        arr = np.zeros((), dtype=dt_str)
+        arr[()] = "hello world"
+        db.setDatasetValues(dsetB_id, sel_all, arr)
+
+        arr = db.getDatasetValues(dsetB_id, sel_all)
+
+        e = arr[()]
+        self.assertEqual(e, "hello world")
+        self.assertTrue(isinstance(e, str))
 
         db.close()
 

@@ -603,7 +603,11 @@ class Hdf5db:
                     stop = start + sel_inter.count[dim]
                     slices.append(slice(start, stop, 1))
                 slices = tuple(slices)
-                arr[slices] = update_val
+                # TBD: needs updating to work in the general case!
+                if slices == ():
+                    arr[slices] = update_val[slices]
+                else:
+                    arr[slices] = update_val
 
         return arr
 
@@ -620,6 +624,11 @@ class Hdf5db:
             raise ValueError("Only hyperslab selections are currently supported")
         if not isinstance(arr, np.ndarray):
             raise TypeError("Expected ndarray for data value")
+        tgt_dt = self.getDtype(dset_json)
+        src_dt = arr.dtype
+        if src_dt != tgt_dt:
+            raise TypeError("arr.dtype doesn't match dataset dtype")
+
         if shape_json["class"] == "H5S_NULL":
             raise ValueError("writing to null space dataset not supported")
         if shape_json["class"] == "H5S_SCALAR":
