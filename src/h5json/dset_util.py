@@ -40,7 +40,6 @@ def resize_dataset(dset_json, shape):
             raise ValueError(f"extent for dimension {i} can't be larger than {maxdims[i]}")
 
     shape_json["dims"] = list(shape)
-    dset_json["modified"] = time.time()
 
 
 def getDims(dset_json):

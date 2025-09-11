@@ -245,10 +245,18 @@ class HSDSWriterTest(unittest.TestCase):
 
         # create a scalar dataset
         dset_id = db.createDataset(shape=(), dtype=np.int32)
+        dset_json = db.getObjectById(dset_id)
+        self.assertTrue("created" in dset_json)
+        dset_create_time = dset_json["created"]
+        self.assertTrue(dset_create_time > 0)
+
         arr = np.zeros((), dtype=np.int32)
         arr[()] = 42
         sel_all = selections.select((), ...)
         db.setDatasetValues(dset_id, sel_all, arr)
+        dset_json = db.getObjectById(dset_id)
+        self.assertTrue("lastModified" in dset_json)
+        self.assertTrue(dset_json["lastModified"] > dset_create_time)
 
         arr = db.getDatasetValues(dset_id, sel_all)
         self.assertEqual(arr[()], 42)

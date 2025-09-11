@@ -129,9 +129,7 @@ class Hdf5db:
 
     def make_dirty(self, obj_id):
         """ Mark the object as dirty and update the lastModified timestamp """
-        if self.is_new(obj_id):
-            # object hasn't been initially written yet, just return
-            return
+
         if obj_id not in self.db:
             self.log.error("make dirty called on deleted object")
             raise KeyError(f"obj_id: {obj_id} not found")
@@ -140,7 +138,9 @@ class Hdf5db:
             return
         obj_json = self.db[obj_id]
         obj_json["lastModified"] = time.time()
-        self._dirty_objects.add(obj_id)
+        if not self.is_new(obj_id):
+            # object hasn't been initially written yet, add to dirt_object set
+            self._dirty_objects.add(obj_id)
 
     def flush(self):
         """ write out any changes """
@@ -646,7 +646,7 @@ class Hdf5db:
 
         dset_json = self.getObjectById(dset_id)  # will throw exception if not found
         if resize_dataset(dset_json, shape):
-            self._dirty_objects.add(dset_id)
+            self._make_dirty(dset_id)
 
     def deleteObject(self, obj_id):
         """ Delete the given object """
@@ -817,6 +817,7 @@ class Hdf5db:
             dset_json["creationProperties"] = cpl
         else:
             dset_json["creationProperties"] = {}
+        dset_json["created"] = time.time()
 
         dset_id = createObjId("datasets", root_id=self.root_id)
         self.db[dset_id] = dset_json
