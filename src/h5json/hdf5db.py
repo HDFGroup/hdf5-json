@@ -569,7 +569,25 @@ class Hdf5db:
             rank = len(dims)
 
         dtype = self.getDtype(dset_json)
-        arr = self.reader.getDatasetValues(dset_id, sel, dtype=dtype)
+
+        # determine if we need to make a read request or not
+        if dset_id in self._new_objects:
+            fetch = False
+        else:
+            fetch = True
+            # check against pending updates
+            if "updates" in dset_json:
+                updates = dset_json["updates"]
+                for (update_sel, update_val) in updates:
+                    if selections.contained(sel, update_sel):
+                        fetch = False
+                        break
+
+        # send a reader request unless an update already covers the sel area
+        if fetch:
+            arr = self.reader.getDatasetValues(dset_id, sel, dtype=dtype)
+        else:
+            arr = np.zeros(sel.shape, dtype=dtype)
 
         if "updates" in dset_json:
             # apply any non-flushed changes that intersect the current selection

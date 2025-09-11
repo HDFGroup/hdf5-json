@@ -223,7 +223,7 @@ class HSDSWriterTest(unittest.TestCase):
         db.close()
 
     def testReaderWriter(self):
-        # try reading and writer to an HSDS domain
+        # try reading and writing to an HSDS domain
         # create a random string so we don't try to open an existing file
         filename = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
         domain_path = "/home/test_user1/test/" + filename + ".h5"
@@ -234,14 +234,7 @@ class HSDSWriterTest(unittest.TestCase):
         self.assertTrue(root_id)
         db.reader = HSDSReader(domain_path, app_logger=self.log)
         db.close()
-        """
-        db.writer = HSDSWriter(domain, **kwargs)
-        root_id = db.open()
-        db.close()
-        # now set the reader
-        db.reader = HSDSReader(domain, **kwargs)
-        db.open()
-        """
+
         root_id2 = db.open()
         self.assertEqual(root_id, root_id2)
         root_json = db.getObjectById(root_id)
@@ -249,6 +242,18 @@ class HSDSWriterTest(unittest.TestCase):
         self.assertTrue("created" in root_json)
         self.assertTrue(root_json["created"] > 0)
         self.assertTrue(db.writer.lastModified is None)  # no flush yet
+
+        # create a scalar dataset
+        dset_id = db.createDataset(shape=(), dtype=np.int32)
+        arr = np.zeros((), dtype=np.int32)
+        arr[()] = 42
+        sel_all = selections.select((), ...)
+        db.setDatasetValues(dset_id, sel_all, arr)
+
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertEqual(arr[()], 42)
+
+        db.close()
 
     def testH5PyToHS(self):
         # test reading from HDF5 file and writing to HSDS

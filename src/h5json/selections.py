@@ -116,8 +116,8 @@ def select(obj, args):
     return sel
 
 
-def intersect(s1, s2):
-    """ Return the intersection of two selections """
+def _check_bool_args(s1, s2):
+    """ verify argument for boolean operations """
     # TBD: this is currently only working for simple selections with stride 1
     valid_select_types = (H5S_SELECT_HYPERSLABS, H5S_SELECT_ALL)
     if not isinstance(s1, Selection):
@@ -131,15 +131,18 @@ def intersect(s1, s2):
     if s1.shape != s2.shape:
         raise ValueError("selections have incompatible shapes")
 
+
+def intersect(s1, s2):
+    """ Return the intersection of two selections """
+    # TBD: this is currently only working for simple selections with stride 1
+    _check_bool_args(s1, s2)
+
     slices = []
     rank = len(s1.shape)
     for dim in range(rank):
         start = max(s1.start[dim], s2.start[dim])
         stop = min(s1.start[dim] + s1.count[dim], s2.start[dim] + s2.count[dim])
-        msg = "stepped slices not currently supported"
-        if s1.step[dim] > 1:
-            raise ValueError(msg)
-        if s2.step[dim] > 1:
+        if s1.step[dim] > 1 or s2.step[dim] > 1:
             raise ValueError("stepped slices not currently supported")
         if start > stop:
             stop = start
@@ -147,6 +150,27 @@ def intersect(s1, s2):
     slices = tuple(slices)
 
     return select(s1.shape, slices)
+
+
+def contained(s1, s2):
+    """ return True if s1 is contained in s2, otherwise False """
+    _check_bool_args(s1, s2)
+
+    is_contained = True
+    rank = len(s1.shape)
+    for dim in range(rank):
+        if s1.step[dim] > 1 or s2.step[dim] > 1:
+            # TBD: do the right thing for stepped selections
+            # for now just return False
+            is_contained = False
+            break
+        if s1.start[dim] < s2.start[dim]:
+            is_contained = False
+            break
+        if s1.start[dim] + s1.count[dim] > s2.start[dim] + s2.count[dim]:
+            is_contained = False
+            break
+    return is_contained
 
 
 class Selection(object):
