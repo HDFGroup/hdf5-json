@@ -277,11 +277,11 @@ class Hdf5db:
 
     def getObjectById(self, obj_id, refresh=False):
         """ return object with given id """
-        self.log.debug(f"getObjectById {obj_id}")
         self._checkReader()
         tag = getHashTagForId(obj_id)
         if tag not in self.db or refresh:
             # load the obj from the reader
+            self.log.debug(f"getObjectById - fetching {obj_id} from reader")
             obj_json = self.reader.getObjectById(obj_id)
             self.db[tag] = obj_json
         obj_json = self.db[tag]

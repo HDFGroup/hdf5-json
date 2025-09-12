@@ -24,8 +24,6 @@ unit_tests = [
     "h5json_writer_test",
     "h5py_reader_test",
     "h5py_writer_test",
-    "hsds_reader_test",
-    "hsds_writer_test",
 ]
 
 use_hsds = True
