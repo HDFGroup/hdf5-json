@@ -587,7 +587,7 @@ class Hdf5db:
         if fetch:
             arr = self.reader.getDatasetValues(dset_id, sel, dtype=dtype)
         else:
-            arr = np.zeros(sel.shape, dtype=dtype)
+            arr = np.zeros(sel.mshape, dtype=dtype)
 
         if "updates" in dset_json:
             # apply any non-flushed changes that intersect the current selection

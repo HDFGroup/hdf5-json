@@ -448,6 +448,33 @@ class Hdf5dbTest(unittest.TestCase):
 
         db.close()
 
+    def testBoolDataset(self):
+        shape = (10,)
+        dtype = np.dtype(bool)
+
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dset_id = db.createDataset(shape, dtype=dtype)
+        db.createHardLink(root_id, "dset", dset_id)
+        sel_first = selections.select(shape, slice(0, 1))
+        arr = db.getDatasetValues(dset_id, sel_first)
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, (1,))
+        self.assertEqual(arr[0], False)
+
+        # update one element
+        sel_second = selections.select(shape, slice(1, 2))
+        db.setDatasetValues(dset_id, sel_second, np.array([True,], dtype=dtype))
+
+        # read back three elements
+        sel_three = selections.select(shape, slice(0, 3))
+        arr = db.getDatasetValues(dset_id, sel_three)
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, (3,))
+        self.assertEqual(list(arr[...]), [False, True, False])
+
+        db.close()
+
     def testScalarDataset(self):
         dtype = np.int32
 
