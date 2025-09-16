@@ -526,6 +526,24 @@ class Hdf5dbTest(unittest.TestCase):
 
         db.close()
 
+    def testFillValueDataset(self):
+        dtype = np.uint32
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        cpl = {"fillValue": 0xdeadbeef}
+        dset_id = db.createDataset((), dtype=dtype, cpl=cpl)
+        db.createHardLink(root_id, "dset", dset_id)
+        dset_json = db.getObjectById(dset_id)
+        self.assertTrue("creationProperties" in dset_json)
+        cpl = dset_json["creationProperties"]
+        self.assertTrue("fillValue" in cpl)
+        self.assertEqual(cpl["fillValue"], 0xdeadbeef)
+        sel_all = selections.select((), ...)
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, ())
+        self.assertEqual(arr[()], 0xdeadbeef)
+
 
 if __name__ == "__main__":
     # setup test files

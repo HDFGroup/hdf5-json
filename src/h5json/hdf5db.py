@@ -570,6 +570,11 @@ class Hdf5db:
 
         dtype = self.getDtype(dset_json)
 
+        if "creationProperties" in dset_json:
+            cpl = dset_json["creationProperties"]
+        else:
+            cpl = {}
+
         # determine if we need to make a read request or not
         if dset_id in self._new_objects:
             fetch = False
@@ -587,7 +592,13 @@ class Hdf5db:
         if fetch:
             arr = self.reader.getDatasetValues(dset_id, sel, dtype=dtype)
         else:
-            arr = np.zeros(sel.mshape, dtype=dtype)
+            if "fillValue" in cpl:
+                fillValue = cpl["fillValue"]
+                # TBD: fix for compound types
+                arr = np.zeros(sel.mshape, dtype=dtype)
+                arr[...] = fillValue
+            else:
+                arr = np.zeros(sel.mshape, dtype=dtype)
 
         if "updates" in dset_json:
             # apply any non-flushed changes that intersect the current selection
