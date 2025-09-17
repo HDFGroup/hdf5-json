@@ -26,15 +26,6 @@ unit_tests = [
     "h5py_writer_test",
 ]
 
-use_hsds = True
-for key in ("HS_ENDPOINT", "HS_USERNAME", "HS_PASSWORD"):
-    if key not in os.environ:
-        use_hsds = False
-        print(f"not including HSDS tests, no {key} environment set")
-        break
-
-if use_hsds:
-    unit_tests.append("hsds_reader_test")
 unit_tests = tuple(unit_tests)
 
 integ_tests = ("h5tojson_test", "jsontoh5_test")
