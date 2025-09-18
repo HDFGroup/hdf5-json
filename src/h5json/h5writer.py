@@ -99,6 +99,11 @@ class H5Writer(ABC):
         """
         pass
 
+    @abstractmethod
+    def getFilters(self, compressors_only=False):
+        """ returns a list of filters supported by the writer """
+        pass
+
 
 class H5NullWriter(H5Writer):
     """
@@ -170,3 +175,8 @@ class H5NullWriter(H5Writer):
         stats["lastModified"] = 0
         stats['owner'] = ""
         return stats
+
+    def getFilters(self, compressors_only=False):
+        """ return empty list of filters  """
+
+        return ()

@@ -308,3 +308,8 @@ class H5JsonWriter(H5Writer):
         stats["lastModified"] = stat_info.st_mtime
         stats['owner'] = stat_info.st_uid  # TBD: convert to username?
         return stats
+
+    def getFilters(self, compressors_only=False):
+        """ return empty list of filters  """
+
+        return ()

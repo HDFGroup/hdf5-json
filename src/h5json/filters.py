@@ -241,39 +241,3 @@ def getFilterOps(app, dset_id, filters, dtype=None, chunk_shape=None):
         return filter_ops
     else:
         return None
-
-
-"""
-_HDF_FILTERS = {
-    1: {"class": "H5Z_FILTER_DEFLATE", "alias": "gzip", "options": ["level"]},
-    2: {"class": "H5Z_FILTER_SHUFFLE", "alias": "shuffle"},
-    3: {"class": "H5Z_FILTER_FLETCHER32", "alias": "fletcher32"},
-    4: {
-        "class": "H5Z_FILTER_SZIP",
-        "alias": "szip",
-        "options": ["bitsPerPixel", "coding", "pixelsPerBlock", "pixelsPerScanLine"],
-    },
-    5: {"class": "H5Z_FILTER_NBIT"},
-    6: {
-        "class": "H5Z_FILTER_SCALEOFFSET",
-        "alias": "scaleoffset",
-        "options": ["scaleType", "scaleOffset"],
-    },
-    32000: {"class": "H5Z_FILTER_LZF", "alias": "lzf"},
-}
-
-
-
-# h5py supported filters
-_H5PY_FILTERS = {
-    "gzip": 1,
-    "shuffle": 2,
-    "fletcher32": 3,
-    "szip": 4,
-    "scaleoffset": 6,
-    "lzf": 32000,
-}
-
-_H5PY_COMPRESSION_FILTERS = ("gzip", "lzf", "szip")
-
-"""

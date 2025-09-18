@@ -392,12 +392,10 @@ class H5pyReader(H5Reader):
             self.log.warning(f"Unknown layout value: {nLayout}")
 
         num_filters = plist.get_nfilters()
-        print("num_filters:", num_filters)
         filter_props = []
         if num_filters:
             for n in range(num_filters):
                 filter_info = plist.get_filter(n)
-                print("filter_info:", filter_info)
                 opt_values = filter_info[2]
                 filter_prop = {}
                 filter_id = filter_info[0]
@@ -406,19 +404,15 @@ class H5pyReader(H5Reader):
                     filter_prop["name"] = bytesArrayToList(filter_info[3])
                 hdf_filter = filters.getFilterItem(filter_id)
                 if hdf_filter:
-                    print("got hdf filter:", hdf_filter)
-
                     filter_prop["class"] = hdf_filter["class"]
                     if "options" in hdf_filter:
                         filter_opts = hdf_filter["options"]
-                        print("got filter_opts:", filter_opts)
                         for i in range(len(filter_opts)):
                             if len(opt_values) <= i:
                                 break  # end of option values
                             opt_value = opt_values[i]
                             opt_value_enum = None
                             option_name = filter_opts[i]
-                            print(f"option_name: {option_name} opt_value: {opt_value}")
                             if option_name in filters.HDF_FILTER_OPTION_ENUMS:
                                 option_enums = filters.HDF_FILTER_OPTION_ENUMS[option_name]
                                 if opt_value in option_enums:

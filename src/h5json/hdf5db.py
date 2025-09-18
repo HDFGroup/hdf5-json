@@ -15,6 +15,7 @@ import logging
 from .hdf5dtype import getTypeItem, createDataType, Reference, special_dtype
 from .array_util import jsonToArray, bytesArrayToList
 from .dset_util import resize_dataset
+from .filters import getFiltersJson
 from .objid import createObjId, getCollectionForId, isValidUuid, getUuidFromId, getHashTagForId
 from . import selections
 from .apiversion import _apiver
@@ -834,6 +835,14 @@ class Hdf5db:
 
         dset_json = {"shape": shape_json, "type": type_json, "attributes": {}}
         if cpl:
+            if "filters" in cpl:
+                if self.writer:
+                    supported_filters = self.writer.getSupportedFilters()
+                else:
+                    supported_filters = ()
+                # validate and normalize supplied filter property list
+                filters_json = getFiltersJson(cpl, supported_filters=supported_filters)
+                cpl["filters"] = filters_json
             dset_json["creationProperties"] = cpl
         else:
             dset_json["creationProperties"] = {}

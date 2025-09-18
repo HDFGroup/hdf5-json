@@ -491,3 +491,17 @@ class H5pyWriter(H5Writer):
         stats["lastModified"] = stat_info.st_mtime
         stats['owner'] = stat_info.st_uid  # TBD: convert to username?
         return stats
+
+    def getFilters(self, compressors_only=False):
+        """ return list of filters supported by h5py  """
+
+        h5py_filters = ["H5Z_FILTER_DEFLATE",]
+
+        if not compressors_only:
+            h5py_filters.append("H5Z_FILTER_SHUFFLE")
+            h5py_filters.append("H5Z_FILTER_FLETCHER32")
+            h5py_filters.append("H5Z_FILTER_SZIP")
+            h5py_filters.append("H5Z_FILTER_NBIT")
+            h5py_filters.append("H5Z_FILTER_SCALEOFFSET")
+
+        return tuple(h5py_filters)
