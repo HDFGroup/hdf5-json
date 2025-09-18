@@ -33,19 +33,47 @@ def getShapeClass(data_shape):
     return data_shape["class"]
 
 
-def getDims(dset_json):
-    """ return extents of the dataset shape as a tuple """
-    shape_json = dset_json["shape"]
-    shape_class = shape_json["class"]
-    if shape_class == "H5S_NULL":
+def getShapeDims(shape):
+    """
+    Get dims from a given shape json.  Return [1,] for Scalar datasets,
+    None for null dataspaces
+    """
+    dims = None
+    if isinstance(shape, int):
+        dims = [shape, ]
+    elif isinstance(shape, list) or isinstance(shape, tuple):
+        dims = shape  # can use as is
+    elif isinstance(shape, str):
+        # only valid string value is H5S_NULL
+        if shape != "H5S_NULL":
+            raise ValueError("Invalid value for shape")
         dims = None
-    elif shape_class == "H5S_SCALAR":
-        dims = ()
-    elif shape_class == "H5S_SIMPLE":
-        dims = tuple(shape_json["dims"])
+    elif isinstance(shape, dict):
+        if shape.get("class") in ("H5S_NULL", "H5S_SCALAR", "H5S_SIMPLE"):
+            # this is a shape_json obj
+            shape_json = shape
+        elif "shape" in shape:
+            # dataset or attribute json
+            shape_json = shape["shape"]
+        else:
+            raise ValueError(f"Unknown shape: {shape}")
+
+        if "class" not in shape_json:
+            raise ValueError("'class' key not found in shape")
+        shape_class = shape_json["class"]
+        if shape_class == "H5S_NULL":
+            dims = None
+        elif shape_class == "H5S_SCALAR":
+            dims = []
+        elif shape_class == "H5S_SIMPLE":
+            if "dims" not in shape_json:
+                raise ValueError("'dims' key expected for shape")
+            dims = shape_json["dims"]
+        else:
+            raise ValueError(f"Unknown shape: {shape_json}")
     else:
-        raise ValueError(f"Unexpected shape class: {shape_class}")
-    return dims
+        raise ValueError(f"Unexpected shape class: {type(shape)}")
+    return tuple(dims)
 
 
 def getNumElements(dset_json):
@@ -53,51 +81,37 @@ def getNumElements(dset_json):
         returns None for null shape, 1 for scalar shape, and product of
         extents otherwise """
 
-    return int(np.prod(getDims(dset_json)))
+    return int(np.prod(getShapeDims(dset_json)))
 
 
 def getRank(data_shape):
-    """ Return rank of given data shape_json """
+    """ Return rank of given data shape """
 
-    shape_class = getShapeClass(data_shape)
-
-    if shape_class == "H5S_NULL":
+    dims = getShapeDims(data_shape)
+    if dims is None:
         return 0
-    elif shape_class == "H5S_SCALAR":
-        return 0
-    elif shape_class == "H5S_SIMPLE":
-        if "dims" not in data_shape:
-            raise KeyError("expected dims key for H5S_SIMPLE data shape")
-        return len(data_shape["dims"])
     else:
-        raise ValueError(f"unexpected data shape class: {shape_class}")
+        return len(dims)
 
 
-def getDsetRank(dset_json):
-    """Get rank returning 0 for scalar or NULL data shapes"""
-    data_shape = dset_json["shape"]
-    return getRank(data_shape)
-
-
-def isNullSpace(dset_json):
+def isNullSpace(shape):
     """Return true if this dataset is a null data space"""
-    shape_class = getShapeClass(dset_json["shape"])
-    if shape_class == "H5S_NULL":
+
+    dims = getShapeDims(shape)
+    if dims is None:
         return True
     else:
         return False
 
 
-def isScalarSpace(dset_json):
+def isScalar(shape):
     """ return true if this is a scalar dataset """
 
-    data_shape = dset_json["shape"]
-    shape_class = getShapeClass(data_shape)
-    if shape_class == "H5S_NULL":
+    dims = getShapeDims(shape)
+    if dims is None or len(dims) > 0:
         return False
-
-    rank = getRank(data_shape)
-    return True if rank == 0 else False
+    else:
+        return True
 
 
 def getDatasetLayout(dset_json):
@@ -134,26 +148,31 @@ CHUNK_LAYOUT_CLASSES = (
 )
 
 
-def get_dset_size(shape_json, typesize):
+def getDatasetSize(shape_json, typesize):
     """Return the size of the dataspace.  For
     any unlimited dimensions, assume a value of 1.
     (so the return size will be the absolute minimum)
     """
-    if shape_json is None or shape_json["class"] == "H5S_NULL":
+
+    if isNullSpace(shape_json):
         return None
-    if shape_json["class"] == "H5S_SCALAR":
-        return typesize  # just return size for one item
+
     if typesize == "H5T_VARIABLE":
-        typesize = DEFAULT_TYPE_SIZE  # just take a guess at the item size
-    dset_size = typesize
-    shape = shape_json["dims"]
-    rank = len(shape)
+        dset_size = DEFAULT_TYPE_SIZE  # just take a guess at the item size
+    else:
+        dset_size = typesize
+
+    if isScalar(shape_json):
+        return dset_size  # just return size for one item
+
+    dims = getShapeDims(shape_json)
+    rank = len(dims)
 
     for n in range(rank):
-        if shape[n] == 0:
+        if dims[n] == 0:
             # extendable extent with value of 0
             continue  # assume this is one
-        dset_size *= shape[n]
+        dset_size *= dims[n]
     return dset_size
 
 
@@ -218,21 +237,21 @@ def getContiguousLayout(shape_json, item_size, chunk_min=None, chunk_max=None):
             # data shape with no elements, just return dims as layout
             return dims
 
-    nsize = item_size
+    n_size = item_size
     layout = [1,] * rank
 
     for i in range(rank):
         dim = rank - i - 1
         extent = dims[dim]
-        if extent * nsize < chunk_max:
+        if extent * n_size < chunk_max:
             # just use the full extent as layout
             layout[dim] = extent
-            nsize *= extent
+            n_size *= extent
         else:
             n = extent
             while n > 1:
                 n = -(-n // 2)  # use negatives so we round up on odds
-                if n * nsize < chunk_max:
+                if n * n_size < chunk_max:
                     break
             layout[dim] = n
             break  # just use 1's for the rest of the layout
@@ -253,6 +272,86 @@ def getChunkSize(layout, type_size):
             raise ValueError("Invalid chunk layout")
         chunk_size *= n
     return chunk_size
+
+
+def isExtensible(dims, maxdims):
+    """
+    Determine if the dataset can be extended
+    """
+    if maxdims is None or len(dims) == 0:
+        return False
+    rank = len(dims)
+    if len(maxdims) != rank:
+        raise ValueError("rank of maxdims does not match dataset")
+    for n in range(rank):
+        # TBD - shouldn't have H5S_UNLIMITED in any new files.
+        # Remove check once this is confirmed
+        if maxdims[n] in (0, "H5S_UNLIMITED") or maxdims[n] > dims[n]:
+            return True
+    return False
+
+
+def getDsetMaxDims(dset_json):
+    """
+    Get maxdims from a given shape.  Return [1,] for Scalar datasets
+
+    Use with H5S_NULL datasets will throw a ValueError
+    """
+    if "shape" not in dset_json:
+        msg = "No shape found in dset_json"
+        raise KeyError(msg)
+    shape_json = dset_json["shape"]
+    shape_class = getShapeClass(shape_json)
+    maxdims = None
+    if shape_class == "H5S_NULL":
+        msg = "Expected shape class other than H5S_NULL"
+        raise ValueError(msg)
+    elif shape_class == "H5S_SCALAR":
+        maxdims = [1,]
+    elif shape_class == "H5S_SIMPLE":
+        if "maxdims" in shape_json:
+            maxdims = shape_json["maxdims"]
+    else:
+        msg = f"Unexpected shape class: {shape_class}"
+        raise ValueError(msg)
+    return maxdims
+
+
+def getChunkDims(dset_json):
+    """ get chunk shape for given dset_json """
+
+    layout = getDatasetLayout(dset_json)
+    if layout and "dims" in layout:
+        return layout["dims"]
+    else:
+        # H5D_COMPACT and H5D_CONTIGUOUS will not have a dims key
+        # Check the layout dict in dset_json to see if it's
+        # defined there
+        if "layout" in dset_json:
+            layout = dset_json["layout"]
+            if "dims" in layout:
+                return layout["dims"]
+    return None
+
+
+def getChunkLayout(dset_json):
+    """Get chunk layout.  Throw 500 if used with non-H5D_CHUNKED layout"""
+    if "layout" not in dset_json:
+        msg = "No layout found in dset_json"
+        raise KeyError(msg)
+    layout_json = dset_json["layout"]
+    if "class" not in layout_json:
+        msg = f"Expected class key for layout: {layout_json}"
+        raise KeyError(msg)
+    layout_class = layout_json["class"]
+    if layout_class not in CHUNK_LAYOUT_CLASSES:
+        msg = f"Unexpected shape layout: {layout_class}"
+        raise ValueError(msg)
+    if "dims" not in layout_json:
+        msg = f"Expected dims key in layout: {layout_json}"
+        raise KeyError(msg)
+    layout = layout_json["dims"]
+    return layout
 
 
 def validateChunkLayout(shape_json, item_size, layout, chunk_table=None):
@@ -425,7 +524,7 @@ def expandChunk(layout, typesize, shape_json, chunk_min=CHUNK_MIN, layout_class=
             if maxdims[n] == 0 or maxdims[n] > dims[n]:
                 extendable_dims += 1
 
-    dset_size = get_dset_size(shape_json, typesize)
+    dset_size = getDatasetSize(shape_json, typesize)
     if dset_size <= chunk_min and extendable_dims == 0:
         # just use the entire dataspace shape as one big chunk
         return tuple(dims)
