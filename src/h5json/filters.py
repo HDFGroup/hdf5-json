@@ -193,3 +193,40 @@ def getShuffleFilter(filters):
             return filter
 
     return None
+
+
+def getFilterOps(filters, dtype=None):
+    """Get list of filter operations to be used for this dataset"""
+
+    compressionFilter = getCompressionFilter(filters)
+
+    filter_ops = {}
+
+    shuffleFilter = getShuffleFilter(filters)
+
+    if shuffleFilter and not isVlen(dtype):
+        shuffle_name = shuffleFilter["name"]
+        if shuffle_name == "shuffle":
+            filter_ops["shuffle"] = 1  # use regular shuffle
+        elif shuffle_name == "bitshuffle":
+            filter_ops["shuffle"] = 2  # use bitshuffle
+        else:
+            filter_ops["shuffle"] = 0  # no shuffle
+    else:
+        filter_ops["shuffle"] = 0  # no shuffle
+
+    """ return list of filter operations for this dataset """
+    if compressionFilter:
+        if compressionFilter["class"] == "H5Z_FILTER_DEFLATE":
+            filter_ops["compressor"] = "zlib"  # blosc compressor
+        else:
+            if "name" in compressionFilter:
+                filter_ops["compressor"] = compressionFilter["name"]
+            else:
+                filter_ops["compressor"] = "lz4"  # default to lz4
+        if "level" not in compressionFilter:
+            filter_ops["level"] = 5  # medium level
+        else:
+            filter_ops["level"] = int(compressionFilter["level"])
+
+    return filter_ops

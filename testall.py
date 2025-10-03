@@ -19,6 +19,7 @@ unit_tests = [
     "array_util_test",
     "objid_test",
     "hdf5dtype_test",
+    "shape_util_test",
     "dset_util_test",
     "hdf5db_test",
     "h5json_reader_test",
