@@ -39,7 +39,7 @@ class DsetUtilTest(unittest.TestCase):
         layout_class = getDatasetLayoutClass(dset_json)
         self.assertEqual(layout_class, "H5D_CONTIGUOUS")
         chunk_dims = getChunkDims(dset_json)
-        self.assertEqual(chunk_dims, None)
+        self.assertEqual(chunk_dims, (10, ))
 
         chunked_layout = {'class': 'H5D_CHUNKED', 'dims': [2, ]}
         dset_chunked_json = {'id': 'd-f4a9f95e-c8962a53-f6c8-f18440-78d051',
@@ -56,7 +56,7 @@ class DsetUtilTest(unittest.TestCase):
         layout_class = getDatasetLayoutClass(dset_chunked_json)
         self.assertEqual(layout_class, "H5D_CHUNKED")
         chunk_dims = getChunkDims(dset_chunked_json)
-        self.assertEqual(chunk_dims, [2, ])
+        self.assertEqual(chunk_dims, (2, ))
 
     def testGuessChunk(self):
 

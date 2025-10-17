@@ -132,13 +132,13 @@ def getContiguousLayout(shape_json, item_size, chunk_min=None, chunk_max=None):
     return layout
 
 
-def getChunkSize(layout, type_size: int = 1):
+def getChunkSize(chunk_dims, type_size: int = 1):
     """Return chunk size given layout.
     i.e. just the product of the values in the list.
     """
 
     chunk_size = type_size
-    for n in layout:
+    for n in chunk_dims:
         if n <= 0:
             raise ValueError("Invalid chunk layout")
         chunk_size *= n
@@ -185,25 +185,31 @@ def getDsetMaxDims(dset_json):
     else:
         msg = f"Unexpected shape class: {shape_class}"
         raise ValueError(msg)
-    return maxdims
+    return tuple(maxdims)
 
 
 def getChunkDims(dset_json):
-    """Get chunk layout.  Return None for non-chunked layout"""
+    """Get chunk layout.  Return shape dims for non-chunked layout"""
 
+    shape_json = dset_json["shape"]
+    if shape_json["class"] == "H5S_NULL":
+        return None
+    if shape_json["class"] == "H5S_SCALAR":
+        return (1, )
+    shape_dims = shape_json["dims"]
     layout_class = getDatasetLayoutClass(dset_json)
     if not layout_class:
-        return None
+        return tuple(shape_dims)
 
     if layout_class not in CHUNK_LAYOUT_CLASSES:
-        return None
+        return tuple(shape_dims)
 
     layout_json = getDatasetLayout(dset_json)
     if "dims" not in layout_json:
         msg = f"Expected dims key in layout: {layout_json}"
         raise KeyError(msg)
-    layout = layout_json["dims"]
-    return layout
+    chunk_dims = tuple(layout_json["dims"])
+    return chunk_dims
 
 
 def validateChunkLayout(shape_json, item_size, layout, chunk_table=None):
