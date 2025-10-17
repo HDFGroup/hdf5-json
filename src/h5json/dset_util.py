@@ -189,23 +189,6 @@ def getDsetMaxDims(dset_json):
 
 
 def getChunkDims(dset_json):
-    """ get chunk shape for given dset_json """
-
-    layout = getDatasetLayout(dset_json)
-    if layout and "dims" in layout:
-        return layout["dims"]
-    else:
-        # H5D_COMPACT and H5D_CONTIGUOUS will not have a dims key
-        # Check the layout dict in dset_json to see if it's
-        # defined there
-        if "layout" in dset_json:
-            layout = dset_json["layout"]
-            if "dims" in layout:
-                return layout["dims"]
-    return None
-
-
-def getChunkLayout(dset_json):
     """Get chunk layout.  Return None for non-chunked layout"""
 
     layout_class = getDatasetLayoutClass(dset_json)

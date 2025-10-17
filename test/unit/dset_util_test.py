@@ -12,7 +12,8 @@
 import unittest
 import logging
 
-from h5json.dset_util import guessChunk, shrinkChunk, getChunkSize, getContiguousLayout, expandChunk
+from h5json.dset_util import guessChunk, shrinkChunk, getChunkSize, expandChunk
+from h5json.dset_util import getDatasetLayoutClass, getContiguousLayout, getDatasetLayout, getChunkDims
 
 
 class DsetUtilTest(unittest.TestCase):
@@ -21,6 +22,41 @@ class DsetUtilTest(unittest.TestCase):
         # main
         self.logger = logging.getLogger()
         self.logger.setLevel(logging.WARNING)
+
+    def testGetLayout(self):
+        contiguous_layout = {'class': 'H5D_CONTIGUOUS'}
+        dset_json = {'id': 'd-f4a9f95e-c8962a53-f6c8-f18440-78d051',
+                     'root': 'g-f4a9f95e-c8962a53-7c21-71d640-1ea2db',
+                     'created': 1760613930.3584619,
+                     'type': {'class': 'H5T_FLOAT', 'base': 'H5T_IEEE_F32LE'},
+                     'shape': {'class': 'H5S_SIMPLE', 'dims': [10], 'maxdims': [20]},
+                     'lastModified': 1760613930.3584619,
+                     'attributeCount': 0,
+                     'creationProperties': {'fillValue': 3.12, 'layout': contiguous_layout}}
+
+        layout = getDatasetLayout(dset_json)
+        self.assertTrue("class" in layout)
+        layout_class = getDatasetLayoutClass(dset_json)
+        self.assertEqual(layout_class, "H5D_CONTIGUOUS")
+        chunk_dims = getChunkDims(dset_json)
+        self.assertEqual(chunk_dims, None)
+
+        chunked_layout = {'class': 'H5D_CHUNKED', 'dims': [2, ]}
+        dset_chunked_json = {'id': 'd-f4a9f95e-c8962a53-f6c8-f18440-78d051',
+                             'root': 'g-f4a9f95e-c8962a53-7c21-71d640-1ea2db',
+                             'created': 1760613930.3584619,
+                             'type': {'class': 'H5T_FLOAT', 'base': 'H5T_IEEE_F32LE'},
+                             'shape': {'class': 'H5S_SIMPLE', 'dims': [10], 'maxdims': [20]},
+                             'lastModified': 1760613930.3584619,
+                             'attributeCount': 0,
+                             'creationProperties': {'fillValue': 3.12, 'layout': chunked_layout}}
+
+        layout = getDatasetLayout(dset_chunked_json)
+        self.assertTrue("class" in layout)
+        layout_class = getDatasetLayoutClass(dset_chunked_json)
+        self.assertEqual(layout_class, "H5D_CHUNKED")
+        chunk_dims = getChunkDims(dset_chunked_json)
+        self.assertEqual(chunk_dims, [2, ])
 
     def testGuessChunk(self):
 
