@@ -107,11 +107,14 @@ class DsetUtilTest(unittest.TestCase):
         self.assertEqual(layout, (5,))
 
         shape = {"class": "H5S_SIMPLE", "dims": [100, 100, 100]}
-        layout = guessChunk(shape, typesize)
+        chunk_max = 400
+        layout = guessChunk(shape, typesize, chunk_max=chunk_max)
         self.assertTrue(len(layout), 3)
         for i in range(3):
             self.assertTrue(layout[i] >= 1)
-            self.assertTrue(layout[i] <= 100)
+            self.assertTrue(layout[i] < 100)
+        chunk_size = getChunkSize(layout, typesize)
+        self.assertTrue(chunk_size <= chunk_max)
 
         shape = {"class": "H5S_SIMPLE", "dims": [100, 0], "maxdims": [100, 0]}
         layout = guessChunk(shape, typesize)

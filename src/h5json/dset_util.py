@@ -362,7 +362,7 @@ def validateChunkLayout(shape_json, item_size, layout, chunk_table=None):
         raise ValueError(msg)
 
 
-def expandChunk(layout, typesize, shape_json, chunk_min=CHUNK_MIN, layout_class="H5D_CHUNKED"):
+def expandChunk(layout, typesize, shape_json, chunk_min=CHUNK_MIN):
     """Compute an increased chunk shape with a size in bytes greater than chunk_min."""
     if shape_json is None or shape_json["class"] == "H5S_NULL":
         return None
@@ -466,7 +466,7 @@ def shrinkChunk(layout, typesize, chunk_max=CHUNK_MAX):
     return tuple(layout)
 
 
-def guessChunk(shape_json, typesize):
+def guessChunk(shape_json, typesize, chunk_min=None, chunk_max=None):
     """Guess an appropriate chunk layout for a dataset, given its shape and
     the size of each element in bytes.  Will allocate chunks only as large
     as MAX_SIZE.  Chunks are generally close to some power-of-2 fraction of
@@ -489,6 +489,12 @@ def guessChunk(shape_json, typesize):
 
     # For unlimited dimensions we have to guess. use 1024
     shape = tuple((x if x != 0 else 1024) for i, x in enumerate(shape))
+
+    chunk_size = getChunkSize(shape, typesize)
+    if chunk_min and chunk_size < chunk_min:
+        shape = expandChunk(shape, typesize, shape_json, chunk_min=chunk_min)
+    elif chunk_max and chunk_size > chunk_max:
+        shape = shrinkChunk(shape, typesize, chunk_max=chunk_max)
 
     return shape
 
