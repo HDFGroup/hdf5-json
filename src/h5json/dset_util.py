@@ -18,11 +18,14 @@ from .objid import isValidUuid
 CHUNK_MIN = 512 * 1024  # Soft lower limit (512k)
 CHUNK_MAX = 2048 * 1024  # Hard upper limit (2M)
 
-CHUNK_LAYOUT_CLASSES = (
+
+LAYOUT_CLASSES = (
+    "H5D_COMPACT",
+    "H5D_CONTIGUOUS",
+    "H5D_CONTIGUOUS_REF",
     "H5D_CHUNKED",
     "H5D_CHUNKED_REF",
     "H5D_CHUNKED_REF_INDIRECT",
-    "H5D_CONTIGUOUS_REF",
 )
 
 
@@ -201,7 +204,8 @@ def getChunkDims(dset_json):
     if not layout_class:
         return tuple(shape_dims)
 
-    if layout_class not in CHUNK_LAYOUT_CLASSES:
+    if not layout_class.startswith("H5D_CHUNKED"):
+        # for non-chunked layouts, just return the shape as the chunk dim
         return tuple(shape_dims)
 
     layout_json = getDatasetLayout(dset_json)
@@ -495,6 +499,8 @@ def guessChunk(shape_json, typesize, chunk_min=None, chunk_max=None):
         shape = expandChunk(shape, typesize, shape_json, chunk_min=chunk_min)
     elif chunk_max and chunk_size > chunk_max:
         shape = shrinkChunk(shape, typesize, chunk_max=chunk_max)
+    else:
+        pass  # good already
 
     return shape
 
