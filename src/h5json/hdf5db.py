@@ -9,7 +9,7 @@
 # distribution tree.  If you do not have access to this file, you may        #
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
-import time
+
 import numpy as np
 import logging
 from .hdf5dtype import getTypeItem, createDataType, Reference, special_dtype
@@ -18,6 +18,7 @@ from .dset_util import resize_dataset
 from .filters import getFiltersJson
 from .objid import createObjId, getCollectionForId, isValidUuid, getUuidFromId, getHashTagForId
 from . import selections
+from .time_util import getNow
 from .apiversion import _apiver
 from .h5reader import H5Reader, H5NullReader
 from .h5writer import H5Writer, H5NullWriter
@@ -138,7 +139,7 @@ class Hdf5db:
             # object deleted, just return
             return
         obj_json = self.db[obj_id]
-        obj_json["lastModified"] = time.time()
+        obj_json["lastModified"] = getNow()
         if not self.is_new(obj_id):
             # object hasn't been initially written yet, add to dirt_object set
             self._dirty_objects.add(obj_id)
@@ -520,7 +521,7 @@ class Hdf5db:
         type_json = getTypeItem(dtype)
         # finally put it all together...
         attr_json = {"shape": shape_json, "type": type_json, "value": value_json}
-        attr_json["created"] = time.time()
+        attr_json["created"] = getNow()
 
         # slot into the obj_json["attrs"]
         attrs_json[name] = attr_json
@@ -535,7 +536,7 @@ class Hdf5db:
         if name not in attrs_json:
             raise KeyError(f"attribute [{name}] not found in {obj_id}")
         attr_json = attrs_json[name]
-        attr_json["DELETED"] = time.time()  # mark key for deletion
+        attr_json["DELETED"] = getNow()  # mark key for deletion
 
         self.make_dirty(obj_id)
 
@@ -726,26 +727,26 @@ class Hdf5db:
     def createHardLink(self, grp_id, name, tgt_id):
         """ Create a new hardlink """
         link_json = {"class": "H5L_TYPE_HARD", "id": tgt_id}
-        link_json["created"] = time.time()
+        link_json["created"] = getNow()
         self._addLink(grp_id, name, link_json)
 
     def createSoftLink(self, grp_id, name, h5path):
         """ Create a soft link """
         link_json = {"class": "H5L_TYPE_SOFT", "h5path": h5path}
-        link_json["created"] = time.time()
+        link_json["created"] = getNow()
         self._addLink(grp_id, name, link_json)
 
     def createCustomLink(self, grp_id, name, link_json):
         """ create a custom link """
         if link_json.get("class") != "H5L_TYPE_USER_DEFINED":
             link_json["class"] = "H5L_TYPE_USER_DEFINED"
-        link_json["created"] = time.time()
+        link_json["created"] = getNow()
         self._addLink(grp_id, name, link_json)
 
     def createExternalLink(self, grp_id, name, h5path, filepath):
         """ Create a external link link """
         link_json = {"class": "H5L_TYPE_EXTERNAL", "h5path": h5path, "file": filepath}
-        link_json["created"] = time.time()
+        link_json["created"] = getNow()
         self._addLink(grp_id, name, link_json)
 
     def deleteLink(self, grp_id, name):
@@ -757,7 +758,7 @@ class Hdf5db:
         if name not in links:
             raise KeyError(f"Link [{name}] not found in {grp_id}")
         link_json = links[name]
-        link_json["DELETED"] = time.time()  # mark for deletion
+        link_json["DELETED"] = getNow()  # mark for deletion
         self.make_dirty(grp_id)
         grp_json = self.getObjectById(grp_id)
         links = grp_json["links"]
@@ -772,7 +773,7 @@ class Hdf5db:
             group_json["creationProperties"] = cpl
         else:
             group_json["creationProperties"] = {}
-        group_json["created"] = time.time()
+        group_json["created"] = getNow()
         self.db[grp_id] = group_json
         self._new_objects.add(grp_id)
         return grp_id
@@ -797,7 +798,7 @@ class Hdf5db:
         type_json = getTypeItem(dt)  # get canonical json description of datatype
 
         ctype_json = {"type": type_json, "attributes": {}, "creationProperties": cpl}
-        ctype_json["created"] = time.time()
+        ctype_json["created"] = getNow()
         self.db[ctype_id] = ctype_json
         self._new_objects.add(ctype_id)
         return ctype_id
@@ -846,7 +847,7 @@ class Hdf5db:
             dset_json["creationProperties"] = cpl
         else:
             dset_json["creationProperties"] = {}
-        dset_json["created"] = time.time()
+        dset_json["created"] = getNow()
 
         dset_id = createObjId("datasets", root_id=self.root_id)
         self.db[dset_id] = dset_json

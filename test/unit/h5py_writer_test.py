@@ -38,7 +38,7 @@ class H5pyWriterTest(unittest.TestCase):
         self.log.setLevel(logging.DEBUG)
         # create logger
 
-        handler = logging.FileHandler("./h5pywriterbtest.log")
+        handler = logging.FileHandler("./h5pywritertest.log")
         # add handler to logger
         self.log.addHandler(handler)
 

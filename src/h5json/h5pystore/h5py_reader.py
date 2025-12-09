@@ -153,7 +153,7 @@ class H5pyReader(H5Reader):
         else:
             self.log = logging.getLogger()
         if not h5py.is_hdf5(filepath):
-            self.log.warn(f"File: {filepath} is not an HDF5 file")
+            self.log.warning(f"File: {filepath} is not an HDF5 file")
             raise IOError("not an HDF5 file")
         super().__init__(filepath, app_logger=app_logger)
         self._f = None
@@ -265,8 +265,8 @@ class H5pyReader(H5Reader):
             item["value"] = value
         else:
             pass  # no data
-
-        item['created'] = time.time()  # TBD: get attribute creation time from h5py?
+        stats = self.getStats()
+        item['created'] = stats["lastModified"]  # use file modification time as attr creation time
         return item
 
     def getAttributes(self, obj_id, include_data=True):
@@ -312,7 +312,8 @@ class H5pyReader(H5Reader):
             else:
                 item["id"] = self._addr_map[addr]
 
-        item['created'] = time.time()  # TBD: get the link creation time from h5py?
+        stats = self.getStats()
+        item['created'] = stats["lastModified"]  # use file modification time as attr creation time
 
         return item
 
@@ -567,7 +568,7 @@ class H5pyReader(H5Reader):
         """
         stat_info = os_stat(self.filepath)
         stats = {}
-        stats['created'] = stat_info.st_ctime
+        stats['created'] = stat_info.st_birthtime
         stats["lastModified"] = stat_info.st_mtime
         stats['owner'] = stat_info.st_uid  # TBD: convert to username?
         return stats

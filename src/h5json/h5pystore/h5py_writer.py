@@ -401,6 +401,7 @@ class H5pyWriter(H5Writer):
                     del obj.attrs[name]
                 else:
                     pass  # already deleted or never added
+                continue
             if "created" in attr_json and attr_json["created"] < self._flush_time:
                 # attribute should be saved already
                 continue

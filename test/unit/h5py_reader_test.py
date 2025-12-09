@@ -12,12 +12,12 @@
 import unittest
 
 import logging
-import time
 import numpy as np
 
 from h5json import Hdf5db
 from h5json.h5pystore.h5py_reader import H5pyReader
 from h5json import selections
+from h5json.time_util import getNow
 
 
 class H5pyReaderTest(unittest.TestCase):
@@ -55,8 +55,9 @@ class H5pyReaderTest(unittest.TestCase):
         self.assertEqual(g1_link["class"], "H5L_TYPE_HARD")
         self.assertTrue("created" in g1_link)
         g1_created = g1_link["created"]
-        now = time.time()
-        self.assertTrue(g1_created < now)
+        now = getNow()
+        self.assertTrue(g1_created < int(now))
+
         g1_id = g1_link["id"]
         self.assertTrue(g1_id)
         self.assertEqual(g1_id, db.getObjectIdByPath("/g1/"))
