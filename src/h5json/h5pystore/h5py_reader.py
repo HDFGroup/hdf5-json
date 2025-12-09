@@ -568,7 +568,7 @@ class H5pyReader(H5Reader):
         """
         stat_info = os_stat(self.filepath)
         stats = {}
-        stats['created'] = stat_info.st_birthtime
+        stats['created'] = stat_info.st_ctime
         stats["lastModified"] = stat_info.st_mtime
         stats['owner'] = stat_info.st_uid  # TBD: convert to username?
         return stats
