@@ -14,7 +14,7 @@ import logging
 
 from h5json.dset_util import guessChunk, shrinkChunk, getChunkSize, expandChunk
 from h5json.dset_util import getDatasetLayoutClass, getContiguousLayout, getChunkDims
-from h5json.dset_util import validateChunkLayout, getDatasetLayout
+from h5json.dset_util import validateChunkLayout, validateDatasetCreationProps, getDatasetLayout
 
 
 class DsetUtilTest(unittest.TestCase):
@@ -69,10 +69,15 @@ class DsetUtilTest(unittest.TestCase):
         try:
             validateChunkLayout(dset_json["shape"], type_json, layout)
         except ValueError:
-            self.assertTrue(False)  # should raise exception
+            self.assertTrue(False)  # shouldn't raise exception
 
         chunk_dims = getChunkDims(dset_json)
         self.assertEqual(chunk_dims, (2, ))
+
+        try:
+            validateDatasetCreationProps(cpl, type_json, dset_json["shape"])
+        except ValueError:
+            self.assertTrue(False)  # shouldn't raise exception
 
     def testGuessChunk(self):
 
