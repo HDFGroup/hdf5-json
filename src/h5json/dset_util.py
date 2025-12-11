@@ -270,7 +270,6 @@ def validateChunkLayout(shape_json, item_size, layout, chunk_table=None):
         raise ValueError(msg)
 
     layout_class = layout["class"]
-
     if layout_class == "H5D_CONTIGUOUS_REF":
         # reference to a dataset in a traditional HDF5 files with
         # contiguous storage
@@ -297,6 +296,11 @@ def validateChunkLayout(shape_json, item_size, layout, chunk_table=None):
         if "dims" in layout:
             # used defined chunk layout not allowed for H5D_CONTIGUOUS_REF
             msg = "'dims' key can not be provided for "
+            msg += "H5D_CONTIGUOUS_REF layout"
+            raise ValueError(msg)
+        if "maxdims" in shape_json:
+            # maxdims not allowed for H5D_CONTIGUOUS_REF
+            msg = "'maxdims' key can not be provided for "
             msg += "H5D_CONTIGUOUS_REF layout"
             raise ValueError(msg)
     elif layout_class == "H5D_CHUNKED_REF":
@@ -356,9 +360,17 @@ def validateChunkLayout(shape_json, item_size, layout, chunk_table=None):
             msg = "dims key found in layout for creation property list "
             msg += "for H5D_CONTIGUOUS storage class"
             raise ValueError(msg)
+        if "maxdims" in shape_json:
+            msg = "maxdims found in shape for creation property list "
+            msg += "for H5D_CONTIGUOUS storage class"
+            raise ValueError(msg)
     elif layout_class == "H5D_COMPACT":
         if "dims" in layout:
             msg = "dims key found in layout for creation property list "
+            msg += "for H5D_COMPACT storage class"
+            raise ValueError(msg)
+        if "maxdims" in shape_json:
+            msg = "maxdims found in shape for creation property list "
             msg += "for H5D_COMPACT storage class"
             raise ValueError(msg)
     else:

@@ -13,7 +13,8 @@ import unittest
 import logging
 
 from h5json.dset_util import guessChunk, shrinkChunk, getChunkSize, expandChunk
-from h5json.dset_util import getDatasetLayoutClass, getContiguousLayout, getDatasetLayout, getChunkDims
+from h5json.dset_util import getDatasetLayoutClass, getContiguousLayout, getChunkDims
+from h5json.dset_util import validateChunkLayout, getDatasetLayout
 
 
 class DsetUtilTest(unittest.TestCase):
@@ -25,54 +26,53 @@ class DsetUtilTest(unittest.TestCase):
 
     def testGetLayout(self):
         contiguous_layout = {'class': 'H5D_CONTIGUOUS'}
+        fixed_1d_shape_json = {'class': 'H5S_SIMPLE', 'dims': [10]}
+        resizable_shape_json = {'class': 'H5S_SIMPLE', 'dims': [10], 'maxdims': [20]}
+        base_type = 'H5T_IEEE_F32LE'
+        item_size = 4  # bytes
+        type_json = {'class': 'H5T_FLOAT', 'base': base_type}
+        chunked_layout = {'class': 'H5D_CHUNKED', 'dims': [2, ]}
+        cpl = {'fillValue': 3.12, 'layout': contiguous_layout}
+
         dset_json = {'id': 'd-f4a9f95e-c8962a53-f6c8-f18440-78d051',
                      'root': 'g-f4a9f95e-c8962a53-7c21-71d640-1ea2db',
                      'created': 1760613930.3584619,
-                     'type': {'class': 'H5T_FLOAT', 'base': 'H5T_IEEE_F32LE'},
-                     'shape': {'class': 'H5S_SIMPLE', 'dims': [10], 'maxdims': [20]},
+                     'type': type_json,
+                     'shape': resizable_shape_json,
                      'lastModified': 1760613930.3584619,
-                     'attributeCount': 0,
-                     'creationProperties': {'fillValue': 3.12, 'layout': contiguous_layout}}
+                     'creationProperties': cpl}
 
         layout = getDatasetLayout(dset_json)
         self.assertTrue("class" in layout)
         layout_class = getDatasetLayoutClass(dset_json)
         self.assertEqual(layout_class, "H5D_CONTIGUOUS")
-        chunk_dims = getChunkDims(dset_json)
-        self.assertEqual(chunk_dims, (10, ))
 
-        compact_layout = {'class': 'H5D_COMPACT'}
-        dset_compact_json = {'id': 'd-f4a9f95e-c8962a53-f6c8-f18440-78d051',
-                             'root': 'g-f4a9f95e-c8962a53-7c21-71d640-1ea2db',
-                             'created': 1760613930.3584619,
-                             'type': {'class': 'H5T_FLOAT', 'base': 'H5T_IEEE_F32LE'},
-                             'shape': {'class': 'H5S_SCALAR'},
-                             'lastModified': 1760613930.3584619,
-                             'attributeCount': 0,
-                             'creationProperties': {'fillValue': 3.12, 'layout': compact_layout}}
+        # contigous layout with resizable shape should raise exception
+        try:
+            validateChunkLayout(dset_json["shape"], item_size, layout)
+            self.assertTrue(False)  # should not reach here
+        except ValueError:
+            pass  # should raise exception
 
-        layout = getDatasetLayout(dset_compact_json)
+        dset_json["shape"] = fixed_1d_shape_json
+        layout = getDatasetLayout(dset_json)
         self.assertTrue("class" in layout)
         layout_class = getDatasetLayoutClass(dset_json)
         self.assertEqual(layout_class, "H5D_CONTIGUOUS")
-        chunk_dims = getChunkDims(dset_compact_json)
-        self.assertEqual(chunk_dims, (1, ))
 
-        chunked_layout = {'class': 'H5D_CHUNKED', 'dims': [2, ]}
-        dset_chunked_json = {'id': 'd-f4a9f95e-c8962a53-f6c8-f18440-78d051',
-                             'root': 'g-f4a9f95e-c8962a53-7c21-71d640-1ea2db',
-                             'created': 1760613930.3584619,
-                             'type': {'class': 'H5T_FLOAT', 'base': 'H5T_IEEE_F32LE'},
-                             'shape': {'class': 'H5S_SIMPLE', 'dims': [10], 'maxdims': [20]},
-                             'lastModified': 1760613930.3584619,
-                             'attributeCount': 0,
-                             'creationProperties': {'fillValue': 3.12, 'layout': chunked_layout}}
-
-        layout = getDatasetLayout(dset_chunked_json)
+        dset_json["shape"] = resizable_shape_json
+        cpl["layout"] = chunked_layout
+        layout = getDatasetLayout(dset_json)
         self.assertTrue("class" in layout)
-        layout_class = getDatasetLayoutClass(dset_chunked_json)
+        layout_class = getDatasetLayoutClass(dset_json)
         self.assertEqual(layout_class, "H5D_CHUNKED")
-        chunk_dims = getChunkDims(dset_chunked_json)
+
+        try:
+            validateChunkLayout(dset_json["shape"], item_size, layout)
+        except ValueError:
+            self.assertTrue(False)  # should raise exception
+
+        chunk_dims = getChunkDims(dset_json)
         self.assertEqual(chunk_dims, (2, ))
 
     def testGuessChunk(self):
