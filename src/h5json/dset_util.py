@@ -11,8 +11,10 @@
 ##############################################################################
 
 import math
-from .hdf5dtype import getItemSize
+from .hdf5dtype import getItemSize, createDataType
 from .shape_util import getDataSize
+from .array_util import getNumpyValue
+from .filters import getFiltersJson
 from .objid import isValidUuid
 
 CHUNK_MIN = 512 * 1024  # Soft lower limit (512k)
@@ -216,7 +218,7 @@ def getChunkDims(dset_json):
     return chunk_dims
 
 
-def validateChunkLayout(shape_json, item_size, layout, chunk_table=None):
+def validateChunkLayout(shape_json, type_json, layout):
     """
     Use chunk layout given in the creationPropertiesList (if defined and
     layout is valid).
@@ -227,6 +229,7 @@ def validateChunkLayout(shape_json, item_size, layout, chunk_table=None):
     space_dims = None
     chunk_dims = None
     max_dims = None
+    item_size = getItemSize(type_json)
 
     if "dims" in shape_json:
         space_dims = shape_json["dims"]
@@ -376,6 +379,57 @@ def validateChunkLayout(shape_json, item_size, layout, chunk_table=None):
     else:
         msg = f"Unexpected layout: {layout_class}"
         raise ValueError(msg)
+
+
+def validateDatasetCreationProps(creation_props, type_json=None, shape=None):
+    """ validate creation props """
+
+    if not type_json or not shape:
+        msg = "validateDatasetCreationProps - shape and type must be set"
+        raise ValueError(msg)
+
+    if "fillValue" in creation_props:
+        # validate fill value compatible with type
+        dt = createDataType(type_json)
+        fill_value = creation_props["fillValue"]
+        if "fillValue_encoding" in creation_props:
+            fill_value_encoding = creation_props["fillValue_encoding"]
+            if fill_value_encoding not in ("None", "base64"):
+                msg = f"unexpected value for fill_value_encoding: {fill_value_encoding}"
+                raise ValueError(msg)
+            else:
+                # should see a string in this case
+                if not isinstance(fill_value, str):
+                    msg = f"unexpected fill value: {fill_value} "
+                    msg += f"for encoding: {fill_value_encoding}"
+                    raise ValueError(msg)
+        else:
+            fill_value_encoding = None
+
+            try:
+                getNumpyValue(fill_value, dt=dt, encoding=fill_value_encoding)
+            except ValueError:
+                msg = f"invalid fill value: {fill_value}"
+                raise ValueError(msg)
+
+    layout_class = None
+    if "layout" in creation_props:
+        layout_json = creation_props["layout"]
+        validateChunkLayout(shape, type_json, layout_json)
+        layout_class = layout_json["class"]
+
+    if "filters" in creation_props:
+        try:
+            filters_out = getFiltersJson(creation_props)
+        except (KeyError, ValueError):
+            # raise bad request exception if not valid
+            msg = "invalid filter provided"
+            raise ValueError(msg)
+        if filters_out:
+            # check that a chunked layout is used
+            if layout_class is None or layout_class.startswith("H5D_CHUNKED") is False:
+                msg = "filters can only be used with chunked layout"
+                raise ValueError(msg)
 
 
 def expandChunk(layout, typesize, shape_json, chunk_min=CHUNK_MIN):

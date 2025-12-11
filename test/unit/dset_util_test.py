@@ -29,7 +29,6 @@ class DsetUtilTest(unittest.TestCase):
         fixed_1d_shape_json = {'class': 'H5S_SIMPLE', 'dims': [10]}
         resizable_shape_json = {'class': 'H5S_SIMPLE', 'dims': [10], 'maxdims': [20]}
         base_type = 'H5T_IEEE_F32LE'
-        item_size = 4  # bytes
         type_json = {'class': 'H5T_FLOAT', 'base': base_type}
         chunked_layout = {'class': 'H5D_CHUNKED', 'dims': [2, ]}
         cpl = {'fillValue': 3.12, 'layout': contiguous_layout}
@@ -49,7 +48,7 @@ class DsetUtilTest(unittest.TestCase):
 
         # contigous layout with resizable shape should raise exception
         try:
-            validateChunkLayout(dset_json["shape"], item_size, layout)
+            validateChunkLayout(dset_json["shape"], type_json, layout)
             self.assertTrue(False)  # should not reach here
         except ValueError:
             pass  # should raise exception
@@ -68,7 +67,7 @@ class DsetUtilTest(unittest.TestCase):
         self.assertEqual(layout_class, "H5D_CHUNKED")
 
         try:
-            validateChunkLayout(dset_json["shape"], item_size, layout)
+            validateChunkLayout(dset_json["shape"], type_json, layout)
         except ValueError:
             self.assertTrue(False)  # should raise exception
 
