@@ -79,6 +79,61 @@ class DsetUtilTest(unittest.TestCase):
         except ValueError:
             self.assertTrue(False)  # shouldn't raise exception
 
+    def testFilterValidation(self):
+
+        shape_json = {'class': 'H5S_SIMPLE', 'dims': [500]}
+        base_type = 'H5T_IEEE_F32LE'
+        type_json = {'class': 'H5T_FLOAT', 'base': base_type}
+        contiguous_layout = {'class': 'H5D_CONTIGUOUS'}
+        chunked_layout = {'class': 'H5D_CHUNKED', 'dims': [100, ]}
+        deflate_filter = {'class': 'H5Z_FILTER_DEFLATE', 'id': 1, 'name': 'deflate'}
+        filters = [deflate_filter, ]
+        cpl = {'fillValue': 3.12, 'layout': contiguous_layout, "filters": filters}
+
+        dset_json = {'id': 'd-f4a9f95e-c8962a53-f6c8-f18440-78d051',
+                     'root': 'g-f4a9f95e-c8962a53-7c21-71d640-1ea2db',
+                     'created': 1760613930.3584619,
+                     'type': type_json,
+                     'shape': shape_json,
+                     'lastModified': 1760613930.3584619,
+                     'creationProperties': cpl}
+
+        try:
+            validateDatasetCreationProps(cpl, type_json, dset_json["shape"])
+            self.assertTrue(False)  # should not reach here
+        except ValueError:
+            pass  # filters are invalid with contiguous layout
+        cpl["layout"] = chunked_layout
+        try:
+            validateDatasetCreationProps(cpl, type_json, dset_json["shape"])
+        except ValueError:
+            self.assertTrue(False)  # shouldn't raise exception
+        # add an invlaid level option for deflate
+        deflate_filter["level"] = 20
+        try:
+            validateDatasetCreationProps(cpl, type_json, dset_json["shape"])
+            self.assertTrue(False)  # should not reach here
+        except ValueError:
+            pass  # invalid deflate level
+        deflate_filter["level"] = 5
+        try:
+            validateDatasetCreationProps(cpl, type_json, dset_json["shape"])
+        except ValueError:
+            self.assertTrue(False)  # shouldn't raise exception
+        # try with just a filter name
+        cpl["filters"] = ["gzip", ]
+        try:
+            validateDatasetCreationProps(cpl, type_json, dset_json["shape"])
+        except ValueError:
+            self.assertTrue(False)  # shouldn't raise exception
+        # try with an invalid filter name
+        cpl["filters"] = ["invalid_filter_name", ]
+        try:
+            validateDatasetCreationProps(cpl, type_json, dset_json["shape"])
+            self.assertTrue(False)  # should not reach here
+        except ValueError:
+            pass  # invalid filter name
+
     def testGuessChunk(self):
 
         typesize = "H5T_VARIABLE"

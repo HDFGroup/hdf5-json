@@ -71,6 +71,20 @@ COMPRESSION_FILTER_NAMES = (
 )
 
 
+def getAllFilterNames():
+    """ Return list of all recognized filter names """
+
+    names = set()
+    for item in FILTER_DEFS:
+        filter_id = item[1]
+        filter_name = item[2]
+        if filter_id > 0 and filter_name:
+            names.add(filter_name)
+    names = list(names)
+    names.sort()
+    return tuple(names)
+
+
 def getFilterItem(key):
     """
     Return filter code, id, and name, based on an id, a name or a code.
@@ -102,6 +116,9 @@ def getFiltersJson(create_props, supported_filters=None):
         msg = "Expected filters in creation_props to be a list"
         raise TypeError(msg)
 
+    if not supported_filters:
+        supported_filters = getAllFilterNames()
+
     f_out = []
     for filter in f_in:
         if isinstance(filter, int) or isinstance(filter, str):
@@ -115,11 +132,12 @@ def getFiltersJson(create_props, supported_filters=None):
                 raise ValueError(msg)
             f_out.append(item)
         elif isinstance(filter, dict):
-            if "class" not in filter:
-                msg = "expected 'class' key for filter property"
-                raise KeyError(msg)
-            if filter["class"] != "H5Z_FILTER_USER":
-                item = getFilterItem(filter["class"])
+            if filter.get("class") == "H5Z_FILTER_USER":
+                # user filter - must have either id or name
+                if "id" not in filter and "name" not in filter:
+                    msg = "user filter must have either 'id' or 'name' key"
+                    raise KeyError(msg)
+                item = filter
             elif "id" in filter:
                 item = getFilterItem(filter["id"])
             elif "name" in filter:
@@ -127,21 +145,74 @@ def getFiltersJson(create_props, supported_filters=None):
             else:
                 item = None
             if not item:
-                msg = f"filter {filter['class']} not recognized"
+                msg = f"filter {filter} not recognized"
                 raise ValueError(msg)
-            if "id" not in filter:
-                filter["id"] = item["id"]
-            elif item["id"] != filter["id"]:
-                msg = f"Expected {filter['class']} to have id: "
-                msg += f"{item['id']} but got {filter['id']}"
-                raise ValueError(msg)
-            if "name" not in filter:
-                filter["name"] = item["name"]
-            if filter["name"] not in supported_filters:
-                msg = f"filter {filter} is not supported"
-                raise KeyError(msg)
 
-            f_out.append(filter)
+            # copy any filter specified options
+            filter_class = item["class"]
+            if filter_class == "H5Z_FILTER_DEFLATE":
+                if "level" in filter:
+                    level_val = filter["level"]
+                    if not isinstance(level_val, int):
+                        msg = "Expected integer level for deflate filter"
+                        raise TypeError(msg)
+                    if level_val < 0 or level_val > 9:
+                        msg = "Deflate filter level must be between 0 and 9"
+                        raise ValueError(msg)
+                    item["level"] = level_val
+            elif filter_class == "H5Z_FILTER_SHUFFLE":
+                pass  # no options
+            elif filter_class == "H5Z_FILTER_FLETCHER32":
+                pass  # no options
+            elif filter_class == "H5Z_FILTER_SZIP":
+                for key in ("bitsPerPixel", "coding", "pixelsPerBlock", "pixelsPerScanLine"):
+                    if key in filter:
+                        val = filter[key]
+                        if key == "coding":
+                            if val not in HDF_FILTER_OPTION_ENUMS["coding"].values():
+                                msg = f"Invalid coding option for szip filter: {val}"
+                                raise ValueError(msg)
+                            else:
+                                # other options need to be positivie integers
+                                if not isinstance(val, int) or val <= 0:
+                                    msg = f"Expected positive integer for szip filter option {key}"
+                                    raise ValueError(msg)
+                        item[key] = val
+            elif filter_class == "H5Z_FILTER_NBIT":
+                pass  # no options
+            elif filter_class == "H5Z_FILTER_SCALEOFFSET":
+                if "scaleType" in filter:
+                    val = filter["scaleType"]
+                    if val not in HDF_FILTER_OPTION_ENUMS["scaleType"].values():
+                        msg = f"Invalid scaleType option for scaleoffset filter: {val}"
+                        raise ValueError(msg)
+                    else:
+                        item["scaleType"] = val
+                if "scaleOffset" in filter:
+                    val = filter["scaleOffset"]
+                    if not isinstance(val, int) or val < 0:
+                        msg = "Expected non-negative integer for scaleOffset option"
+                        raise ValueError(msg)
+                    else:
+                        item["scaleOffset"] = val
+            elif filter_class == "H5Z_FILTER_LZF":
+                pass  # no options
+            elif filter_class == "H5Z_FILTER_BLOSC":
+                pass  # no options
+            elif filter_class == "H5Z_FILTER_SNAPPY":
+                pass  # no options
+            elif filter_class == "H5Z_FILTER_LZ4":
+                pass  # no options
+            elif filter_class == "H5Z_FILTER_LZ4HC":
+                pass  # no options
+            elif filter_class == "H5Z_FILTER_BITSHUFFLE":
+                pass  # no options
+            elif filter_class == "H5Z_FILTER_ZSTD":
+                pass  # no options
+            else:
+                msg = f"filter class {filter_class} is not supported"
+                raise KeyError(msg)
+            f_out.append(item)
         else:
             msg = f"Unexpected type for filter: {filter}"
             raise ValueError(msg)

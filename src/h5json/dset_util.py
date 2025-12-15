@@ -421,7 +421,7 @@ def validateDatasetCreationProps(creation_props, type_json=None, shape=None):
     if "filters" in creation_props:
         try:
             filters_out = getFiltersJson(creation_props)
-        except (KeyError, ValueError):
+        except (KeyError, TypeError, ValueError):
             # raise bad request exception if not valid
             msg = "invalid filter provided"
             raise ValueError(msg)
