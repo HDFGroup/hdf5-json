@@ -635,6 +635,51 @@ class H5pyWriterTest(unittest.TestCase):
                     else:
                         self.assertEqual(data[i, j], 0)
 
+    def testCompression(self):
+
+        filepath = "test/unit/out/h5py_writer_test_testCompression.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5pyWriter(filepath, no_data=False)
+        root_id = db.open()
+        self.assertEqual(db.getObjectIdByPath("/"), root_id)
+        g1_id = db.createGroup()
+        db.createHardLink(root_id, "g1", g1_id)
+
+        layout = {"class": "H5D_CHUNKED", "dims": (10, 1)}
+        gzip_filter = {
+            "class": "H5Z_FILTER_DEFLATE",
+            "id": 1,
+            "level": 9,
+            "name": "deflate",
+        }
+        cpl = {"layout": layout, "filters": [gzip_filter, ]}
+        dset_id = db.createDataset(shape=(10, 10), dtype=np.int32, cpl=cpl)
+        arr = np.zeros((10, 10), dtype=np.int32)
+        for i in range(10):
+            for j in range(10):
+                arr[i, j] = i * j
+        sel_all = selections.select((10, 10), ...)
+        db.setDatasetValues(dset_id, sel_all, arr)
+        db.createHardLink(g1_id, "dset1.1.1", dset_id)
+        db.close()
+
+        # open file with h5py and verify changes
+        with h5py.File(filepath) as f:
+
+            self.assertTrue("g1" in f)
+
+            g1 = f["g1"]
+            self.assertEqual(len(g1), 1)
+            self.assertTrue("dset1.1.1" in g1)
+            dset = g1["dset1.1.1"]
+            self.assertEqual(dset.shape, (10, 10))
+            for i in range(10):
+                for j in range(10):
+                    self.assertEqual(dset[i, j], i * j)
+
 
 if __name__ == "__main__":
     # setup test files

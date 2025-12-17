@@ -148,6 +148,9 @@ def getFiltersJson(create_props, supported_filters=None):
                 msg = f"filter {filter} not recognized"
                 raise ValueError(msg)
 
+            # will replace options list with specified options
+            del item["options"]
+
             # copy any filter specified options
             filter_class = item["class"]
             if filter_class == "H5Z_FILTER_DEFLATE":

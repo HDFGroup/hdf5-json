@@ -838,7 +838,7 @@ class Hdf5db:
         if cpl:
             if "filters" in cpl:
                 if self.writer:
-                    supported_filters = self.writer.getSupportedFilters()
+                    supported_filters = self.writer.getFilters()
                 else:
                     supported_filters = ()
                 # validate and normalize supplied filter property list

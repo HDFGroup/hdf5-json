@@ -134,6 +134,15 @@ class DsetUtilTest(unittest.TestCase):
         except ValueError:
             pass  # invalid filter name
 
+        deflate_filter = {'class': 'H5Z_FILTER_DEFLATE', 'id': 1, 'level': 9, 'name': 'deflate'}
+        fletcher_filter = {'class': 'H5Z_FILTER_FLETCHER32', 'id': 3, 'name': 'fletcher32'}
+        filters = [fletcher_filter, deflate_filter]
+        cpl["filters"] = filters
+        try:
+            validateDatasetCreationProps(cpl, type_json, dset_json["shape"])
+        except ValueError:
+            self.assertTrue(False)  # shouldn't raise exception
+
     def testGuessChunk(self):
 
         typesize = "H5T_VARIABLE"
