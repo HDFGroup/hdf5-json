@@ -78,7 +78,8 @@ class H5Writer(ABC):
     @abstractmethod
     def flush(self):
         """ Write dirty items """
-        pass
+        # return False since we can't actually persist anything
+        return False
 
     @abstractmethod
     def close(self):

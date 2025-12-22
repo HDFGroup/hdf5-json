@@ -15,6 +15,7 @@ import logging
 from .hdf5dtype import getTypeItem, createDataType, Reference, special_dtype
 from .array_util import jsonToArray, bytesArrayToList
 from .dset_util import resize_dataset
+from .shape_util import getShapeClass, getShapeDims
 from .filters import getFiltersJson
 from .objid import createObjId, getCollectionForId, isValidUuid, getUuidFromId, getHashTagForId
 from . import selections
@@ -22,6 +23,14 @@ from .time_util import getNow
 from .apiversion import _apiver
 from .h5reader import H5Reader, H5NullReader
 from .h5writer import H5Writer, H5NullWriter
+
+
+def _getDatasetUpdates(dset_json):
+    """ return a list of value updates for the datset.
+        initalize one if not already present. """
+    if "updates" not in dset_json:
+        dset_json["updates"] = []
+    return dset_json["updates"]
 
 
 class Hdf5db:
@@ -109,10 +118,12 @@ class Hdf5db:
 
     def is_new(self, obj_id):
         """ return true if this is a new object (has not been persisted) """
+        obj_id = getHashTagForId(obj_id)
         return obj_id in self._new_objects
 
     def is_dirty(self, obj_id):
         """ return true if this object has been modified """
+        obj_id = getHashTagForId(obj_id)
         if self.is_new(obj_id):
             return True
         return obj_id in self._dirty_objects
@@ -131,7 +142,7 @@ class Hdf5db:
 
     def make_dirty(self, obj_id):
         """ Mark the object as dirty and update the lastModified timestamp """
-
+        obj_id = getHashTagForId(obj_id)
         if obj_id not in self.db:
             self.log.error("make dirty called on deleted object")
             raise KeyError(f"obj_id: {obj_id} not found")
@@ -236,8 +247,8 @@ class Hdf5db:
         """ close reader and writer handles """
         self.log.info("Hdf5db __close")
 
-        self.flush()
-        if self.writer:
+        if self.writer and not isinstance(self.writer, H5NullWriter):
+            self.flush()
             self.writer.close()
         if self.reader:
             self.reader.close()
@@ -280,13 +291,13 @@ class Hdf5db:
     def getObjectById(self, obj_id, refresh=False):
         """ return object with given id """
         self._checkReader()
-        tag = getHashTagForId(obj_id)
-        if tag not in self.db or refresh:
+        obj_id = getHashTagForId(obj_id)
+        if obj_id not in self.db or refresh:
             # load the obj from the reader
             self.log.debug(f"getObjectById - fetching {obj_id} from reader")
             obj_json = self.reader.getObjectById(obj_id)
-            self.db[tag] = obj_json
-        obj_json = self.db[tag]
+            self.db[obj_id] = obj_json
+        obj_json = self.db[obj_id]
 
         return obj_json
 
@@ -299,6 +310,9 @@ class Hdf5db:
 
         if parent_id is None:
             parent_id = self.root_id
+        else:
+            parent_id = getHashTagForId(parent_id)
+
         self.log.debug(f"getObjectIdDByPath(h5path: {h5path} parent_id: {parent_id}")
 
         obj_json = self.getObjectById(parent_id)
@@ -359,7 +373,7 @@ class Hdf5db:
         return obj_json
 
     def getDtype(self, obj_json):
-        """ Return numpy data type for given object id
+        """ Return numpy data type for given dataset, datatype, or attribute
         """
 
         if "type" not in obj_json:
@@ -546,29 +560,25 @@ class Hdf5db:
         If a slices list or tuple is provided, it should have the same
         number of elements as the rank of the dataset.
         """
+
+        def init_arr(dtype, cpl):
+            """ create an ndarray with the give shape, dtype and fill_value
+                (if the latter is found in the creation properties list) """
+            arr_shape = sel.count if isinstance(sel.count, tuple) else (sel.count, )
+            arr = np.zeros(arr_shape, dtype=dtype)
+            if "fillValue" in cpl:
+                fillValue = cpl["fillValue"]
+                # TBD: fix for compound types
+                arr[...] = fillValue
+            return arr
+
+        dset_id = getHashTagForId(dset_id)
         self.log.info(f"getDatasetValues dset_id: {dset_id}, sel: {sel}")
 
-        self._checkReader()
         dset_json = self.getObjectById(dset_id)
         shape_json = dset_json["shape"]
         if not isinstance(sel, selections.Selection):
             raise TypeError("Expected Selection class")
-
-        if shape_json["class"] == "H5S_NULL":
-            return None
-
-        if shape_json["class"] == "H5S_SCALAR":
-            if sel.select_type != selections.H5S_SELECT_ALL:
-                # TBD: support other selection types
-                raise ValueError("Only SELECT_ALL selections are supported for scalar datasets")
-            if sel.shape != ():
-                raise ValueError("Selection shape does not match dataset shape")
-            rank = 0
-        else:
-            dims = tuple(shape_json["dims"])
-            if sel.shape != dims:
-                raise ValueError("Selection shape does not match dataset shape")
-            rank = len(dims)
 
         dtype = self.getDtype(dset_json)
 
@@ -577,50 +587,72 @@ class Hdf5db:
         else:
             cpl = {}
 
-        # determine if we need to make a read request or not
-        if dset_id in self._new_objects:
+        updates = _getDatasetUpdates(dset_json)
+
+        shape_class = getShapeClass(shape_json)
+
+        if shape_class == "H5S_NULL":
+            # return None for selections on null space
+            return None
+
+        if sel.shape != getShapeDims(shape_json):
+            raise ValueError("Selection shape does not match dataset shape")
+
+        if shape_class == "H5S_SCALAR":
+            if sel.select_type != selections.H5S_SELECT_ALL:
+                # TBD: support other selection types
+                raise ValueError("Only SELECT_ALL selections are supported for scalar datasets")
+            if sel.shape != ():
+                raise ValueError("Selection shape does not match dataset shape")
+            if updates:
+                # for scalars the update has to be the requested value
+                (update_sel, arr) = updates[-1]
+            elif dset_id in self._new_objects:
+                arr = init_arr(dtype, cpl)
+            else:
+                # fetch from the server
+                arr = self.reader.getDatasetValues(dset_id, sel, dtype=dtype)
+                if arr is None:
+                    raise KeyError(f"Data for dataset {dset_id} not returned")
+            # done with NULL and SCALAR cases
+            return arr
+
+        # simple daaset
+        arr = None
+        fetch = True
+
+        # determine if we need to get data from the reader
+        if isinstance(self._reader, H5NullReader) or dset_id in self._new_objects:
             fetch = False
         else:
-            fetch = True
-            # check against pending updates
-            if "updates" in dset_json:
-                updates = dset_json["updates"]
-                for (update_sel, update_val) in updates:
-                    if selections.contained(sel, update_sel):
-                        fetch = False
-                        break
-
-        # send a reader request unless an update already covers the sel area
-        if fetch:
-            arr = self.reader.getDatasetValues(dset_id, sel, dtype=dtype)
-        else:
-            if "fillValue" in cpl:
-                fillValue = cpl["fillValue"]
-                # TBD: fix for compound types
-                arr = np.zeros(sel.mshape, dtype=dtype)
-                arr[...] = fillValue
-            else:
-                arr = np.zeros(sel.mshape, dtype=dtype)
-
-        if "updates" in dset_json:
-            # apply any non-flushed changes that intersect the current selection
-            updates = dset_json["updates"]
             for (update_sel, update_val) in updates:
                 sel_inter = selections.intersect(sel, update_sel)
                 if sel_inter.nselect == 0:
                     continue
-                # update portion of arr, that intersects update_val
-                slices = []
-                for dim in range(rank):
-                    start = sel_inter.start[dim] - sel.start[dim]
-                    stop = start + sel_inter.count[dim]
-                    slices.append(slice(start, stop, 1))
-                slices = tuple(slices)
-                # TBD: needs updating to work in the general case!
-                if slices == ():
-                    arr[slices] = update_val[slices]
-                else:
-                    arr[slices] = update_val
+                if selections.contained(sel, update_sel):
+                    # desired selection is wholly contained in this update
+                    # TBD: determine if multiple updates would contain all the
+                    # required elements
+                    fetch = False
+                    break
+        if fetch:
+            # get last saved version of the data from the reader
+            arr = self.reader.getDatasetValues(dset_id, sel, dtype=dtype)
+        else:
+            # initialize an array with fill value if given
+            arr = init_arr(dtype, cpl)
+
+        # apply any updates that impact this selection
+        for (update_sel, update_val) in updates:
+            # get the part of the update that is in common with the requested selection
+            x_sel = selections.intersect(sel, update_sel)
+            if x_sel.nselect == 0:
+                # this update doesn't effect the selection, so ignore
+                continue
+            # apply the update to the array to be returned
+            src_sel = selections.translate(update_sel, x_sel)
+            tgt_sel = selections.translate(sel, x_sel)
+            arr[tgt_sel.slices] = update_val[src_sel.slices]
 
         return arr
 
@@ -641,22 +673,32 @@ class Hdf5db:
         src_dt = arr.dtype
         if src_dt != tgt_dt:
             raise TypeError("arr.dtype doesn't match dataset dtype")
-
-        if shape_json["class"] == "H5S_NULL":
+        shape_class = getShapeClass(shape_json)
+        if shape_class == "H5S_NULL":
             raise ValueError("writing to null space dataset not supported")
-        if shape_json["class"] == "H5S_SCALAR":
+        if shape_class == "H5S_SCALAR":
             if sel.shape != ():
                 raise ValueError("Selection shape does not match dataset shape")
             if len(arr.shape) > 0:
                 raise TypeError("Expected scalar ndarray for scalar dataset")
         else:
-            dims = tuple(shape_json["dims"])
+            dims = getShapeDims(shape_json)
             if sel.shape != dims:
                 raise ValueError("Selection shape does not match dataset shape")
-        if "updates" not in dset_json or sel.select_type == selections.H5S_SELECT_ALL:
+        updates = _getDatasetUpdates(dset_json)
+        if sel.select_type == selections.H5S_SELECT_ALL:
             # for select all, throw out any existing updates since this will overwrite them
-            dset_json["updates"] = []
-        updates = dset_json["updates"]
+            updates.clear()
+        arr = arr.copy()  # make a copy in case the client updates it later
+        rank = len(sel.shape)
+        if len(arr.shape) < rank:
+            # reshape to keep compatiblity with dataset rank
+            if sel.select_type == selections.H5S_SELECT_ALL:
+                # this should not result in a dimension reduction
+                raise ValueError("unexpected selection shape")
+            if sel.select_type != selections.H5S_SELECT_HYPERSLABS:
+                raise ValueError("tbd")
+            arr = arr.reshape(sel.mshape)
         updates.append((sel, arr.copy()))
         self.make_dirty(dset_id)
 

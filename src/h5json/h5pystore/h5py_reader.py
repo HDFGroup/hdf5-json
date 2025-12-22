@@ -13,7 +13,6 @@ import h5py
 import numpy as np
 import logging
 from os import stat as os_stat
-import time
 
 from ..objid import createObjId, getCollectionForId
 from ..hdf5dtype import getTypeItem, isOpaqueDtype

@@ -58,6 +58,7 @@ class H5pyWriterTest(unittest.TestCase):
         self.assertEqual(db.getObjectIdByPath("/"), root_id)
         db.close()
         self.assertTrue(db.closed)
+        self.assertTrue(db.writer.isClosed())
         obj_id = db.open()
         self.assertEqual(obj_id, root_id)
         db.close()

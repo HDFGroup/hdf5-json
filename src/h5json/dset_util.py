@@ -40,6 +40,10 @@ def getDatasetLayout(dset_json):
         if "layout" in cp:
             layout = cp["layout"]
 
+    if layout is None and "layout" in dset_json:
+        # previous HSDS versions stored layout here
+        layout = dset_json["layout"]
+
     return layout
 
 

@@ -17,6 +17,8 @@ classifiers = [
 authors = [{ "name" = "The HDF Group", "email" = "help@hdfgroup.org" }]
 keywords = ["json", "hdf5", "multidimensional array", "data", "datacube"]
 requires-python = ">=3.9"
+version = "1.0.0"
+
 dependencies = [
     "h5py >= 3.10",
     "numpy >= 2.0; python_version>='3.9'",
@@ -24,7 +26,7 @@ dependencies = [
     "tomli; python_version<'3.11'",
 ]
 
-dynamic = ["version"]
+#dynamic = ["version"]
 
 [project.urls]
 Homepage = "https://support.hdfgroup.org/documentation/hdf5-json/latest/"
@@ -44,7 +46,7 @@ dev = ["check-manifest"]
 test = ["coverage"]
 
 [build-system]
-requires = ["setuptools", "setuptools_scm", "wheel"]
+requires = ["setuptools >= 61"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]

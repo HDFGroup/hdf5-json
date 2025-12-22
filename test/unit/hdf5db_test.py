@@ -432,19 +432,84 @@ class Hdf5dbTest(unittest.TestCase):
         db.createAttribute(dset_id, "a1", "Hello, world")
         sel_all = selections.select(shape, ...)
         arr = db.getDatasetValues(dset_id, sel_all)
+
         self.assertEqual(arr.dtype, dtype)
         self.assertEqual(arr.shape, shape)
         self.assertEqual(arr.min(), 0)
         self.assertEqual(arr.max(), 0)
         row = np.zeros((ncols,), dtype=dtype)
+
+        # set values row by row
         for i in range(nrows):
             row[:] = list(range(i * 10, (i + 1) * 10))
             row_sel = selections.select(shape, (slice(i, i + 1), slice(0, ncols)))
             db.setDatasetValues(dset_id, row_sel, row)
+
+        # read entire dataset
         arr = db.getDatasetValues(dset_id, sel_all)
         for i in range(nrows):
             row = np.array(list(range(i * 10, (i + 1) * 10)), dtype=dtype)
             np.testing.assert_array_equal(arr[i, :], row)
+
+        # read row by row
+        for i in range(nrows):
+            sel = selections.select(shape, (slice(i, i + 1), slice(0, ncols)))
+            row = db.getDatasetValues(dset_id, sel)
+            self.assertTrue(isinstance(row, np.ndarray))
+            self.assertEqual(row.shape, (1, ncols))
+            for j in range(ncols):
+                self.assertEqual(row[0, j], i * 10 + j)
+
+        # read col by col
+        for j in range(ncols):
+            sel = selections.select(shape, (slice(0, ncols), slice(j, j + 1)))
+            col = db.getDatasetValues(dset_id, sel)
+            self.assertTrue(isinstance(col, np.ndarray))
+            self.assertEqual(col.shape, (nrows, 1))
+            for i in range(nrows):
+                self.assertEqual(col[i, 0], i * 10 + j)
+
+        # read element by element
+        for i in range(nrows):
+            for j in range(ncols):
+                sel = selections.select(shape, (slice(i, i + 1), slice(j, j + 1)))
+                val = db.getDatasetValues(dset_id, sel)
+                self.assertTrue(isinstance(val, np.ndarray))
+                self.assertEqual(val.shape, (1, 1))
+                self.assertEqual(val[0, 0], i * 10 + j)
+
+        db.close()
+
+    def testStringDataset(self):
+        nrows = 6
+        ncols = 3
+        shape = (nrows, ncols)
+        dtype = np.dtype("S1")
+        data = [[b'a', b'b', b'c'],
+                [b'd', b'e', b'f'],
+                [b'g', b'h', b'i'],
+                [b'j', b'k', b'l'],
+                [b'm', b'n', b'o'],
+                [b'x', b'y', b'z']]
+        init_arr = np.array(data, dtype=dtype)
+
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dset_id = db.createDataset(shape, dtype=dtype)
+        db.createHardLink(root_id, "dset", dset_id)
+        sel_all = selections.select(shape, ...)
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, shape)
+
+        db.setDatasetValues(dset_id, sel_all, init_arr)
+
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertTrue(np.array_equal(arr, init_arr))
+        sel_one = selections.select(shape, (slice(5, 6), slice(2, 3)))
+        arr = db.getDatasetValues(dset_id, sel_one)
+        self.assertEqual(arr.shape, (1, 1))
+        self.assertEqual(arr[0, 0], b'z')
 
         db.close()
 
@@ -472,6 +537,13 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertEqual(arr.dtype, dtype)
         self.assertEqual(arr.shape, (3,))
         self.assertEqual(list(arr[...]), [False, True, False])
+
+        # read back three elements
+        sel_three = selections.select(shape, slice(1, 4))
+        arr = db.getDatasetValues(dset_id, sel_three)
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, (3,))
+        self.assertEqual(list(arr[...]), [True, False, False])
 
         db.close()
 

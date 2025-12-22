@@ -158,6 +158,8 @@ def contained(s1, s2):
 
     is_contained = True
     rank = len(s1.shape)
+    if len(s2.shape) != rank:
+        raise ValueError("contained can be used in selections of different ranks")
     for dim in range(rank):
         if s1.step[dim] > 1 or s2.step[dim] > 1:
             # TBD: do the right thing for stepped selections
@@ -171,6 +173,27 @@ def contained(s1, s2):
             is_contained = False
             break
     return is_contained
+
+
+def translate(s1, s2):
+    """ Given two selections, s1 and s2, return a new selection
+    definied by s2 relative to s1's stat and count.
+    s2 must be contained in s1 """
+
+    _check_bool_args(s1, s2)
+    sel_inter = intersect(s1, s2)
+    if sel_inter.nselect == 0:
+        raise ValueError("translate - selections not overlapping")
+
+    rank = len(s1.shape)
+
+    slices = []
+    for dim in range(rank):
+        start = s2.start[dim] - s1.start[dim]
+        count = s2.count[dim]
+        slices.append(slice(start, start + count, 1))
+    slices = tuple(slices)
+    return select(s1.shape, slices)
 
 
 class Selection(object):

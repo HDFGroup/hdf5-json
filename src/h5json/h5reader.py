@@ -14,7 +14,6 @@ import weakref
 
 import logging
 import time
-import numpy as np
 
 from .objid import createObjId
 
@@ -158,10 +157,9 @@ class H5NullReader(H5Reader):
         number of elements as the rank of the dataset.
         """
 
-        # just return a zero array
-        arr = np.zeros(sel.shape, dtype=dtype)
+        # just return None
 
-        return arr
+        return None
 
     def open(self):
         """ Open data source for reading """
