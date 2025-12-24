@@ -13,7 +13,7 @@ import unittest
 import logging
 
 from h5json.shape_util import getShapeClass, getShapeDims, getNumElements, getRank
-from h5json.shape_util import isNullSpace, isScalar, getDataSize
+from h5json.shape_util import isNullSpace, isScalar, getDataSize, isExtensible, getMaxDims
 
 
 class ShapeUtilTest(unittest.TestCase):
@@ -44,6 +44,7 @@ class ShapeUtilTest(unittest.TestCase):
         simple_shape_json = {"class": "H5S_SIMPLE", "dims": [5, 7]}
         simple_shape_obj = {"type": type_json, "shape": simple_shape_json}
         vstr_simple_shape_obj = {"type": vstr_json, "shape": simple_shape_json}
+        resizable_shape_obj = {'class': 'H5S_SIMPLE', 'dims': [10], 'maxdims': [20]}
 
         self.assertEqual(getShapeClass(null_shape_json), "H5S_NULL")
         self.assertEqual(getShapeClass(null_shape_obj), "H5S_NULL")
@@ -53,6 +54,7 @@ class ShapeUtilTest(unittest.TestCase):
         self.assertEqual(getShapeClass(simple_shape_json), "H5S_SIMPLE")
         self.assertEqual(getShapeClass(simple_shape_obj), "H5S_SIMPLE")
         self.assertEqual(getShapeClass(vstr_simple_shape_obj), "H5S_SIMPLE")
+        self.assertEqual(getShapeClass(resizable_shape_obj), "H5S_SIMPLE")
 
         self.assertEqual(getShapeDims(null_shape_json), None)
         self.assertEqual(getShapeDims(null_shape_obj), None)
@@ -63,6 +65,17 @@ class ShapeUtilTest(unittest.TestCase):
         self.assertEqual(getShapeDims(simple_shape_obj), (5, 7))
         self.assertEqual(getShapeDims(vstr_simple_shape_obj), (5, 7))
         self.assertEqual(getShapeDims(12), (12,))
+        self.assertEqual(getShapeDims(resizable_shape_obj), (10,))
+
+        self.assertEqual(getMaxDims(null_shape_json), None)
+        self.assertEqual(getMaxDims(null_shape_obj), None)
+        self.assertEqual(getMaxDims(scalar_shape_json), ())
+        self.assertEqual(getMaxDims(scalar_shape_obj), ())
+        self.assertEqual(getMaxDims(vstr_scalar_shape_obj), ())
+        self.assertEqual(getMaxDims(simple_shape_json), (5, 7))
+        self.assertEqual(getMaxDims(simple_shape_obj), (5, 7))
+        self.assertEqual(getMaxDims(vstr_simple_shape_obj), (5, 7))
+        self.assertEqual(getMaxDims(resizable_shape_obj), (20,))
 
         self.assertEqual(getRank(null_shape_json), 0)
         self.assertEqual(getRank(null_shape_obj), 0)
@@ -72,7 +85,7 @@ class ShapeUtilTest(unittest.TestCase):
         self.assertEqual(getRank(simple_shape_json), 2)
         self.assertEqual(getRank(simple_shape_obj), 2)
         self.assertEqual(getRank(vstr_simple_shape_obj), 2)
-        self.assertEqual(getRank((1, 2, 3)), 3)
+        self.assertEqual(getRank(resizable_shape_obj), 1)
 
         self.assertEqual(getNumElements(null_shape_json), 0)
         self.assertEqual(getNumElements(null_shape_obj), 0)
@@ -82,6 +95,7 @@ class ShapeUtilTest(unittest.TestCase):
         self.assertEqual(getNumElements(simple_shape_json), 35)
         self.assertEqual(getNumElements(simple_shape_obj), 35)
         self.assertEqual(getNumElements(vstr_simple_shape_obj), 35)
+        self.assertEqual(getNumElements(resizable_shape_obj), 10)
         self.assertEqual(getNumElements(()), 1)
         self.assertEqual(getNumElements([1, 2, 3]), 6)
 
@@ -93,6 +107,7 @@ class ShapeUtilTest(unittest.TestCase):
         self.assertEqual(isNullSpace(simple_shape_json), False)
         self.assertEqual(isNullSpace(simple_shape_obj), False)
         self.assertEqual(isNullSpace(vstr_simple_shape_obj), False)
+        self.assertEqual(isNullSpace(resizable_shape_obj), False)
 
         self.assertEqual(isScalar(null_shape_json), False)
         self.assertEqual(isScalar(null_shape_obj), False)
@@ -102,6 +117,7 @@ class ShapeUtilTest(unittest.TestCase):
         self.assertEqual(isScalar(simple_shape_json), False)
         self.assertEqual(isScalar(simple_shape_obj), False)
         self.assertEqual(isScalar(vstr_simple_shape_obj), False)
+        self.assertEqual(isScalar(resizable_shape_obj), False)
 
         self.assertEqual(getDataSize(null_shape_json, 4), 0)
         self.assertEqual(getDataSize(null_shape_obj, 4), 0)
@@ -111,8 +127,29 @@ class ShapeUtilTest(unittest.TestCase):
         self.assertEqual(getDataSize(simple_shape_json, 4), 140)
         self.assertEqual(getDataSize(simple_shape_obj, 4), 140)
         self.assertEqual(getDataSize(vstr_simple_shape_obj, 4), 140)
+        self.assertEqual(getDataSize(resizable_shape_obj, 4), 40)
         self.assertEqual(getDataSize((), 4), 4)
         self.assertEqual(getDataSize([1, 2, 3], 4), 24)
+
+        self.assertEqual(isScalar(null_shape_json), False)
+        self.assertEqual(isScalar(null_shape_obj), False)
+        self.assertEqual(isScalar(scalar_shape_json), True)
+        self.assertEqual(isScalar(scalar_shape_obj), True)
+        self.assertEqual(isScalar(vstr_scalar_shape_obj), True)
+        self.assertEqual(isScalar(simple_shape_json), False)
+        self.assertEqual(isScalar(simple_shape_obj), False)
+        self.assertEqual(isScalar(vstr_simple_shape_obj), False)
+        self.assertEqual(isScalar(resizable_shape_obj), False)
+
+        self.assertEqual(isExtensible(null_shape_json), False)
+        self.assertEqual(isExtensible(null_shape_obj), False)
+        self.assertEqual(isExtensible(scalar_shape_json), False)
+        self.assertEqual(isExtensible(scalar_shape_obj), False)
+        self.assertEqual(isExtensible(vstr_scalar_shape_obj), False)
+        self.assertEqual(isExtensible(simple_shape_json), False)
+        self.assertEqual(isExtensible(simple_shape_obj), False)
+        self.assertEqual(isExtensible(vstr_simple_shape_obj), False)
+        self.assertEqual(isExtensible(resizable_shape_obj), True)
 
 
 if __name__ == "__main__":

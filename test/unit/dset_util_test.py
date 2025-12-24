@@ -12,6 +12,7 @@
 import unittest
 import logging
 
+from h5json.filters import getFilterItem
 from h5json.dset_util import guessChunk, shrinkChunk, getChunkSize, expandChunk
 from h5json.dset_util import getDatasetLayoutClass, getContiguousLayout, getChunkDims
 from h5json.dset_util import validateChunkLayout, validateDatasetCreationProps, getDatasetLayout
@@ -121,7 +122,8 @@ class DsetUtilTest(unittest.TestCase):
         except ValueError:
             self.assertTrue(False)  # shouldn't raise exception
         # try with just a filter name
-        cpl["filters"] = ["gzip", ]
+        gzip_filter = getFilterItem("gzip")
+        cpl["filters"] = [gzip_filter, ]
         try:
             validateDatasetCreationProps(cpl, type_json, dset_json["shape"])
         except ValueError:

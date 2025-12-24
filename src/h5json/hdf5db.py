@@ -16,7 +16,7 @@ from .hdf5dtype import getTypeItem, createDataType, Reference, special_dtype
 from .array_util import jsonToArray, bytesArrayToList
 from .dset_util import resize_dataset
 from .shape_util import getShapeClass, getShapeDims
-from .filters import getFiltersJson
+from .filters import validateFilters
 from .objid import createObjId, getCollectionForId, isValidUuid, getUuidFromId, getHashTagForId
 from . import selections
 from .time_util import getNow
@@ -884,8 +884,7 @@ class Hdf5db:
                 else:
                     supported_filters = ()
                 # validate and normalize supplied filter property list
-                filters_json = getFiltersJson(cpl, supported_filters=supported_filters)
-                cpl["filters"] = filters_json
+                validateFilters(cpl["filters"], supported_filters=supported_filters)
             dset_json["creationProperties"] = cpl
         else:
             dset_json["creationProperties"] = {}

@@ -12,13 +12,14 @@
 
 import math
 from .hdf5dtype import getItemSize, createDataType
-from .shape_util import getDataSize
+from .shape_util import getDataSize, getShapeClass, getNumElements, getShapeDims
+from .shape_util import isExtensible, getMaxDims, getRank
 from .array_util import getNumpyValue
-from .filters import getFiltersJson
+from .filters import validateFilters
 from .objid import isValidUuid
 
 CHUNK_MIN = 512 * 1024  # Soft lower limit (512k)
-CHUNK_MAX = 2048 * 1024  # Hard upper limit (2M)
+CHUNK_MAX = 8096 * 1024  # Hard upper limit (2M)
 
 
 LAYOUT_CLASSES = (
@@ -57,6 +58,33 @@ def getDatasetLayoutClass(dset_json):
     return layout_class
 
 
+def estimateDatasetSize(shape_json, item_size, chunk_min=CHUNK_MIN):
+    """ Get the dataset size in bytes.  Make a reasonable guess
+     for extensible datasets """
+
+    shape_class = getShapeClass(shape_json)
+    if shape_class == "H5S_NULL":
+        return 0
+    if shape_class == "H5S_SCALAR":
+        return item_size
+    if "maxdims" not in shape_json:
+        # can just multiple item_size by the number of elements
+        return item_size * getNumElements(shape_json)
+    max_dims = getMaxDims(shape_json)
+    rank = getRank(shape_json)
+    nsize = item_size
+    for dim in range(rank):
+        extent = max_dims[dim]
+        if extent not in (0, "H5S_UNLIMITED"):
+            nsize *= extent
+    # if the current size is less than min_chunk size,
+    # return something just larger than min_chunk_size
+    if chunk_min and nsize < chunk_min:
+        nsize = chunk_min
+        nsize = -(-nsize // item_size) * item_size  # round up to be divisible by item_size
+    return nsize
+
+
 def resize_dataset(dset_json, shape):
     """ Update shape dims to the given shape provided new shape is valid for maxdims """
     shape_json = dset_json["shape"]
@@ -88,7 +116,7 @@ def resize_dataset(dset_json, shape):
 
 def getContiguousLayout(shape_json, item_size, chunk_min=None, chunk_max=None):
     """
-    create a chunk layout for datasets use contiguous storage.
+    create a chunk layout for datasets using contiguous storage.
     """
     if not isinstance(item_size, int):
         msg = "ContiguousLayout can only be used with fixed-length types"
@@ -152,49 +180,6 @@ def getChunkSize(chunk_dims, type_size: int = 1):
             raise ValueError("Invalid chunk layout")
         chunk_size *= n
     return chunk_size
-
-
-def isExtensible(dims, maxdims):
-    """
-    Determine if the dataset can be extended
-    """
-    if maxdims is None or len(dims) == 0:
-        return False
-    rank = len(dims)
-    if len(maxdims) != rank:
-        raise ValueError("rank of maxdims does not match dataset")
-    for n in range(rank):
-        if maxdims[n] in (0, "H5S_UNLIMITED") or maxdims[n] > dims[n]:
-            return True
-    return False
-
-
-def getDsetMaxDims(dset_json):
-    """
-    Get maxdims from a given shape.  Return [1,] for Scalar datasets
-
-    Use with H5S_NULL datasets will throw a ValueError
-    """
-    if "shape" not in dset_json:
-        msg = "No shape found in dset_json"
-        raise KeyError(msg)
-    shape_json = dset_json["shape"]
-    shape_class = shape_json["class"]
-    maxdims = None
-    if shape_class == "H5S_NULL":
-        msg = "Expected shape class other than H5S_NULL"
-        raise ValueError(msg)
-    elif shape_class == "H5S_SCALAR":
-        maxdims = [1,]
-    elif shape_class == "H5S_SIMPLE":
-        if "maxdims" in shape_json:
-            maxdims = shape_json["maxdims"]
-        else:
-            maxdims = shape_json["dims"]
-    else:
-        msg = f"Unexpected shape class: {shape_class}"
-        raise ValueError(msg)
-    return tuple(maxdims)
 
 
 def getChunkDims(dset_json):
@@ -423,17 +408,17 @@ def validateDatasetCreationProps(creation_props, type_json=None, shape=None):
         layout_class = layout_json["class"]
 
     if "filters" in creation_props:
+        filters = creation_props["filters"]
         try:
-            filters_out = getFiltersJson(creation_props)
-        except (KeyError, TypeError, ValueError):
+            validateFilters(filters)
+        except (KeyError, TypeError, ValueError) as e:
             # raise bad request exception if not valid
-            msg = "invalid filter provided"
+            msg = f"invalid filter provided: {str(e)}"
             raise ValueError(msg)
-        if filters_out:
-            # check that a chunked layout is used
-            if layout_class is None or layout_class.startswith("H5D_CHUNKED") is False:
-                msg = "filters can only be used with chunked layout"
-                raise ValueError(msg)
+        # check that a chunked layout is used
+        if layout_class and layout_class.startswith("H5D_CHUNKED") is False:
+            msg = "filters can only be used with chunked layout"
+            raise ValueError(msg)
 
 
 def expandChunk(layout, typesize, shape_json, chunk_min=CHUNK_MIN):
@@ -540,7 +525,7 @@ def shrinkChunk(layout, typesize, chunk_max=CHUNK_MAX):
     return tuple(layout)
 
 
-def guessChunk(shape_json, typesize, chunk_min=None, chunk_max=None):
+def guessChunk(shape, typesize, chunk_min=None, chunk_max=None):
     """Guess an appropriate chunk layout for a dataset, given its shape and
     the size of each element in bytes.  Will allocate chunks only as large
     as MAX_SIZE.  Chunks are generally close to some power-of-2 fraction of
@@ -548,10 +533,16 @@ def guessChunk(shape_json, typesize, chunk_min=None, chunk_max=None):
 
     Undocumented and subject to change without warning.
     """
-    if shape_json is None or shape_json["class"] == "H5S_NULL":
+    if shape is None or isinstance(shape, dict) and shape.get("class") == "H5S_NULL":
         return None
-    if shape_json["class"] == "H5S_SCALAR":
+    if isinstance(shape, dict) and shape.get("class") == "H5S_SCALAR":
         return (1,)  # just enough to store one item
+
+    # if we are passed shape as a tuple, create an shape json using H5S_SIMPLE
+    if isinstance(shape, (list, tuple)):
+        shape_json = {"class": "H5S_SIMPLE", "dims": shape}
+    else:
+        shape_json = shape
 
     if "maxdims" in shape_json:
         shape = shape_json["maxdims"]
@@ -575,131 +566,133 @@ def guessChunk(shape_json, typesize, chunk_min=None, chunk_max=None):
     return shape
 
 
-def getLayoutJson(creation_props,
-                  shape=None,
-                  type_json=None,
-                  chunk_min=CHUNK_MIN,
-                  chunk_max=CHUNK_MAX,
-                  max_chunks_per_folder=0):
-    """ Get the layout json given by creation_props.
-        Raise value error if invalid """
+def generateLayout(
+        shape_json,
+        item_size=0,
+        has_filter=False,
+        chunks=None,
+        chunk_min=CHUNK_MIN,
+        chunk_max=CHUNK_MAX,
+        max_chunks_per_folder=0
+):
 
-    item_size = getItemSize(type_json)
+    """ Create a dataset layout based on type and shape properties  """
+
+    if item_size < 0:
+        raise ValueError("item_size is invalid")
+
+    shape_class = getShapeClass(shape_json)
+    if shape_class == "H5S_NULL":
+        if chunks or has_filter:
+            raise ValueError("Null space datasets do not support chunking")
+        return {}
+
+    if shape_class == "H5S_SCALAR":
+        if chunks or has_filter:
+            raise ValueError("Scalar datasets do not support chunking")
+        return {"class": "H5D_CONIGUOUS"}
 
     if chunk_min > chunk_max:
         msg = "chunk_max must be larger than chunk_min"
         raise ValueError(msg)
 
-    layout = None
-    if "layout" in creation_props:
-        layout_props = creation_props["layout"]
-    else:
-        layout_props = None
+    dset_size = estimateDatasetSize(shape_json, item_size, chunk_min=chunk_min)
+    shape_dims = getShapeDims(shape_json)
+    rank = len(shape_dims)
+    max_dims = getMaxDims(shape_json)
+    extensible = isExtensible(shape_dims, max_dims)
 
-    if layout_props:
-        if "class" not in layout_props:
-            msg = "expected class key in layout props"
-            raise KeyError(msg)
-        layout_class = layout_props["class"]
-        if layout_class == "H5D_CONTIGUOUS":
-            # treat contiguous as chunked
-            layout_class = "H5D_CHUNKED"
-        else:
-            layout_class = layout_props["class"]
-    elif shape["class"] != "H5S_NULL":
-        layout_class = "H5D_CHUNKED"
-    else:
-        layout_class = None
+    if dset_size < chunk_min and not extensible and not has_filter and not chunks:
+        # can just return a contiguous layout
+        return {"class": "H5D_CONTIGUOUS"}
 
-    if layout_class == "H5D_COMPACT":
-        layout = {"class": "H5D_COMPACT"}
-    elif layout_class:
-        # initialize to H5D_CHUNKED
-        layout = {"class": "H5D_CHUNKED"}
-    else:
-        # null space - no layout
-        layout = None
-
-    if layout_props and "dims" in layout_props:
-        chunk_dims = layout_props["dims"]
-    else:
-        chunk_dims = None
-
-    if layout_class == "H5D_CONTIGUOUS_REF":
+    layout = {"class": "H5D_CHUNKED"}  # otherwise use chunked layout
+    chunk_dims = None
+    if chunks:
+        if isinstance(chunks, (tuple, list)):
+            chunk_dims = chunks
+            if len(chunk_dims) != rank:
+                raise ValueError("given chunk dims do not agree with dataset rank")
+    if not chunk_dims:
         kwargs = {"chunk_min": chunk_min, "chunk_max": chunk_max}
-        chunk_dims = getContiguousLayout(shape, item_size, **kwargs)
-        layout["dims"] = chunk_dims
+        chunk_dims = getChunkDims(shape_json, item_size, **kwargs)
+    layout["dims"] = chunk_dims
 
-    if layout_class == "H5D_CHUNKED" and chunk_dims is None:
-        # do auto-chunking
-        chunk_dims = guessChunk(shape, item_size)
+    # set partition_count if needed:
+    if max_chunks_per_folder > 0:
+        num_chunks = 1
+        rank = len(shape_dims)
+        unlimited_count = 0
+        for dim in range(rank):
+            if max_dims[dim] in (0, "H5S_UNLIMITED"):
+                unlimited_count += 1
+        for dim in range(rank):
+            max_dim = 1
+            max_dim = max_dims[dim]
+            if max_dim in (0, "H5S_UNLIMITED"):
+                # don't really know what the ultimate extent
+                # could be, but assume 10^6 for total number of
+                # elements and square-shaped array...
+                MAX_ELEMENT_GUESS = 10.0 ** 6
+                exp = 1 / unlimited_count
+                max_dim = int(math.pow(MAX_ELEMENT_GUESS, exp))
+            else:
+                max_dim = shape_dims[dim]
+            num_chunks *= math.ceil(max_dim / chunk_dims[dim])
 
-    if layout_class == "H5D_CHUNKED":
-        chunk_size = getChunkSize(chunk_dims, item_size)
-
-        # adjust the chunk shape if chunk size is too small or too big
-        adjusted_chunk_dims = None
-        if chunk_size < chunk_min:
-            kwargs = {"chunk_min": chunk_min, "layout_class": layout_class}
-            adjusted_chunk_dims = expandChunk(chunk_dims, item_size, shape, **kwargs)
-        elif chunk_size > chunk_max:
-            kwargs = {"chunk_max": chunk_max}
-            adjusted_chunk_dims = shrinkChunk(chunk_dims, item_size, **kwargs)
-        if adjusted_chunk_dims:
-            layout["dims"] = adjusted_chunk_dims
+        if num_chunks > max_chunks_per_folder:
+            partition_count = math.ceil(num_chunks / max_chunks_per_folder)
+            layout["partition_count"] = partition_count
         else:
-            layout["dims"] = chunk_dims  # don't need to adjust chunk size
+            pass  # partition not needed
+    return layout
 
-        # set partition_count if needed:
-        set_partition = False
-        if max_chunks_per_folder > 0:
-            if "dims" in shape and "dims" in layout:
-                set_partition = True
 
-        if set_partition:
-            chunk_dims = layout["dims"]
-            shape_dims = shape["dims"]
-            if "maxdims" in shape:
-                max_dims = shape["maxdims"]
-            else:
-                max_dims = None
-            num_chunks = 1
-            rank = len(shape_dims)
-            unlimited_count = 0
-            if max_dims:
-                for i in range(rank):
-                    if max_dims[i] == 0:
-                        unlimited_count += 1
-            for i in range(rank):
-                max_dim = 1
-                if max_dims:
-                    max_dim = max_dims[i]
-                    if max_dim == 0:
-                        # don't really know what the ultimate extent
-                        # could be, but assume 10^6 for total number of
-                        # elements and square-shaped array...
-                        MAX_ELEMENT_GUESS = 10.0 ** 6
-                        exp = 1 / unlimited_count
-                        max_dim = int(math.pow(MAX_ELEMENT_GUESS, exp))
-                else:
-                    max_dim = shape_dims[i]
-                num_chunks *= math.ceil(max_dim / chunk_dims[i])
+def generate_dcpl(
+    shape_json,
+    dtype,
+    chunks=None,
+    filters=[],
+    chunk_min=CHUNK_MIN,
+    chunk_max=CHUNK_MAX,
+    max_chunks_per_folder=None,
+    initializer=None,
+    initializer_opts=None
+):
+    """Generate a dataset creation property list.
 
-            if num_chunks > max_chunks_per_folder:
-                partition_count = math.ceil(num_chunks / max_chunks_per_folder)
-                msg = f"set partition count to: {partition_count}, "
-                msg += f"num_chunks: {num_chunks}"
-                layout["partition_count"] = partition_count
-            else:
-                pass  # partition not needed
+    """
 
-    if layout_class in ("H5D_CHUNKED_REF", "H5D_CHUNKED_REF_INDIRECT"):
-        chunk_size = getChunkSize(chunk_dims, item_size)
+    plist = {}
 
-        # nothing to do about inefficiently small chunks, but large chunks
-        # can be subdivided
-        if chunk_size < chunk_min:
-            pass  # too small
-        elif chunk_size > chunk_max:
-            pass  # too large
-        layout["dims"] = chunk_dims
+    shape_class = getShapeClass(shape_json)
+
+    if shape_class != "H5S_SIMPLE":
+        if chunks or filters:
+            raise TypeError(f"{shape_class} datasets don't support chunk/filter options")
+
+        return plist  # return empty property list for non-simple datasets
+
+    validateFilters(filters)  # check filter params if any
+
+    # End argument validation
+
+    kwargs = {"item_size": dtype.itemsize, "has_filter": filters}
+    kwargs["chunks"] = chunks
+    kwargs["chunk_min"] = chunk_min
+    kwargs["chunk_max"] = chunk_max
+    kwargs["max_chunks_per_folder"] = max_chunks_per_folder
+    plist["layout"] = generateLayout(shape_json, **kwargs)
+
+    if len(filters) > 0:
+        plist["filters"] = filters
+
+    if initializer:
+        # TBD: this needs to be documented in the json spec
+        # pass in initializer options
+        initializer = [initializer,]
+        if initializer_opts:
+            initializer.extend(initializer_opts)
+        plist["initializer"] = initializer
+
+    return plist

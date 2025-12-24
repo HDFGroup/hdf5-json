@@ -14,13 +14,17 @@ import h5py
 
 from .hdf5dtype import isVlen
 
+DEFAULT_GZIP = 4
+DEFAULT_SZIP = 4
+SO_INT_MINBITS_DEFAULT = 0
+
 # List of registered filters.  Not all are supported by every reader and writer.
 #
 #
 # tuple of filter key, filter id, and options,
 FILTER_DEFS = (
     ("H5Z_FILTER_NONE", 0, "none", ()),
-    ("H5Z_FILTER_DEFLATE", 1, "gzip", ("level",)),  # aka as "zlib" for blosc
+    ("H5Z_FILTER_DEFLATE", 1, "gzip", ("level",)),  # aka as "default" or "zlib" for blosc
     ("H5Z_FILTER_SHUFFLE", 2, "shuffle", ()),
     ("H5Z_FILTER_FLETCHER32", 3, "fletcher32", ()),
     ("H5Z_FILTER_SZIP", 4, "szip", ("bitsPerPixel", "coding", "pixelsPerBlock", "pixelsPerScanLine")),
@@ -85,143 +89,193 @@ def getAllFilterNames():
     return tuple(names)
 
 
-def getFilterItem(key):
+def getFilterItem(name, options={}):
     """
     Return filter code, id, and name, based on an id, a name or a code.
     """
+    # is key is dict, just verify it's a valid filter and return
+    filter_json = None
 
-    if key == "deflate":
-        key = "gzip"  # use gzip as equivalent
+    if isinstance(name, dict):
+        filter_json = name
+        base_keys = ("class", "id", "name")
+        for key in base_keys:
+            if key not in filter_json:
+                raise KeyError(f"Expected {key} for filter")
+        # use class key to look up options
+        name = filter_json["class"]
+    elif name in ("deflate", "zlib"):
+        name = "gzip"  # use gzip as equivalent
+
+    option_set = None
     for item in FILTER_DEFS:
         # check for a match by key, id, or alias (the first three elements)
         for i in range(3):
-            if key == item[i]:
-                return {"class": item[0], "id": item[1], "name": item[2], "options": item[3]}
-    return None  # not found
+            if name == item[i]:
+                if filter_json is None:
+                    filter_json = {"class": item[0], "id": item[1], "name": item[2]}
+                option_set = set(item[3])
+                break
 
+    if not filter_json and isinstance(name, int) and name > 32000:
+        filter_json = {"class": "H5Z_FILTER_USER", "id": name, "name": f"user filter {name}"}
 
-def getFiltersJson(create_props, supported_filters=None):
-    """ return standardized filter representation from creation properties
-        raise bad request if invalid """
+    if not filter_json:
+        raise KeyError(f"filter {name} is unknown")
 
-    # refer to https://hdf5-json.readthedocs.io/en/latest/bnf/\
-    # filters.html#grammar-token-filter_list
+    filter_class = filter_json["class"]
+    if filter_class == "H5Z_FILTER_USER":
+        option_set = set()
+        option_set.add("parameters")
 
-    if "filters" not in create_props:
-        return {}  # null set
+    # check that any option supplied is supported by the filter
+    for key in options:
+        if key not in option_set:
+            msg = f"Option {key} is not supported by the {filter_class} filter"
+            raise KeyError(msg)
 
-    f_in = create_props["filters"]
+    # for any supplied options verify they are correct type and range
+    # (raise Type or Value error if not).  If option is not given, use
+    # the default value if not.  Finally add options to the filter_json
 
-    if not isinstance(f_in, list):
-        msg = "Expected filters in creation_props to be a list"
-        raise TypeError(msg)
-
-    if not supported_filters:
-        supported_filters = getAllFilterNames()
-
-    f_out = []
-    for filter in f_in:
-        if isinstance(filter, int) or isinstance(filter, str):
-            item = getFilterItem(filter)
-            if not item:
-                msg = f"filter {filter} not recognized"
+    if filter_class == "H5Z_FILTER_DEFLATE":
+        if "level" in options:
+            level_val = options["level"]
+            if not isinstance(level_val, int):
+                msg = "Expected integer level for deflate filter"
+                raise TypeError(msg)
+            if level_val < 0 or level_val > 9:
+                msg = "Deflate filter level must be between 0 and 9"
                 raise ValueError(msg)
-
-            if item["name"] not in supported_filters:
-                msg = f"filter {filter} is not supported"
-                raise ValueError(msg)
-            f_out.append(item)
-        elif isinstance(filter, dict):
-            if filter.get("class") == "H5Z_FILTER_USER":
-                # user filter - must have either id or name
-                if "id" not in filter and "name" not in filter:
-                    msg = "user filter must have either 'id' or 'name' key"
-                    raise KeyError(msg)
-                item = filter
-            elif "id" in filter:
-                item = getFilterItem(filter["id"])
-            elif "name" in filter:
-                item = getFilterItem(filter["name"])
-            else:
-                item = None
-            if not item:
-                msg = f"filter {filter} not recognized"
-                raise ValueError(msg)
-
-            # will replace options list with specified options
-            del item["options"]
-
-            # copy any filter specified options
-            filter_class = item["class"]
-            if filter_class == "H5Z_FILTER_DEFLATE":
-                if "level" in filter:
-                    level_val = filter["level"]
-                    if not isinstance(level_val, int):
-                        msg = "Expected integer level for deflate filter"
-                        raise TypeError(msg)
-                    if level_val < 0 or level_val > 9:
-                        msg = "Deflate filter level must be between 0 and 9"
-                        raise ValueError(msg)
-                    item["level"] = level_val
-            elif filter_class == "H5Z_FILTER_SHUFFLE":
-                pass  # no options
-            elif filter_class == "H5Z_FILTER_FLETCHER32":
-                pass  # no options
-            elif filter_class == "H5Z_FILTER_SZIP":
-                for key in ("bitsPerPixel", "coding", "pixelsPerBlock", "pixelsPerScanLine"):
-                    if key in filter:
-                        val = filter[key]
-                        if key == "coding":
-                            if val not in HDF_FILTER_OPTION_ENUMS["coding"].values():
-                                msg = f"Invalid coding option for szip filter: {val}"
-                                raise ValueError(msg)
-                            else:
-                                # other options need to be positivie integers
-                                if not isinstance(val, int) or val <= 0:
-                                    msg = f"Expected positive integer for szip filter option {key}"
-                                    raise ValueError(msg)
-                        item[key] = val
-            elif filter_class == "H5Z_FILTER_NBIT":
-                pass  # no options
-            elif filter_class == "H5Z_FILTER_SCALEOFFSET":
-                if "scaleType" in filter:
-                    val = filter["scaleType"]
-                    if val not in HDF_FILTER_OPTION_ENUMS["scaleType"].values():
-                        msg = f"Invalid scaleType option for scaleoffset filter: {val}"
-                        raise ValueError(msg)
-                    else:
-                        item["scaleType"] = val
-                if "scaleOffset" in filter:
-                    val = filter["scaleOffset"]
-                    if not isinstance(val, int) or val < 0:
-                        msg = "Expected non-negative integer for scaleOffset option"
-                        raise ValueError(msg)
-                    else:
-                        item["scaleOffset"] = val
-            elif filter_class == "H5Z_FILTER_LZF":
-                pass  # no options
-            elif filter_class == "H5Z_FILTER_BLOSC":
-                pass  # no options
-            elif filter_class == "H5Z_FILTER_SNAPPY":
-                pass  # no options
-            elif filter_class == "H5Z_FILTER_LZ4":
-                pass  # no options
-            elif filter_class == "H5Z_FILTER_LZ4HC":
-                pass  # no options
-            elif filter_class == "H5Z_FILTER_BITSHUFFLE":
-                pass  # no options
-            elif filter_class == "H5Z_FILTER_ZSTD":
-                pass  # no options
-            else:
-                msg = f"filter class {filter_class} is not supported"
-                raise KeyError(msg)
-            f_out.append(item)
+            filter_json["level"] = level_val
         else:
-            msg = f"Unexpected type for filter: {filter}"
-            raise ValueError(msg)
+            filter_json["level"] = DEFAULT_GZIP
 
-    # return standardized filter representation
-    return f_out
+    elif filter_class == "H5Z_FILTER_SHUFFLE":
+        pass  # no options
+    elif filter_class == "H5Z_FILTER_FLETCHER32":
+        pass  # no options
+    elif filter_class == "H5Z_FILTER_SZIP":
+        for key in option_set:        # option set("bitsPerPixel", "coding", "pixelsPerBlock", "pixelsPerScanLine"):
+            if key in options:
+                val = options[key]
+                if key == "coding":
+                    if val not in HDF_FILTER_OPTION_ENUMS["coding"].values():
+                        msg = f"Invalid coding option for szip filter: {val}"
+                        raise ValueError(msg)
+                else:
+                    # other options need to be positivie integers
+                    if not isinstance(val, int) or val <= 0:
+                        msg = f"Expected positive integer for szip filter option {key}"
+                        raise ValueError(msg)
+                filter_json[key] = val
+            else:
+                pass  # no defaults for szip
+    elif filter_class == "H5Z_FILTER_NBIT":
+        pass  # no options
+    elif filter_class == "H5Z_FILTER_SCALEOFFSET":
+        if "scaleType" in options:
+            val = options["scaleType"]
+            if val not in HDF_FILTER_OPTION_ENUMS["scaleType"].values():
+                msg = f"Invalid scaleType option for scaleoffset filter: {val}"
+                raise ValueError(msg)
+
+            filter_json["scaleType"] = val
+        if "scaleOffset" in options:
+            val = options["scaleOffset"]
+            if not isinstance(val, int) or val < 0:
+                msg = "Expected non-negative integer for scaleOffset option"
+                raise ValueError(msg)
+            filter_json["scaleOffset"] = val
+    elif filter_class == "H5Z_FILTER_LZF":
+        pass  # no options
+    elif filter_class == "H5Z_FILTER_BLOSC":
+        pass  # no options
+    elif filter_class == "H5Z_FILTER_SNAPPY":
+        pass  # no options
+    elif filter_class == "H5Z_FILTER_LZ4":
+        pass  # no options
+    elif filter_class == "H5Z_FILTER_LZ4HC":
+        pass  # no options
+    elif filter_class == "H5Z_FILTER_BITSHUFFLE":
+        pass  # no options
+    elif filter_class == "H5Z_FILTER_ZSTD":
+        pass  # no options
+    elif filter_class == "H5Z_FILTER_NONE":
+        pass  # no options
+    elif filter_class == "H5Z_FILTER_USER":
+        if "parameters" in options:
+            parameters = options["parameters"]
+            # expecting a positive integer array
+            if not isinstance(parameters, (list, tuple)):
+                raise TypeError(f"filter {filter_class} parameters option should be a list")
+            vals = []
+            for val in parameters:
+                if not isinstance(val, int):
+                    raise TypeError(f"filter {filter_class} parameters expected integer value")
+                if val <= 0:
+                    raise TypeError(f"filter {filter_class} parameters option should be a positive int")
+                vals.append(val)
+            filter_json["parameters"] = val
+    else:
+        msg = f"filter class {filter_class} is not supported"
+        raise KeyError(msg)
+
+    return filter_json
+
+
+def validateFilter(filter_json, supported_filters=None):
+    """ Check the given the given filter for create format,
+        required options set.  Raise TypeError, KeyError or ValueError if not.
+        If supported_filters is supplied, raise KeyError if a non-supported
+        filter is supplied. """
+
+    if not isinstance(filter_json, dict):
+        raise TypeError(f"Expected dict for filter but got {type(filter_json)}")
+    base_keys = ("class", "id", "name")
+    for key in base_keys:
+        if key not in filter_json:
+            raise KeyError(f"Expected {key} for filter")
+    filter_class = filter_json["class"]
+    filter_id = filter_json["id"]
+    # check that the filter_class agrees with the id in FILTER_DEFS
+    options = None
+    for filter_def in FILTER_DEFS:
+        if filter_def[0] == filter_class:
+            if filter_id != filter_def[1]:
+                msg = f"Incorrect filter_id: {filter_id} for filter: {filter_class}"
+                raise ValueError(msg)
+            # collect any filter options to check later
+            options = {}
+            for key in filter_json:
+                if key in base_keys:
+                    continue
+                options[key] = filter_json[key]
+            break
+
+    if options is None and filter_class == "H5Z_FILTER_USER":
+        # custom filter, id should be > 32000
+        if filter_id <= 32000:
+            raise ValueError(f"Unexpected filter id: {filter_id} for user filter")
+        options = {}
+        for key in filter_json:
+            if key in base_keys:
+                continue
+            options[key] = filter_json[key]
+
+    if options is None:
+        raise KeyError(f"Unknown filter: {filter_class}")
+
+    # will raise error if any option is invalid
+    getFilterItem(filter_json, options)
+
+
+def validateFilters(filters, supported_filters=None):
+    """ validate each filter in the filter list """
+
+    # TBD: check given order of filters is supported
+    for filter_json in filters:
+        validateFilter(filter_json, supported_filters=supported_filters)
 
 
 def getFilters(dset_json):
@@ -235,72 +289,11 @@ def getFilters(dset_json):
     return filters
 
 
+def isCompressionFilter(filter):
+    filter_json = getFilterItem(filter)
+    return filter_json["class"] in COMPRESSION_FILTER_IDS
+
+
 def getCompressionFilter(filters):
-    """Return compression filter from filters, or None"""
-    for filter in filters:
-        if "class" not in filter:
-            # expected class key - malformed filter def
-            continue
-        filter_class = filter["class"]
-        if filter_class in COMPRESSION_FILTER_IDS:
-            return filter
-        if all(
-            (
-                filter_class == "H5Z_FILTER_USER",
-                "name" in filter,
-                filter["name"] in COMPRESSION_FILTER_NAMES,
-            )
-        ):
-            return filter
-    return None
-
-
-def getShuffleFilter(filters):
-    """Return shuffle filter, or None"""
-    FILTER_CLASSES = ("H5Z_FILTER_SHUFFLE", "H5Z_FILTER_BITSHUFFLE")
-    for filter in filters:
-        if "class" not in filter:
-            # invalid filter def?
-            continue
-        filter_class = filter["class"]
-        if filter_class in FILTER_CLASSES:
-            return filter
-
-    return None
-
-
-def getFilterOps(filters, dtype=None):
-    """Get list of filter operations to be used for this dataset"""
-
-    compressionFilter = getCompressionFilter(filters)
-
-    filter_ops = {}
-
-    shuffleFilter = getShuffleFilter(filters)
-
-    if shuffleFilter and not isVlen(dtype):
-        shuffle_name = shuffleFilter["name"]
-        if shuffle_name == "shuffle":
-            filter_ops["shuffle"] = 1  # use regular shuffle
-        elif shuffle_name == "bitshuffle":
-            filter_ops["shuffle"] = 2  # use bitshuffle
-        else:
-            filter_ops["shuffle"] = 0  # no shuffle
-    else:
-        filter_ops["shuffle"] = 0  # no shuffle
-
-    """ return list of filter operations for this dataset """
-    if compressionFilter:
-        if compressionFilter["class"] == "H5Z_FILTER_DEFLATE":
-            filter_ops["compressor"] = "zlib"  # blosc compressor
-        else:
-            if "name" in compressionFilter:
-                filter_ops["compressor"] = compressionFilter["name"]
-            else:
-                filter_ops["compressor"] = "lz4"  # default to lz4
-        if "level" not in compressionFilter:
-            filter_ops["level"] = 5  # medium level
-        else:
-            filter_ops["level"] = int(compressionFilter["level"])
-
-    return filter_ops
+    """Return compression filter ids from filters, or None"""
+    return COMPRESSION_FILTER_IDS

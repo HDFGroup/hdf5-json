@@ -13,25 +13,52 @@
 import numpy as np
 
 
-def getShapeClass(shape):
+def getShapeClass(obj_json):
     """ Return shape class of the given data shape """
 
-    if not isinstance(shape, dict):
+    if not isinstance(obj_json, dict):
         raise TypeError("expected dict object")
 
-    if shape.get("class") in ("H5S_NULL", "H5S_SCALAR", "H5S_SIMPLE"):
+    if obj_json.get("class") in ("H5S_NULL", "H5S_SCALAR", "H5S_SIMPLE"):
         # this is a shape_json obj
-        shape_json = shape
-    elif "shape" in shape:
+        shape_json = obj_json
+    elif "shape" in obj_json:
         # dataset or attribute json
-        shape_json = shape["shape"]
+        shape_json = obj_json["shape"]
     else:
-        raise ValueError(f"Unknown shape: {shape}")
+        raise ValueError(f"Unknown shape: {obj_json}")
 
     if "class" not in shape_json:
         raise KeyError("expected 'class' key for data shape")\
 
     return shape_json["class"]
+
+
+def getShapeJson(dims, maxdims=None):
+    """ create a new shape_json based on dims and
+        optionally maxdims (the later only applies to
+        datasets) """
+    if isinstance(dims, int):
+        dims = (dims, )
+    if isinstance(maxdims, int):
+        maxdims = (maxdims, )
+    if dims is None:
+        shape_class = "H5S_NULL"
+    elif len(dims) == 0:
+        shape_class = "H5S_SCALAR"
+    else:
+        shape_class = "H5S_SIMPLE"
+    if maxdims is not None:
+        if shape_class != "H5S_SIMPLE":
+            raise ValueError(f"maxdims can not be used with shape class: {shape_class}")
+        if len(maxdims) != len(dims):
+            raise ValueError("maxdims must match dataspace rank")
+    shape_json = {"class": shape_class}
+    if shape_class == "H5S_SIMPLE":
+        shape_json["dims"] = dims
+    if maxdims is not None:
+        shape_json["maxdims"] = maxdims
+    return shape_json
 
 
 def getShapeDims(shape):
@@ -139,3 +166,66 @@ def getDataSize(shape, type_size: int = 1):
         return 0
     else:
         return type_size * int(np.prod(dims))
+
+
+def isExtensible(obj_json):
+    """
+    Determine if the dataset can be extended
+    """
+
+    if "shape" in obj_json:
+        # assume dataset or attribute json
+        shape_json = obj_json["shape"]
+    else:
+        shape_json = obj_json
+    shape_class = getShapeClass(shape_json)
+    if shape_class != "H5S_SIMPLE":
+        return False
+
+    if "maxdims" not in shape_json:
+        return False
+
+    dims = shape_json["dims"]
+    maxdims = shape_json["maxdims"]
+    rank = len(dims)
+    if len(maxdims) != rank:
+        raise ValueError("rank of maxdims does not match dataset")
+    for n in range(rank):
+        if maxdims[n] in (0, "H5S_UNLIMITED") or maxdims[n] > dims[n]:
+            return True
+    return False
+
+
+def getMaxDims(obj_json):
+    """
+    Get maxdims from a given shape.  Return [1,] for Scalar datasets
+
+    Use with H5S_NULL datasets will throw a ValueError
+    """
+
+    if not isinstance(obj_json, dict):
+        raise TypeError("expected a dict argument")
+
+    if "shape" in obj_json:
+        shape_json = obj_json["shape"]
+    else:
+        shape_json = obj_json
+
+    if "class" not in shape_json:
+        # should have at least this
+        raise KeyError(f"unexpected shape json: {shape_json}")
+    shape_class = shape_json["class"]
+    maxdims = None
+    if shape_class == "H5S_NULL":
+        return None
+    elif shape_class == "H5S_SCALAR":
+        maxdims = ()
+    elif shape_class == "H5S_SIMPLE":
+        if "maxdims" in shape_json:
+            maxdims = shape_json["maxdims"]
+        else:
+            maxdims = shape_json["dims"]
+    else:
+        msg = f"Unexpected shape class: {shape_class}"
+        raise ValueError(msg)
+    return tuple(maxdims)
