@@ -569,7 +569,6 @@ def guessChunk(shape, typesize, chunk_min=None, chunk_max=None):
 def generateLayout(
         shape_json,
         item_size=0,
-        has_filter=False,
         chunks=None,
         chunk_min=CHUNK_MIN,
         chunk_max=CHUNK_MAX,
@@ -583,14 +582,14 @@ def generateLayout(
 
     shape_class = getShapeClass(shape_json)
     if shape_class == "H5S_NULL":
-        if chunks or has_filter:
+        if chunks:
             raise ValueError("Null space datasets do not support chunking")
         return {}
 
     if shape_class == "H5S_SCALAR":
-        if chunks or has_filter:
+        if chunks:
             raise ValueError("Scalar datasets do not support chunking")
-        return {"class": "H5D_CONIGUOUS"}
+        return {"class": "H5D_CONTIGUOUS"}
 
     if chunk_min > chunk_max:
         msg = "chunk_max must be larger than chunk_min"
@@ -600,9 +599,9 @@ def generateLayout(
     shape_dims = getShapeDims(shape_json)
     rank = len(shape_dims)
     max_dims = getMaxDims(shape_json)
-    extensible = isExtensible(shape_dims, max_dims)
+    extensible = isExtensible(shape_json)
 
-    if dset_size < chunk_min and not extensible and not has_filter and not chunks:
+    if dset_size < chunk_min and not extensible and not chunks:
         # can just return a contiguous layout
         return {"class": "H5D_CONTIGUOUS"}
 
@@ -613,10 +612,12 @@ def generateLayout(
             chunk_dims = chunks
             if len(chunk_dims) != rank:
                 raise ValueError("given chunk dims do not agree with dataset rank")
+        else:
+            pass  # otherwise we'll guess a chunk shape below
     if not chunk_dims:
         kwargs = {"chunk_min": chunk_min, "chunk_max": chunk_max}
-        chunk_dims = getChunkDims(shape_json, item_size, **kwargs)
-    layout["dims"] = chunk_dims
+        chunk_dims = guessChunk(shape_json, item_size, **kwargs)
+    layout["dims"] = list(chunk_dims)
 
     # set partition_count if needed:
     if max_chunks_per_folder > 0:

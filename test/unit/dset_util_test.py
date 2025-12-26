@@ -13,7 +13,7 @@ import unittest
 import logging
 
 from h5json.filters import getFilterItem
-from h5json.dset_util import guessChunk, shrinkChunk, getChunkSize, expandChunk
+from h5json.dset_util import guessChunk, shrinkChunk, getChunkSize, expandChunk, generateLayout
 from h5json.dset_util import getDatasetLayoutClass, getContiguousLayout, getChunkDims
 from h5json.dset_util import validateChunkLayout, validateDatasetCreationProps, getDatasetLayout
 
@@ -358,6 +358,46 @@ class DsetUtilTest(unittest.TestCase):
         num_bytes = getChunkSize(expanded, typesize)
         self.assertTrue(num_bytes > CHUNK_MIN)
         self.assertTrue(num_bytes < CHUNK_MAX)
+
+    def testGenerateLayout(self):
+        typesize = 4
+        chunk_min = 4000
+        chunk_max = 8000
+        shape = {
+            "class": "H5S_SIMPLE",
+            "dims": [40, 20],
+        }
+        kwargs = {"chunk_min": chunk_min, "chunk_max": chunk_max}
+        layout = generateLayout(shape, typesize, **kwargs)
+        self.assertTrue("class" in layout)
+        self.assertEqual(layout["class"], "H5D_CONTIGUOUS")
+        self.assertFalse("dims" in layout)
+
+        layout = generateLayout(shape, typesize, chunks=True, **kwargs)
+        self.assertTrue("class" in layout)
+        self.assertEqual(layout["class"], "H5D_CHUNKED")
+        self.assertTrue("dims" in layout)
+        self.assertEqual(layout["dims"], [40, 20])
+
+        layout = generateLayout(shape, typesize, chunks=(20, 10), **kwargs)
+        self.assertTrue("class" in layout)
+        self.assertEqual(layout["class"], "H5D_CHUNKED")
+        self.assertTrue("dims" in layout)
+        self.assertEqual(layout["dims"], [20, 10])
+
+        shape = {
+            "class": "H5S_SIMPLE",
+            "dims": [0, 20],
+            "maxdims": [0, 20]
+        }
+        layout = generateLayout(shape, typesize, **kwargs)
+        self.assertTrue("class" in layout)
+        self.assertEqual(layout["class"], "H5D_CHUNKED")
+        self.assertTrue("dims" in layout)
+        dims = layout["dims"]
+        self.assertEqual(len(dims), 2)
+        self.assertTrue(dims[0] > 0)
+        self.assertTrue(dims[1] > 0)
 
     def testGetContiguousLayout(self):
         typesize = 4

@@ -33,7 +33,7 @@ FILTER_DEFS = (
     ("H5Z_FILTER_LZF", 32000, "lzf", ()),
     ("H5Z_FILTER_BLOSC", 32001, "blosclz", ()),
     ("H5Z_FILTER_SNAPPY", 32003, "snappy", ()),
-    ("H5Z_FILTER_LZ4", 32004, "lz4", ()),
+    ("H5Z_FILTER_LZ4", 32004, "lz4", ("level",)),
     ("H5Z_FILTER_LZ4HC", 32005, "lz4hc", ()),
     ("H5Z_FILTER_BITSHUFFLE", 32008, "bitshuffle", ()),
     ("H5Z_FILTER_ZSTD", 32015, "zstd", ()),
@@ -194,7 +194,11 @@ def getFilterItem(name, options={}):
     elif filter_class == "H5Z_FILTER_SNAPPY":
         pass  # no options
     elif filter_class == "H5Z_FILTER_LZ4":
-        pass  # no options
+        if "level" in options:
+            level_val = options["level"]
+            if level_val < 0 or level_val > 9:
+                msg = "Deflate filter level must be between 0 and 9"
+                raise ValueError(msg)
     elif filter_class == "H5Z_FILTER_LZ4HC":
         pass  # no options
     elif filter_class == "H5Z_FILTER_BITSHUFFLE":
@@ -224,7 +228,7 @@ def getFilterItem(name, options={}):
     return filter_json
 
 
-def validateFilter(filter_json, supported_filters=None):
+def validateFilter(filter_json):
     """ Check the given the given filter for create format,
         required options set.  Raise TypeError, KeyError or ValueError if not.
         If supported_filters is supplied, raise KeyError if a non-supported
@@ -275,7 +279,10 @@ def validateFilters(filters, supported_filters=None):
 
     # TBD: check given order of filters is supported
     for filter_json in filters:
-        validateFilter(filter_json, supported_filters=supported_filters)
+        validateFilter(filter_json)
+        filter_class = filter_json["class"]
+        if supported_filters and filter_class not in supported_filters:
+            raise ValueError(f"filter: {filter_class} not supported")
 
 
 def getFilters(dset_json):
@@ -296,4 +303,15 @@ def isCompressionFilter(filter):
 
 def getCompressionFilter(filters):
     """Return compression filter ids from filters, or None"""
-    return COMPRESSION_FILTER_IDS
+    for filter in filters:
+        if filter["class"] in COMPRESSION_FILTER_IDS:
+            return filter
+    return None
+
+
+def getShuffleFilter(filters):
+    """Return shuffle filter if present  or None"""
+    for filter in filters:
+        if filter["class"] == "H5Z_FILTER_SHUFFLE":
+            return filter
+    return None
