@@ -17,10 +17,11 @@ import h5py
 
 unit_tests = [
     "array_util_test",
+    "dset_util_test",
+    "filter_test",
     "objid_test",
     "hdf5dtype_test",
     "shape_util_test",
-    "dset_util_test",
     "hdf5db_test",
     "h5json_reader_test",
     "h5json_writer_test",
