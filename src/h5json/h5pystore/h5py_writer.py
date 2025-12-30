@@ -17,7 +17,11 @@ import time
 from ..objid import getCollectionForId, isValidUuid, createObjId
 from ..hdf5dtype import createDataType
 from ..h5py_util import is_reference, is_regionreference, has_reference, convert_dtype
+from ..shape_util import getShapeDims, getShapeClass, isExtensible, getMaxDims
 from ..array_util import jsonToArray
+from ..track_util import getTrackTimes
+from ..dset_util import getDatasetLayout, getFillValue
+from ..filters import isCompressionFilter, getFilters, getFilterItem
 from .. import selections
 from .. import filters
 from ..h5writer import H5Writer
@@ -153,106 +157,104 @@ class H5pyWriter(H5Writer):
         dtype = self.db.getDtype(dset_json)
 
         kwargs = {"dtype": dtype}
-        shape_json = dset_json["shape"]
-        shape_class = shape_json["class"]
+        shape_class = getShapeClass(dset_json)
         if shape_class == "H5S_NULL":
             # skip the shape keyword to create a null space dataset
             pass
         elif shape_class == "H5S_SCALAR":
             kwargs["shape"] = ()
         else:
-            kwargs["shape"] = shape_json["dims"]
-        if "dcpl" in dset_json and shape_class != "H5S_NULL":
-            creation_props = dset_json["dcpl"]
-            if "fillValue" in creation_props:
-                fillvalue = creation_props["fillValue"]
-                if fillvalue and len(dtype) > 1 and type(fillvalue) in (list, tuple):
-                    # for compound types, need to convert from list to dataset compatible element
+            shape = getShapeDims(dset_json)
+            kwargs["shape"] = shape
+            if isExtensible(dset_json):
+                maxshape = list(getMaxDims(dset_json))
+                # replace any 0, or H5S_UNLIMITED with None
+                for dim in range(len(maxshape)):
+                    if maxshape[dim] in (0, "H5S_UNLIMITED"):
+                        maxshape[dim] = None
+                kwargs["maxshape"] = tuple(maxshape)
 
-                    if len(dtype) != len(fillvalue):
-                        msg = "fillvalue has incorrect number of elements"
-                        self.log.warning(msg)
-                        raise ValueError(msg)
+        fillvalue = getFillValue(dset_json)
 
-                    fillvalue = jsonToArray((), dtype, fillvalue)
+        if fillvalue and len(dtype) > 1 and type(fillvalue) in (list, tuple):
+            # for compound types, need to convert from list to dataset compatible element
 
-                kwargs["fillvalue"] = fillvalue
+            if len(dtype) != len(fillvalue):
+                msg = "fillvalue has incorrect number of elements"
+                raise ValueError(msg)
 
-            if "trackTimes" in creation_props:
-                kwargs["track_times"] = creation_props["trackTimes"]
-            if "layout" in creation_props:
-                layout = creation_props["layout"]
-                if "dims" in layout:
-                    kwargs["chunks"] = tuple(layout["dims"])
-            if "filters" in creation_props:
-                filter_props = creation_props["filters"]
-                for filter_prop in filter_props:
-                    if "id" not in filter_prop:
-                        self.log.warning("filter id not provided")
-                        continue
-                    filter_id = filter_prop["id"]
-                    if filter_id not in filters._HDF_FILTERS:
-                        self.log.warning(f"unknown filter id: {filter_id} ignoring")
-                        continue
+            fillvalue = jsonToArray((), dtype, fillvalue)
 
-                    hdf_filter = filters._HDF_FILTERS[filter_id]
+        kwargs["fillvalue"] = fillvalue
 
-                    self.log.info(f"got filter: {filter_id}")
-                    if "alias" not in hdf_filter:
-                        self.log.warning(f"unsupported filter id: {filter_id} ignoring")
-                        continue
+        track_times = getTrackTimes(dset_json)
+        if track_times is not None:
+            kwargs["track_times"] = track_times
 
-                    filter_alias = hdf_filter["alias"]
-                    if not h5py.h5z.filter_avail(filter_id):
-                        msg = "compression filter not available, filter: {filter_alias}, ignoring"
-                        self.log.warning(msg)
-                        continue
-                    if filter_alias in filters._H5PY_COMPRESSION_FILTERS:
-                        if kwargs.get("compression"):
-                            msg = f"compression filter already set for {filter_alias}, ignoring"
-                            self.log.info(msg)
-                            continue
+        layout = getDatasetLayout(dset_json)
+        if layout and "dims" in layout:
+            kwargs["chunks"] = tuple(layout["dims"])
 
-                        kwargs["compression"] = filter_alias
-                        self.log.info("setting compression filter to: {filter_alias}")
-                        if filter_alias == "gzip":
-                            # check for an optional compression value
-                            if "level" in filter_prop:
-                                kwargs["compression_opts"] = filter_prop["level"]
-                        elif filter_alias == "szip":
-                            bitsPerPixel = None
+        filter_props = getFilters(dset_json)
+
+        for filter_prop in filter_props:
+            try:
+                getFilterItem(filter_prop)
+            except (KeyError, ValueError, TypeError):
+                self.log.warning(f"unknown filter: {filter_prop} ignoring")
+                continue
+            filter_class = filter_prop["class"]
+            filter_id = filter_prop["id"]
+            filter_name = filter_prop["name"]
+
+            if not h5py.h5z.filter_avail(filter_id):
+                msg = f"filter not available, filter: {filter_class}, ignoring"
+                self.log.warning(msg)
+                continue
+
+            if isCompressionFilter(filter_class):
+                if kwargs.get("compression"):
+                    msg = f"compression filter already set for {filter_class}, ignoring"
+                    self.log.info(msg)
+                    continue
+
+                kwargs["compression"] = filter_name
+                self.log.info(f"setting compression filter to: {filter_class}")
+                if filter_class == "H5Z_FILTER_DEFLATE":
+                    kwargs["compression"] = "gzip"  # h5py doesn't recognize 'deflate' name
+                    # check for an optional compression value
+                    if "level" in filter_prop:
+                        kwargs["compression_opts"] = filter_prop["level"]
+                elif filter_class == "H5Z_FILTER_SZIP":
+                    bitsPerPixel = None
+                    coding = "nn"
+
+                    if "bitsPerPixel" in filter_prop:
+                        bitsPerPixel = filter_prop["bitsPerPixel"]
+                    if "coding" in filter_prop:
+                        if filter_prop["coding"] == "H5_SZIP_EC_OPTION_MASK":
+                            coding = "ec"
+                        elif filter_prop["coding"] == "H5_SZIP_NN_OPTION_MASK":
                             coding = "nn"
-
-                            if "bitsPerPixel" in filter_prop:
-                                bitsPerPixel = filter_prop["bitsPerPixel"]
-                            if "coding" in filter_prop:
-                                if filter_prop["coding"] == "H5_SZIP_EC_OPTION_MASK":
-                                    coding = "ec"
-                                elif filter_prop["coding"] == "H5_SZIP_NN_OPTION_MASK":
-                                    coding = "nn"
-                                else:
-                                    self.log.warning("invalid szip option: 'coding'")
-                            # note: pixelsPerBlock, and pixelsPerScanline not supported by h5py,
-                            # so these options will be ignored
-                            if "pixelsPerBlock" in filter_props:
-                                self.log.info("ignoring szip option: 'pixelsPerBlock'")
-                            if "pixelsPerScanline" in filter_props:
-                                self.log.info("ignoring szip option: 'pixelsPerScanline'")
-                            if bitsPerPixel:
-                                kwargs["compression_opts"] = (coding, bitsPerPixel)
-                    else:
-                        if filter_alias == "shuffle":
-                            kwargs["shuffle"] = True
-                        elif filter_alias == "fletcher32":
-                            kwargs["fletcher32"] = True
-                        elif filter_alias == "scaleoffset":
-                            if "scaleOffset" not in filter_prop:
-                                msg = "No scale_offset provided for scale offset filter, ignoring"
-                                self.log(msg)
-                                continue
-                            kwargs["scaleoffset"] = filter_prop["scaleOffset"]
                         else:
-                            self.log.info(f"Unexpected filter name: {filter_alias}, ignoring")
+                            self.log.warning("invalid szip option: 'coding'")
+                        # note: pixelsPerBlock, and pixelsPerScanline not supported by h5py,
+                        # so these options will be ignored
+                    if "pixelsPerBlock" in filter_props:
+                        self.log.info("ignoring szip option: 'pixelsPerBlock'")
+                    if "pixelsPerScanline" in filter_props:
+                        self.log.info("ignoring szip option: 'pixelsPerScanline'")
+                    if bitsPerPixel:
+                        kwargs["compression_opts"] = (coding, bitsPerPixel)
+                elif filter_class == "H5Z_FILTER_SHUFFLE":
+                    kwargs["shuffle"] = True
+                elif filter_class == "H5Z_FILTER_FLETCHER32":
+                    kwargs["fletcher32"] = True
+                elif filter_class == "H5Z_FILTER_SCALEOFFSET":
+                    if "scaleOffset" in filter_prop:
+                        kwargs["scaleoffset"] = filter_prop["scaleOffset"]
+                else:
+                    self.log.warning(f"Ignoring filter: {filter_class}")
 
         dset = parent.create_dataset(name, **kwargs)
         return dset
@@ -332,12 +334,18 @@ class H5pyWriter(H5Writer):
             else:
                 self.log.warning(f"unexpected link class: {link_class}")
 
+    def resizeDataset(self, dset_id, dset):
+        """ Update the datasets shape """
+
+        dset_json = self.db.getObjectById(dset_id)
+        new_dims = getShapeDims(dset_json)
+        dset.resize(new_dims)
+
     def updateDatasetValues(self, dset_id, dset):
         """ write any pending dataset values """
-        dset_json = self.db.getObjectById(dset_id)
-        if "updates" not in dset_json:
-            return
-        updates = dset_json["updates"]
+
+        updates = self.db._getDatasetUpdates(dset_id)
+
         for (sel, val) in updates:
             slices = []
             for dim in range(len(sel.shape)):
@@ -436,11 +444,14 @@ class H5pyWriter(H5Writer):
                 obj = self._f[h5path]
                 self.updateAttributes(obj_id, obj)
                 collection = getCollectionForId(obj_id)
-                if collection == "datasets" and not self.no_data:
-                    if self._init:
-                        self.initializeDatasetValues(obj_id, obj)
-                    else:
-                        self.updateDatasetValues(obj_id, obj)
+                if collection == "datasets":
+                    if self.db.is_resized(obj_id):
+                        self.resizeDataset(obj_id, obj)
+                    if not self.no_data:
+                        if self._init:
+                            self.initializeDatasetValues(obj_id, obj)
+                        else:
+                            self.updateDatasetValues(obj_id, obj)
         # mark time write is complete
         # updates before this time will not need to be written
         # TBD: possible race condition with multithreading

@@ -15,7 +15,7 @@ import logging
 from h5json.filters import getFilterItem
 from h5json.dset_util import guessChunk, shrinkChunk, getChunkSize, expandChunk, generateLayout
 from h5json.dset_util import getDatasetLayoutClass, getContiguousLayout, getChunkDims
-from h5json.dset_util import validateChunkLayout, validateDatasetCreationProps, getDatasetLayout
+from h5json.dset_util import validateLayout, validateDatasetCreationProps, getDatasetLayout
 
 
 class DsetUtilTest(unittest.TestCase):
@@ -49,7 +49,7 @@ class DsetUtilTest(unittest.TestCase):
 
         # contigous layout with resizable shape should raise exception
         try:
-            validateChunkLayout(dset_json["shape"], type_json, layout)
+            validateLayout(dset_json["shape"], type_json, layout)
             self.assertTrue(False)  # should not reach here
         except ValueError:
             pass  # should raise exception
@@ -68,7 +68,7 @@ class DsetUtilTest(unittest.TestCase):
         self.assertEqual(layout_class, "H5D_CHUNKED")
 
         try:
-            validateChunkLayout(dset_json["shape"], type_json, layout)
+            validateLayout(dset_json["shape"], type_json, layout)
         except ValueError:
             self.assertTrue(False)  # shouldn't raise exception
 
@@ -186,7 +186,7 @@ class DsetUtilTest(unittest.TestCase):
         chunk_size = getChunkSize(layout, typesize)
         self.assertTrue(chunk_size <= chunk_max)
 
-        shape = {"class": "H5S_SIMPLE", "dims": [100, 0], "maxdims": [100, 0]}
+        shape = {"class": "H5S_SIMPLE", "dims": [100, 0], "maxdims": [100, "H5S_UNLIMITED"]}
         layout = guessChunk(shape, typesize)
         self.assertTrue(len(layout), 2)
         for i in range(2):
@@ -333,7 +333,7 @@ class DsetUtilTest(unittest.TestCase):
         shape = {
             "class": "H5S_SIMPLE",
             "dims": [1000, 10, 1000],
-            "maxdims": [1000, 0, 1000],
+            "maxdims": [1000, "H5S_UNLIMITED", 1000],
         }
         layout = (10, 10, 10)
         typesize = 4
@@ -360,37 +360,47 @@ class DsetUtilTest(unittest.TestCase):
         self.assertTrue(num_bytes < CHUNK_MAX)
 
     def testGenerateLayout(self):
-        typesize = 4
         chunk_min = 4000
         chunk_max = 8000
         shape = {
             "class": "H5S_SIMPLE",
             "dims": [40, 20],
         }
+        base_type = 'H5T_IEEE_F32LE'
+        type_json = {'class': 'H5T_FLOAT', 'base': base_type}
+
         kwargs = {"chunk_min": chunk_min, "chunk_max": chunk_max}
-        layout = generateLayout(shape, typesize, **kwargs)
+        layout = generateLayout(shape, type_json, **kwargs)
         self.assertTrue("class" in layout)
         self.assertEqual(layout["class"], "H5D_CONTIGUOUS")
         self.assertFalse("dims" in layout)
 
-        layout = generateLayout(shape, typesize, chunks=True, **kwargs)
+        layout = generateLayout(shape, type_json, chunks=True, **kwargs)
         self.assertTrue("class" in layout)
         self.assertEqual(layout["class"], "H5D_CHUNKED")
         self.assertTrue("dims" in layout)
         self.assertEqual(layout["dims"], [40, 20])
 
-        layout = generateLayout(shape, typesize, chunks=(20, 10), **kwargs)
+        layout = generateLayout(shape, type_json, chunks=(20, 10), **kwargs)
         self.assertTrue("class" in layout)
         self.assertEqual(layout["class"], "H5D_CHUNKED")
         self.assertTrue("dims" in layout)
         self.assertEqual(layout["dims"], [20, 10])
+
+        try:
+            # proposed chunk shape can't be larger than shape in
+            # any dimension
+            generateLayout(shape, type_json, chunks=(50, 10), **kwargs)
+            self.assertTrue(False)  # shouldn't get here
+        except ValueError:
+            pass  # expected
 
         shape = {
             "class": "H5S_SIMPLE",
             "dims": [0, 20],
             "maxdims": [0, 20]
         }
-        layout = generateLayout(shape, typesize, **kwargs)
+        layout = generateLayout(shape, type_json, **kwargs)
         self.assertTrue("class" in layout)
         self.assertEqual(layout["class"], "H5D_CHUNKED")
         self.assertTrue("dims" in layout)

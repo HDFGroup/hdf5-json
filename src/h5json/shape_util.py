@@ -48,11 +48,33 @@ def getShapeJson(dims, maxdims=None):
         shape_class = "H5S_SCALAR"
     else:
         shape_class = "H5S_SIMPLE"
+    if dims:
+        for extent in dims:
+            if not isinstance(extent, int):
+                raise TypeError("expected an integer value for dimensions")
+            if extent < 0:
+                raise ValueError("negative extent values are not supported")
+
     if maxdims is not None:
         if shape_class != "H5S_SIMPLE":
             raise ValueError(f"maxdims can not be used with shape class: {shape_class}")
         if len(maxdims) != len(dims):
             raise ValueError("maxdims must match dataspace rank")
+        # convert any 0 or None vlues to "H5S_UNLIMITED"
+        maxdims = list(tuple(maxdims))
+        for i in range(len(maxdims)):
+            extent = maxdims[i]
+            if extent is None or extent == 0:
+                maxdims[i] = "H5S_UNLIMITED"
+            elif isinstance(extent, str):
+                if extent != "H5S_UNLIMITED":
+                    raise ValueError(f"invalid maxdims extent: {extent}")
+            elif isinstance(extent, int):
+                if extent < 0:
+                    raise ValueError("negative extent values are not supported")
+            else:
+                raise TypeError("expected an integer value for maxdims")
+
     shape_json = {"class": shape_class}
     if shape_class == "H5S_SIMPLE":
         shape_json["dims"] = dims

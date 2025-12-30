@@ -13,9 +13,10 @@
 import numpy as np
 import logging
 from .hdf5dtype import getTypeItem, createDataType, Reference, special_dtype
+from .hdf5dtype import numpy_integer_types, numpy_float_types
 from .array_util import jsonToArray, bytesArrayToList
-from .dset_util import resize_dataset
-from .shape_util import getShapeClass, getShapeDims
+from .dset_util import resize_dataset, getDatasetLayoutClass
+from .shape_util import getShapeClass, getShapeDims, getShapeJson
 from .filters import validateFilters
 from .objid import createObjId, getCollectionForId, isValidUuid, getUuidFromId, getHashTagForId
 from . import selections
@@ -25,12 +26,38 @@ from .h5reader import H5Reader, H5NullReader
 from .h5writer import H5Writer, H5NullWriter
 
 
-def _getDatasetUpdates(dset_json):
-    """ return a list of value updates for the datset.
-        initalize one if not already present. """
-    if "updates" not in dset_json:
-        dset_json["updates"] = []
-    return dset_json["updates"]
+def _decode(item, encoding="ascii"):
+    """
+    decode any byte items to python 3 strings
+    """
+    ret_val = None
+    if type(item) is bytes:
+        ret_val = item.decode(encoding)
+    elif type(item) is list:
+        ret_val = []
+        for x in item:
+            ret_val.append(_decode(x, encoding))
+    elif type(item) is tuple:
+        ret_val = []
+        for x in item:
+            ret_val.append(_decode(x, encoding))
+        ret_val = tuple(ret_val)
+    elif type(item) is dict:
+        ret_val = {}
+        for k in dict:
+            ret_val[k] = _decode(item[k], encoding)
+    elif type(item) is np.ndarray:
+        x = item.tolist()
+        ret_val = []
+        for x in item:
+            ret_val.append(_decode(x, encoding))
+    elif type(item) in numpy_integer_types:
+        ret_val = int(item)
+    elif type(item) in numpy_float_types:
+        ret_val = float(item)
+    else:
+        ret_val = item
+    return ret_val
 
 
 class Hdf5db:
@@ -59,9 +86,11 @@ class Hdf5db:
 
         self._db = {}
 
-        self._new_objects = set()  # set of for newly created objects
-        self._dirty_objects = set()  # set of modified objects
-        self._deleted_objects = set()  # set of deleted objects
+        self._new_objects = set()       # set of for newly created objects
+        self._dirty_objects = set()     # set of modified objects
+        self._deleted_objects = set()   # set of deleted objects
+        self._resized_datasets = set()  # set of dataset ids that have been resized
+        self._dataset_updates = {}         # list of dataset values updates keyed by dset_id
 
         self._root_id = None
 
@@ -126,7 +155,18 @@ class Hdf5db:
         obj_id = getHashTagForId(obj_id)
         if self.is_new(obj_id):
             return True
+        if obj_id in self._resized_datasets:
+            return True
         return obj_id in self._dirty_objects
+
+    def is_resized(self, dset_id):
+        """ return true if this dataset has been resized """
+        dset_id = getHashTagForId(dset_id)
+
+        if dset_id in self._resized_datasets:
+            return True
+        else:
+            return False
 
     @property
     def new_objects(self):
@@ -140,6 +180,18 @@ class Hdf5db:
     def deleted_objects(self):
         return self._deleted_objects
 
+    @property
+    def resized_datsets(self):
+        return self._resized_datasets
+
+    def _getDatasetUpdates(self, dset_id):
+        """ Get list of update tuples """
+        if getCollectionForId(dset_id) != "datasets":
+            raise TypeError("expected dataset id")
+        if dset_id not in self._dataset_updates:
+            self._dataset_updates[dset_id] = []
+        return self._dataset_updates[dset_id]
+
     def make_dirty(self, obj_id):
         """ Mark the object as dirty and update the lastModified timestamp """
         obj_id = getHashTagForId(obj_id)
@@ -152,7 +204,7 @@ class Hdf5db:
         obj_json = self.db[obj_id]
         obj_json["lastModified"] = getNow()
         if not self.is_new(obj_id):
-            # object hasn't been initially written yet, add to dirt_object set
+            # object hasn't been initially written yet, add to dirty_object set
             self._dirty_objects.add(obj_id)
 
     def flush(self):
@@ -165,9 +217,11 @@ class Hdf5db:
             return False
 
         # reset new, dirty and deleted sets
-        self._new_objects = set()
-        self._dirty_objects = set()
-        self._deleted_objects = set()
+        self._new_objects.clear()
+        self._dirty_objects.clear()
+        self._deleted_objects.clear()
+        self._resized_datasets.clear()
+        self._dataset_updates.clear()
         return True
 
     def readAll(self):
@@ -587,7 +641,7 @@ class Hdf5db:
         else:
             cpl = {}
 
-        updates = _getDatasetUpdates(dset_json)
+        updates = self._getDatasetUpdates(dset_id)
 
         shape_class = getShapeClass(shape_json)
 
@@ -685,7 +739,7 @@ class Hdf5db:
             dims = getShapeDims(shape_json)
             if sel.shape != dims:
                 raise ValueError("Selection shape does not match dataset shape")
-        updates = _getDatasetUpdates(dset_json)
+        updates = self._getDatasetUpdates(dset_id)
         if sel.select_type == selections.H5S_SELECT_ALL:
             # for select all, throw out any existing updates since this will overwrite them
             updates.clear()
@@ -709,8 +763,22 @@ class Hdf5db:
         self.log.info(f"resizeDataset {dset_id}, {shape}")
 
         dset_json = self.getObjectById(dset_id)  # will throw exception if not found
-        if resize_dataset(dset_json, shape):
-            self._make_dirty(dset_id)
+        old_dims = getShapeDims(dset_json)
+        resize_dataset(dset_json, shape)
+
+        if dset_id not in self.new_objects:
+            self._resized_datasets.add(dset_id)
+
+        # if the shape has shrunk in any dimension, do a flush now
+        new_dims = getShapeDims(dset_json)
+        do_flush = False
+        for i in range(len(new_dims)):
+            if new_dims[i] < old_dims[i]:
+                do_flush = True
+                break
+
+        if do_flush:
+            self.flush()
 
     def deleteObject(self, obj_id):
         """ Delete the given object """
@@ -726,6 +794,9 @@ class Hdf5db:
 
         if obj_id in self._dirty_objects:
             self._dirty_objects.remove(obj_id)
+
+        if obj_id in self._resized_datasets:
+            self._resized_datasets.remove(obj_id)
 
         self._deleted_objects.add(obj_id)
 
@@ -859,22 +930,7 @@ class Hdf5db:
         if self.closed:
             raise ValueError("db is closed")
         type_json = getTypeItem(dtype)
-        if shape is None:
-            raise ValueError("shape not set")
-        elif shape == "H5S_NULL":
-            shape_json = {"class": "H5S_NULL"}
-        elif shape == ():
-            shape_json = {"class": "H5S_SCALAR"}
-        else:
-            shape_json = {"class": "H5S_SIMPLE"}
-            shape_json["dims"] = list(shape)
-
-        if maxdims:
-            if shape_json["class"] != "H5S_SIMPLE":
-                raise ValueError("only simple shapes can be resizable")
-            if len(shape) != len(maxdims):
-                raise ValueError("maxdims length not equal to shape rank")
-            shape_json["maxdims"] = ["H5S_UNLIMITED" if x is None else x for x in maxdims]
+        shape_json = getShapeJson(shape, maxdims=maxdims)
 
         dset_json = {"shape": shape_json, "type": type_json, "attributes": {}}
         if cpl:
@@ -885,9 +941,28 @@ class Hdf5db:
                     supported_filters = ()
                 # validate and normalize supplied filter property list
                 validateFilters(cpl["filters"], supported_filters=supported_filters)
+            if cpl.get("fillValue"):
+                fillvalue = cpl["fillValue"]
+                # is it compatible with the array type?
+                if hasattr(fillvalue, "tolist"):
+                    # convert numpy object to list
+                    fillvalue = fillvalue.tolist()
+                fillvalue = _decode(fillvalue)
+                if not isinstance(fillvalue, str) and hasattr(fillvalue, "__iter__"):
+                    # fill value is a list, or similar: check that dtype is compound
+                    if len(fillvalue) != len(dtype):
+                        raise ValueError("Invalid fill value for non-compound type dataset")
+                    fillvalue = list(fillvalue)
+                    cpl["fillValue"] = fillvalue
+                else:
+                    if type_json["class"] == "H5T_COMPOUND":
+                        raise ValueError("Invalid fill value for compound type dataset")
             dset_json["creationProperties"] = cpl
         else:
             dset_json["creationProperties"] = {}
+
+        if maxdims and getDatasetLayoutClass(dset_json) != "H5D_CHUNKED":
+            raise ValueError("Only datasets with 'H5D_CHUNKED' layout can be resizable")
         dset_json["created"] = getNow()
 
         dset_id = createObjId("datasets", root_id=self.root_id)

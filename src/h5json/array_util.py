@@ -15,7 +15,7 @@ import base64
 import binascii
 import numpy as np
 
-from .hdf5dtype import isVlen
+from .hdf5dtype import isVlen, is_float16_dtype, guess_dtype
 
 MAX_VLEN_ELEMENT = 1_000_000  # restrict largest vlen element to one million
 
@@ -471,6 +471,33 @@ def arrayToBytes(arr, encoding=None):
 
     if encoding:
         data = encodeData(data)
+    return data
+
+
+def array_for_new_object(data, specified_dtype=None):
+    """Prepare an array from data used to create a new dataset or attribute"""
+
+    # We mostly let HDF5 convert data as necessary when it's written.
+    # But if we are going to a float16 datatype, pre-convert in python
+    # to workaround a bug in the conversion.
+    # https://github.com/h5py/h5py/issues/819
+    if is_float16_dtype(specified_dtype):
+        as_dtype = specified_dtype
+    elif not isinstance(data, np.ndarray) and (specified_dtype is not None):
+        # If we need to convert e.g. a list to an array, don't leave numpy
+        # to guess a dtype we already know.
+        as_dtype = specified_dtype
+    else:
+        as_dtype = guess_dtype(data)
+
+    data = np.asarray(data, order="C", dtype=as_dtype)
+
+    # In most cases, this does nothing. But if data was already an array,
+    # and as_dtype is a tagged h5py dtype (e.g. for an object array of strings),
+    # asarray() doesn't replace its dtype object. This gives it the tagged dtype:
+    if as_dtype is not None:
+        data = data.view(dtype=as_dtype)
+
     return data
 
 

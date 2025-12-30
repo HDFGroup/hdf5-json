@@ -575,11 +575,13 @@ class Hdf5dbTest(unittest.TestCase):
         shape = (nrows, ncols)
         dtype = np.int32
         maxdims = (None, ncols * 2)
+        layout = {"class": "H5D_CHUNKED", "dims": shape}
+        cpl = {"layout": layout}
 
         db = Hdf5db(app_logger=self.log)
 
         root_id = db.open()
-        dset_id = db.createDataset(shape, maxdims=maxdims, dtype=dtype)
+        dset_id = db.createDataset(shape, maxdims=maxdims, dtype=dtype, cpl=cpl)
         db.createHardLink(root_id, "dset", dset_id)
         db.createAttribute(dset_id, "a1", "Hello, world")
 

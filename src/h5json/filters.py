@@ -16,6 +16,7 @@ from .hdf5dtype import isVlen
 
 DEFAULT_GZIP = 4
 DEFAULT_SZIP = 4
+DEFAULT_LZ4 = 1
 SO_INT_MINBITS_DEFAULT = 0
 
 # List of registered filters.  Not all are supported by every reader and writer.
@@ -97,7 +98,7 @@ def getFilterItem(name, options={}):
     filter_json = None
 
     if isinstance(name, dict):
-        filter_json = name
+        filter_json = name.copy()
         base_keys = ("class", "id", "name")
         for key in base_keys:
             if key not in filter_json:

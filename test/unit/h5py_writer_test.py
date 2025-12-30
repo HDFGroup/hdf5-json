@@ -199,6 +199,52 @@ class H5pyWriterTest(unittest.TestCase):
                         expected = i * j
                     self.assertEqual(dset[i, j], expected)
 
+    def testResizableDataset(self):
+        filepath = "test/unit/out/h5py_writer_test_testResizableDataset.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5pyWriter(filepath, no_data=False)
+
+        nrows = 8
+        ncols = 10
+        shape = (nrows, ncols)
+        dtype = np.int32
+        maxdims = (None, ncols * 2)
+        layout = {"class": "H5D_CHUNKED", "dims": (nrows, ncols)}
+        cpl = {"layout": layout}
+
+        root_id = db.open()
+        dset_id = db.createDataset(shape, maxdims=maxdims, dtype=dtype, cpl=cpl)
+        db.createHardLink(root_id, "dset", dset_id)
+        db.createAttribute(dset_id, "a1", "Hello, world")
+
+        # resize limited dimension
+        db.resizeDataset(dset_id, (nrows, ncols * 2))
+
+        # try to go beyond max extent
+        try:
+            db.resizeDataset(dset_id, (nrows, ncols * 3))
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+        db.close()
+
+        with h5py.File(filepath) as f:
+            dset = f["dset"]
+            self.assertEqual(dset.shape, (nrows, ncols * 2))
+
+        db.open()
+        # resize unlimited dimension
+        db.resizeDataset(dset_id, (nrows * 10, ncols))
+
+        db.close()
+
+        with h5py.File(filepath) as f:
+            dset = f["dset"]
+            self.assertEqual(dset.shape, (nrows * 10, ncols))
+
     def testNullSpaceAttribute(self):
 
         filepath = "test/unit/out/h5py_writer_test_testNullSpaceAttribute.h5"
