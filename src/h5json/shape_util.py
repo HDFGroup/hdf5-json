@@ -40,8 +40,8 @@ def getShapeJson(dims, maxdims=None):
         datasets) """
     if isinstance(dims, int):
         dims = (dims, )
-    if isinstance(maxdims, int):
-        maxdims = (maxdims, )
+    elif dims == "H5S_NULL":
+        dims = None
     if dims is None:
         shape_class = "H5S_NULL"
     elif len(dims) == 0:
@@ -58,6 +58,8 @@ def getShapeJson(dims, maxdims=None):
     if maxdims is not None:
         if shape_class != "H5S_SIMPLE":
             raise ValueError(f"maxdims can not be used with shape class: {shape_class}")
+        if isinstance(maxdims, int):
+            maxdims = (maxdims, )
         if len(maxdims) != len(dims):
             raise ValueError("maxdims must match dataspace rank")
         # convert any 0 or None vlues to "H5S_UNLIMITED"

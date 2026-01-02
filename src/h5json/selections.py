@@ -422,7 +422,6 @@ class SimpleSelection(Selection):
         start, count, step, scalar = _handle_simple(self._shape, args)
         self._sel = (start, count, step, scalar)
 
-        # self._id.select_hyperslab(start, count, step)
         self._select_type = H5S_SELECT_HYPERSLABS
 
         self._mshape = tuple(x for x, y in zip(count, scalar) if not y)

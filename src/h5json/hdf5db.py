@@ -181,7 +181,7 @@ class Hdf5db:
         return self._deleted_objects
 
     @property
-    def resized_datsets(self):
+    def resized_datasets(self):
         return self._resized_datasets
 
     def _getDatasetUpdates(self, dset_id):
@@ -769,8 +769,24 @@ class Hdf5db:
         if dset_id not in self.new_objects:
             self._resized_datasets.add(dset_id)
 
-        # if the shape has shrunk in any dimension, do a flush now
         new_dims = getShapeDims(dset_json)
+        rank = len(new_dims)
+
+        # adjust any selections in the update list
+        updates = self._getDatasetUpdates(dset_id)
+        for i in range(len(updates)):
+            (sel_update, arr) = updates[i]
+            if sel_update.select_type == selections.H5S_SELECT_HYPERSLABS:
+                slices = list(sel_update.slices)
+                for dim in range(rank):
+                    s = slices[dim]
+                    if s.stop > new_dims[dim]:
+                        # selection outside new bounds of dataset
+                        slices[dim] = slice(s.start, new_dims[dim], s.step)
+                sel_update = selections.select(new_dims, tuple(slices))
+                updates[i] = (sel_update, arr)
+
+        # if the shape has shrunk in any dimension, do a flush now
         do_flush = False
         for i in range(len(new_dims)):
             if new_dims[i] < old_dims[i]:

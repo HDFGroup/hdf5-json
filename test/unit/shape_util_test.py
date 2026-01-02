@@ -12,7 +12,7 @@
 import unittest
 import logging
 
-from h5json.shape_util import getShapeClass, getShapeDims, getNumElements, getRank
+from h5json.shape_util import getShapeClass, getShapeDims, getNumElements, getRank, getShapeJson
 from h5json.shape_util import isNullSpace, isScalar, getDataSize, isExtensible, getMaxDims
 
 
@@ -22,6 +22,64 @@ class ShapeUtilTest(unittest.TestCase):
         # main
         self.logger = logging.getLogger()
         self.logger.setLevel(logging.WARNING)
+
+    def testGetShape(self):
+
+        null_shape = getShapeJson("H5S_NULL")
+        self.assertTrue("class" in null_shape)
+        self.assertEqual(null_shape["class"], "H5S_NULL")
+        self.assertFalse("dims" in null_shape)
+        self.assertFalse("maxdims" in null_shape)
+
+        null_shape = getShapeJson(None)
+        self.assertTrue("class" in null_shape)
+        self.assertEqual(null_shape["class"], "H5S_NULL")
+        self.assertFalse("dims" in null_shape)
+        self.assertFalse("maxdims" in null_shape)
+
+        scalar_shape = getShapeJson(())
+        self.assertTrue("class" in scalar_shape)
+        self.assertEqual(scalar_shape["class"], "H5S_SCALAR")
+        self.assertTrue("dims" not in scalar_shape)
+        self.assertFalse("maxdims" in scalar_shape)
+
+        simple_shape = getShapeJson(42)
+        self.assertTrue("class" in simple_shape)
+        self.assertEqual(simple_shape["class"], "H5S_SIMPLE")
+        self.assertTrue("dims" in simple_shape)
+        self.assertEqual(simple_shape["dims"], (42, ))
+        self.assertFalse("maxdims" in simple_shape)
+
+        simple_shape = getShapeJson((42, ))
+        self.assertTrue("class" in simple_shape)
+        self.assertEqual(simple_shape["class"], "H5S_SIMPLE")
+        self.assertTrue("dims" in simple_shape)
+        self.assertEqual(simple_shape["dims"], (42, ))
+        self.assertFalse("maxdims" in simple_shape)
+
+        extendable_shape = getShapeJson((4, 5), maxdims=("H5S_UNLIMITED", 10))
+        self.assertTrue("class" in extendable_shape)
+        self.assertEqual(extendable_shape["class"], "H5S_SIMPLE")
+        self.assertTrue("dims" in extendable_shape)
+        self.assertEqual(extendable_shape["dims"], (4, 5))
+        self.assertTrue("maxdims" in extendable_shape)
+        self.assertTrue(extendable_shape["maxdims"], ("H5S_UNLIMITED", 10))
+
+        extendable_shape = getShapeJson((4, 5), maxdims=(None, 10))
+        self.assertTrue("class" in extendable_shape)
+        self.assertEqual(extendable_shape["class"], "H5S_SIMPLE")
+        self.assertTrue("dims" in extendable_shape)
+        self.assertEqual(extendable_shape["dims"], (4, 5))
+        self.assertTrue("maxdims" in extendable_shape)
+        self.assertTrue(extendable_shape["maxdims"], ("H5S_UNLIMITED", 10))
+
+        extendable_shape = getShapeJson((4, 5), maxdims=(0, 10))
+        self.assertTrue("class" in extendable_shape)
+        self.assertEqual(extendable_shape["class"], "H5S_SIMPLE")
+        self.assertTrue("dims" in extendable_shape)
+        self.assertEqual(extendable_shape["dims"], (4, 5))
+        self.assertTrue("maxdims" in extendable_shape)
+        self.assertTrue(extendable_shape["maxdims"], ("H5S_UNLIMITED", 10))
 
     def testSimple(self):
 
