@@ -145,6 +145,9 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertEqual(len(db.getAttributes(g1_id)), 2)
         a1_attr = db.getAttribute(g1_id, "a1")
         self.assertEqual(a1_attr["value"], "hello")
+        self.assertTrue("shape" in a1_attr)
+        attr_shape = a1_attr["shape"]
+        self.assertEqual(attr_shape["class"], "H5S_SCALAR")
 
         db.deleteAttribute(g1_id, "a1")
         self.assertEqual(len(db.getAttributes(g1_id)), 1)
@@ -480,8 +483,6 @@ class Hdf5dbTest(unittest.TestCase):
 
         # test select all write
         sel = selections.select(shape, ...)
-        print("got sel:", sel)
-        print(sel.select_type)
         arr = np.zeros(shape, dtype=dtype)
         arr[...] = 42
         db.setDatasetValues(dset_id, sel, arr)

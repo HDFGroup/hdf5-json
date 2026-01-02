@@ -215,7 +215,7 @@ class Hdf5db:
             # flush not successful, don't clear dirty set
             self.log.error("writer flush failed")
             return False
-
+        self.log.debug("clearing new, dirty, deleted sets")
         # reset new, dirty and deleted sets
         self._new_objects.clear()
         self._dirty_objects.clear()

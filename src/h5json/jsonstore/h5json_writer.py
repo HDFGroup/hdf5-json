@@ -17,6 +17,7 @@ import time
 from ..h5writer import H5Writer
 from ..objid import getUuidFromId, getCollectionForId, createObjId
 from ..array_util import bytesArrayToList
+from ..hdf5dtype import getItemSize
 from .. import selections
 
 
@@ -30,15 +31,20 @@ class H5JsonWriter(H5Writer):
         self,
         filepath,
         append=False,
-        no_data=False,
+        data_limit=None,
+        indent=4,
         app_logger=None
     ):
+        no_data = True if data_limit == 0 else False
         super().__init__(filepath, append=append, no_data=no_data, app_logger=app_logger)
         if append:
             raise ValueError("H5JsonWriter does not support append mode")
         self.alias_db = {}
         self.json = {}
+        self._data_limit = data_limit
         self._root_id = None
+        self._indent = indent
+        self._file_dumped = False
 
     def flush(self):
         """ Write dirty items """
@@ -49,7 +55,12 @@ class H5JsonWriter(H5Writer):
             raise IOError(msg)
 
         self.log.info("flush")
-        self.dumpFile()
+        if self._file_dumped:
+            self.log.info("flush: file already dumped, nothing to do")
+        else:
+            self.dumpFile()
+            self._file_dumped = True
+
         return True
 
     def open(self):
@@ -196,7 +207,8 @@ class H5JsonWriter(H5Writer):
         alias = self.getAliasList(obj_id)
         response["alias"] = alias
 
-        response["type"] = item["type"]
+        type_item = item["type"]
+        response["type"] = type_item
         shapeItem = item["shape"]
         shape_rsp = {}
         num_elements = 1
@@ -229,8 +241,15 @@ class H5JsonWriter(H5Writer):
         attributes = self.dumpAttributes(obj_id)
         if attributes:
             response["attributes"] = attributes
+        if self._data_limit is not None:
+            item_size = getItemSize(type_item)
+            if item_size == "H5T_VARIABLE":
+                item_size = 1024  # assume average size for variable length types
+            total_size = item_size * num_elements
 
-        if not self.no_data:
+            if total_size > self._data_limit:
+                self.log.info(f"skipping data dump for dataset {obj_id} with {num_elements} elements")
+        if self._data_limit is None or total_size <= self._data_limit:
             if num_elements > 0:
                 sel_all = selections.select(dims, ...)
                 arr = self.db.getDatasetValues(obj_id, sel_all)
@@ -287,10 +306,10 @@ class H5JsonWriter(H5Writer):
         self.dumpDatasets()
 
         self.dumpDatatypes()
-        indent = 4
+        indent = self._indent
         ensure_ascii = True
         if self._filepath:
-            with open('data.json', 'w', encoding='utf-8') as f:
+            with open(self._filepath, 'w', encoding='utf-8') as f:
                 json.dump(self.json, f, ensure_ascii=ensure_ascii, indent=indent)
         else:
             print(json.dumps(self.json, sort_keys=True, ensure_ascii=ensure_ascii, indent=indent))

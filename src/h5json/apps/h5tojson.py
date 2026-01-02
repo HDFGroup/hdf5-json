@@ -20,14 +20,22 @@ from h5json.h5pystore.h5py_reader import H5pyReader
 
 def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
-        print(f"usage: {sys.argv[0]} [-h] [--nodata] <hdf5_file>")
+        print(f"usage: {sys.argv[0]} [-h] [--nodata] [--data-limit n] <hdf5_file>")
         sys.exit(0)
 
-    no_data = False
+    data_limit = None
     filename = None
     for i in range(1, len(sys.argv)):
         if sys.argv[i] == "--nodata":
-            no_data = True
+            data_limit = 0
+        elif sys.argv[i] == "--data-limit":
+            i += 1
+            if i >= len(sys.argv):
+                sys.exit("Error: --data-limit requires a numeric argument")
+            try:
+                data_limit = int(sys.argv[i])
+            except ValueError:
+                sys.exit("Error: --data-limit requires a numeric argument")
         else:
             filename = sys.argv[i]
 
@@ -45,7 +53,7 @@ def main():
 
     db = Hdf5db(app_logger=log)
     db.reader = H5pyReader(filename, app_logger=log)
-    db.writer = H5JsonWriter(None, no_data=no_data, app_logger=log)
+    db.writer = H5JsonWriter(None, data_limit=data_limit, app_logger=log)
     db.open()  # read HDF5 data into db
     db.close()  # close will trigger write to json file
 

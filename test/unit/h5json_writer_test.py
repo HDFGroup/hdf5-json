@@ -11,10 +11,12 @@
 ##############################################################################
 import unittest
 import time
+from os.path import getsize
 import logging
 import numpy as np
 from h5json import Hdf5db
 from h5json.jsonstore.h5json_writer import H5JsonWriter
+
 from h5json.hdf5dtype import special_dtype, Reference
 from h5json import selections
 
@@ -44,7 +46,7 @@ class H5JsonWriterTest(unittest.TestCase):
 
     def testSimple(self):
 
-        filepath = "test/unit/out/h5json_writer_testSimple.h5"
+        filepath = "test/unit/out/h5json_writer_testSimple.json"
 
         db = Hdf5db(app_logger=self.log)
         db.writer = H5JsonWriter(filepath, app_logger=self.log)
@@ -71,12 +73,12 @@ class H5JsonWriterTest(unittest.TestCase):
         db.createExternalLink(g2_id, "extlink", "somewhere", "someplace")
         db.createCustomLink(g2_id, "cust", {"foo": "bar"})
         self.assertTrue(db.writer.lastModified is None)  # no update yet
-        db.flush()
+        db.close()
         self.assertTrue(db.writer.lastModified > 0)  # timestamp should be updated
 
     def testNullSpaceAttribute(self):
 
-        filepath = "test/unit/out/h5json_writer_testNullSpaceAttribute.h5"
+        filepath = "test/unit/out/h5json_writer_testNullSpaceAttribute.json"
 
         db = Hdf5db(app_logger=self.log)
         db.writer = H5JsonWriter(filepath, app_logger=self.log)
@@ -90,9 +92,10 @@ class H5JsonWriterTest(unittest.TestCase):
         self.assertTrue(item["created"] > time.time() - 1.0)
         value = db.getAttributeValue(root_id, "A1")
         self.assertEqual(value, None)
+        db.close()
 
     def testScalarAttribute(self):
-        filepath = "test/unit/out/h5json_writer_testScalarAttribute.h5"
+        filepath = "test/unit/out/h5json_writer_testScalarAttribute.json"
 
         db = Hdf5db(app_logger=self.log)
         db.writer = H5JsonWriter(filepath, app_logger=self.log)
@@ -116,9 +119,10 @@ class H5JsonWriterTest(unittest.TestCase):
 
         self.assertEqual(item_type["class"], "H5T_INTEGER")
         self.assertEqual(item_type["base"], "H5T_STD_I32LE")
+        db.close()
 
     def testFixedStringAttribute(self):
-        filepath = "test/unit/out/h5json_writer_testFixedStringAttribute.h5"
+        filepath = "test/unit/out/h5json_writer_testFixedStringAttribute.json"
 
         db = Hdf5db(app_logger=self.log)
         db.writer = H5JsonWriter(filepath, app_logger=self.log)
@@ -138,9 +142,10 @@ class H5JsonWriterTest(unittest.TestCase):
         self.assertTrue(item["created"] > now - 1)
         ret_value = db.getAttributeValue(root_id, "A1")
         self.assertEqual(ret_value, b'Hello, world!')
+        db.close()
 
     def testVlenAsciiAttribute(self):
-        filepath = "test/unit/out/h5json_writer_testVlenAsciiAttribute.h5"
+        filepath = "test/unit/out/h5json_writer_testVlenAsciiAttribute.json"
 
         db = Hdf5db(app_logger=self.log)
         db.writer = H5JsonWriter(filepath, app_logger=self.log)
@@ -163,9 +168,10 @@ class H5JsonWriterTest(unittest.TestCase):
         self.assertEqual(item["value"], "Hello, world!")
         now = int(time.time())
         self.assertTrue(item["created"] > now - 1)
+        db.close()
 
     def testVlenUtf8Attribute(self):
-        filepath = "test/unit/out/h5json_writer_testVlenutf8Attribute.h5"
+        filepath = "test/unit/out/h5json_writer_testVlenutf8Attribute.json"
 
         db = Hdf5db(app_logger=self.log)
         db.writer = H5JsonWriter(filepath, app_logger=self.log)
@@ -188,9 +194,10 @@ class H5JsonWriterTest(unittest.TestCase):
         self.assertEqual(item["value"], "Hello, world!")
         now = int(time.time())
         self.assertTrue(item["created"] > now - 1)
+        db.close()
 
     def testIntAttribute(self):
-        filepath = "test/unit/out/h5json_writer_testIntAttribute.h5"
+        filepath = "test/unit/out/h5json_writer_testIntAttribute.json"
 
         db = Hdf5db(app_logger=self.log)
         db.writer = H5JsonWriter(filepath, app_logger=self.log)
@@ -207,9 +214,10 @@ class H5JsonWriterTest(unittest.TestCase):
         item_type = item["type"]
         self.assertEqual(item_type["class"], "H5T_INTEGER")
         self.assertEqual(item_type["base"], "H5T_STD_I16LE")
+        db.close()
 
     def testCreateReferenceAttribute(self):
-        filepath = "test/unit/out/h5json_writer_testCreateReferenceAttribute.h5"
+        filepath = "test/unit/out/h5json_writer_testCreateReferenceAttribute.json"
 
         db = Hdf5db(app_logger=self.log)
         db.writer = H5JsonWriter(filepath, app_logger=self.log)
@@ -223,19 +231,22 @@ class H5JsonWriterTest(unittest.TestCase):
         ds1_ref = "datasets/" + dset_id
         value = [ds1_ref,]
         db.createAttribute(root_id, "A1", value, dtype=dt)
-        item = db.getAttribute(root_id, "A1")
         attr = db.getAttribute(root_id, "A1")
         self.assertTrue("shape" in attr)
+        shape = attr["shape"]
+        self.assertEqual(shape["class"], "H5S_SIMPLE")
+        self.assertEqual(shape["dims"], [1,])
 
         attr_type = attr["type"]
         self.assertEqual(attr_type["class"], "H5T_REFERENCE")
         self.assertEqual(attr_type["base"], "H5T_STD_REF_OBJ")
-        attr_value = item["value"]
+        attr_value = attr["value"]
         self.assertEqual(len(attr_value), 1)
         self.assertEqual(attr_value[0], ds1_ref)
+        db.close()
 
     def testCreateVlenReferenceAttribute(self):
-        filepath = "test/unit/out/h5json_writer_testVlenReferenceAttribute.h5"
+        filepath = "test/unit/out/h5json_writer_testVlenReferenceAttribute.json"
 
         db = Hdf5db(app_logger=self.log)
         db.writer = H5JsonWriter(filepath, app_logger=self.log)
@@ -268,9 +279,10 @@ class H5JsonWriterTest(unittest.TestCase):
 
         item_shape = item["shape"]
         self.assertEqual(item_shape["class"], "H5S_SCALAR")
+        db.close()
 
     def testCommittedType(self):
-        filepath = "test/unit/out/h5json_writer_testCommittedType.h5"
+        filepath = "test/unit/out/h5json_writer_testCommittedType.json"
 
         db = Hdf5db(app_logger=self.log)
         db.writer = H5JsonWriter(filepath, app_logger=self.log)
@@ -299,9 +311,10 @@ class H5JsonWriterTest(unittest.TestCase):
         self.assertEqual(attr_type["class"], "H5T_STRING")
         self.assertEqual(attr_type["length"], 15)
         self.assertEqual(attr_type["charSet"], "H5T_CSET_ASCII")
+        db.close()
 
     def testCommittedCompoundType(self):
-        filepath = "test/unit/out/h5json_writer_testCommittedCompoundType.h5"
+        filepath = "test/unit/out/h5json_writer_testCommittedCompoundType.json"
 
         db = Hdf5db(app_logger=self.log)
         db.writer = H5JsonWriter(filepath, app_logger=self.log)
@@ -340,6 +353,64 @@ class H5JsonWriterTest(unittest.TestCase):
 
         value = db.getAttributeValue(root_id, "A1")
         self.assertTrue(isinstance(value, np.ndarray))
+        db.close()
+
+    def testNoData(self):
+
+        def init_db(db):
+            root_id = db.getObjectIdByPath("/")
+            db.createAttribute(root_id, "attr1", value=[1, 2, 3, 4])
+            db.createAttribute(root_id, "attr2", 42)
+            g1_id = db.createGroup()
+            db.createHardLink(root_id, "g1", g1_id)
+            g2_id = db.createGroup()
+            db.createHardLink(root_id, "g2", g2_id)
+
+            g1_1_id = db.createGroup()
+            db.createHardLink(g1_id, "g1.1", g1_1_id)
+            dset_111_id = db.createDataset(shape=(10, 10), dtype=np.int32)
+            arr = np.zeros((10, 10), dtype=np.int32)
+            for i in range(10):
+                for j in range(10):
+                    arr[i, j] = i * j
+            sel_all = selections.select((10, 10), ...)
+            db.setDatasetValues(dset_111_id, sel_all, arr)
+            dset_0_id = db.createDataset(shape=(), dtype=np.int32)
+            arr = np.zeros((), dtype=np.int32)
+            arr[()] = 42
+            sel_all = selections.select((), ...)
+            db.setDatasetValues(dset_0_id, sel_all, arr)
+            db.createHardLink(g1_1_id, "dset1.1.1", dset_111_id)
+            db.createHardLink(g1_1_id, "dset0", dset_0_id)
+            db.createSoftLink(g2_id, "slink", "somewhere")
+            db.createExternalLink(g2_id, "extlink", "somewhere", "someplace")
+            db.createCustomLink(g2_id, "cust", {"foo": "bar"})
+
+        def save_json(filepath, data_limit=None):
+            db = Hdf5db(app_logger=self.log)
+            kwargs = {"indent": 2, "app_logger": self.log}
+            db.writer = H5JsonWriter(filepath, data_limit=data_limit, **kwargs)
+            db.open()
+            init_db(db)
+            db.close()
+            file_size = getsize(filepath)
+            return file_size
+
+        file_prefix = "test/unit/out/h5json_writer_testNoData_"
+
+        size_with_data = save_json(file_prefix + "withData.json", data_limit=None)
+        # should be close to 4640
+        self.assertTrue(size_with_data > 4000)
+
+        size_without_data = save_json(file_prefix + "withoutData.json", data_limit=0)
+        # should be close to 3038
+        self.assertTrue(size_without_data > 3000)
+        self.assertTrue(size_without_data < 4000)
+
+        size_with_smalldata = save_json(file_prefix + "withSmallData.json", data_limit=100)
+        # should be close to 3057
+        self.assertTrue(size_with_smalldata > size_without_data)
+        self.assertTrue(size_with_smalldata < size_with_data)
 
 
 if __name__ == "__main__":
