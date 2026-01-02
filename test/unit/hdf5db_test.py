@@ -478,6 +478,23 @@ class Hdf5dbTest(unittest.TestCase):
                 self.assertEqual(val.shape, (1, 1))
                 self.assertEqual(val[0, 0], i * 10 + j)
 
+        # test select all write
+        sel = selections.select(shape, ...)
+        print("got sel:", sel)
+        print(sel.select_type)
+        arr = np.zeros(shape, dtype=dtype)
+        arr[...] = 42
+        db.setDatasetValues(dset_id, sel, arr)
+        arr = db.getDatasetValues(dset_id, sel)
+        for i in range(nrows):
+            for j in range(ncols):
+                self.assertEqual(arr[i, j], 42)
+
+        # try with broadcasting
+        arr_one_value = np.zeros((1, 1), dtype=dtype)
+        arr_one_value[0, 0] = 7
+        db.setDatasetValues(dset_id, sel, arr_one_value)
+
         db.close()
 
     def testStringDataset(self):

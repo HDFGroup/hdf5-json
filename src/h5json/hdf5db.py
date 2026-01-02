@@ -753,7 +753,7 @@ class Hdf5db:
             if sel.select_type != selections.H5S_SELECT_HYPERSLABS:
                 raise ValueError("tbd")
             arr = arr.reshape(sel.mshape)
-        updates.append((sel, arr.copy()))
+        updates.append((sel, arr))
         self.make_dirty(dset_id)
 
     def resizeDataset(self, dset_id, shape):

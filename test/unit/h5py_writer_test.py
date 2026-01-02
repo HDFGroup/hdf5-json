@@ -97,12 +97,13 @@ class H5pyWriterTest(unittest.TestCase):
         g1_1_id = db.createGroup()
         db.createHardLink(g1_id, "g1.1", g1_1_id)
         dset_111_id = db.createDataset(shape=(10, 10), dtype=np.int32)
-        arr = np.zeros((10, 10), dtype=np.int32)
-        for i in range(10):
-            for j in range(10):
-                arr[i, j] = i * j
+
+        # try setting dset values with broadcasting
+        arr_one_value = np.zeros((1, 1), dtype=np.int32)
+        arr_one_value[0, 0] = 42
         sel_all = selections.select((10, 10), ...)
-        db.setDatasetValues(dset_111_id, sel_all, arr)
+        db.setDatasetValues(dset_111_id, sel_all, arr_one_value)
+
         db.createHardLink(g1_1_id, "dset1.1.1", dset_111_id)
         db.createSoftLink(g2_id, "slink", "somewhere")
         db.createExternalLink(g2_id, "extlink", "somewhere", "someplace")
@@ -126,11 +127,28 @@ class H5pyWriterTest(unittest.TestCase):
             self.assertEqual(dset.shape, (10, 10))
             for i in range(10):
                 for j in range(10):
-                    self.assertEqual(dset[i, j], i * j)
+                    self.assertEqual(dset[i, j], 42)
             self.assertTrue("g2" in f)
             g2 = f["g2"]
             self.assertTrue("extlink" in g2)
             self.assertTrue("slink" in g2)
+
+        # write dataset values element by element
+        db.open()
+        arr = np.zeros((10, 10), dtype=np.int32)
+        for i in range(10):
+            for j in range(10):
+                arr[i, j] = i * j
+        sel_all = selections.select((10, 10), ...)
+        db.setDatasetValues(dset_111_id, sel_all, arr)
+        db.close()
+
+        # verify changes in h5py
+        with h5py.File(filepath) as f:
+            dset = f["/g1/g1.1/dset1.1.1"]
+            for i in range(10):
+                for j in range(10):
+                    self.assertEqual(dset[i, j], i * j)
 
         db.open()
         db.createAttribute(g1_id, "a1", "hello")
