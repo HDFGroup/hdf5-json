@@ -256,7 +256,7 @@ def validateLayout(shape_json, type_json, layout):
             if max_dims is None:
                 if chunk_extent > dim_extent:
                     msg = "Invalid layout value"
-                    raise ValueError(reason=msg)
+                    raise ValueError(msg)
             elif max_dims[i] not in (0, "H5S_UNLIMITED"):
                 if chunk_extent > max_dims[i]:
                     msg = "Invalid layout value for extensible dimension"
