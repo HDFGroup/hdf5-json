@@ -30,6 +30,3 @@ from .objid import getObjId
 from .objid import isSchema2Id
 from .objid import isRootObjId
 from .hdf5db import Hdf5db
-from . import _version
-
-__version__ = _version.__version__
