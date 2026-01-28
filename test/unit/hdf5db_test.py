@@ -164,6 +164,7 @@ class Hdf5dbTest(unittest.TestCase):
         shape_item = item["shape"]
         self.assertTrue("class" in shape_item)
         self.assertEqual(shape_item["class"], "H5S_NULL")
+        self.assertFalse("value" in item)
         self.assertTrue(item["created"] > time.time() - 1.0)
         value = db.getAttributeValue(root_id, "A1")
         self.assertEqual(value, None)

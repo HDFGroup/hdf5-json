@@ -574,7 +574,7 @@ class Hdf5db:
         else:
             value_json = None
 
-        if shape is None:
+        if shape is None and value is not None:
             shape = value.shape
         if shape == "H5S_NULL":
             shape_json = {"class": "H5S_NULL"}
@@ -588,7 +588,9 @@ class Hdf5db:
         attrs_json = obj_json["attributes"]
         type_json = getTypeItem(dtype)
         # finally put it all together...
-        attr_json = {"shape": shape_json, "type": type_json, "value": value_json}
+        attr_json = {"shape": shape_json, "type": type_json}
+        if shape != "H5S_NULL":
+            attr_json["value"] = value_json
         attr_json["created"] = getNow()
 
         # slot into the obj_json["attrs"]

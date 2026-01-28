@@ -234,7 +234,8 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertTrue("vlen" in out.dtype.metadata)
         self.assertEqual(out.dtype.metadata["vlen"], bytes)
         self.assertEqual(out.dtype.kind, "O")
-        self.assertEqual(out[2], "three")
+        e = out[2]
+        self.assertEqual(e, "three".encode())
 
         # test utf8 strings
         dt = np.dtype("S26")
@@ -277,9 +278,13 @@ class ArrayUtilTest(unittest.TestCase):
         # VLEN data
         shape = []
         dt = special_dtype(vlen=np.dtype("S10"))
-        data = ["foo", "bar"]
+        data = [("foo", "bar")]
         out = jsonToArray(shape, dt, data)
+
         self.assertTrue(isinstance(out, np.ndarray))
+        self.assertEqual(out.shape, ())
+        self.assertEqual(out[()][0], b'foo')
+        self.assertEqual(out[()][1], b'bar')
 
         dt = special_dtype(vlen=np.dtype("int32"))
         shape = [4, ]
@@ -298,8 +303,11 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(check_dtype(vlen=out.dtype), np.dtype("int32"))
         for i in range(4):
             e = out[i]  # .tolist()
-            self.assertTrue(isinstance(e, tuple))
-            self.assertEqual(e, tuple(range(1, i + 2)))
+            self.assertTrue(isinstance(e, np.ndarray))
+            self.assertEqual(e.shape, (i + 1,))
+            self.assertEqual(e.dtype, np.dtype("int32"))
+            for j in range(i + 1):
+                self.assertEqual(e[j], j + 1)
 
         # VLEN 2D data
         dt = special_dtype(vlen=np.dtype("int32"))
@@ -321,10 +329,18 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(out.shape, (2, 2))
         self.assertEqual(out.dtype.kind, "O")
         self.assertEqual(check_dtype(vlen=out.dtype), np.dtype("int32"))
-        for i in range(2):
-            for j in range(2):
-                e = out[i, j]  # .tolist()
-                self.assertTrue(isinstance(e, tuple))
+        e = out[0, 0]
+        self.assertTrue(isinstance(e, np.ndarray))
+        self.assertEqual(list(e), [0])
+        e = out[0, 1]
+        self.assertTrue(isinstance(e, np.ndarray))
+        self.assertEqual(list(e), [1, 2])
+        e = out[1, 0]
+        self.assertTrue(isinstance(e, np.ndarray))
+        self.assertEqual(list(e), [1])
+        e = out[1, 1]
+        self.assertTrue(isinstance(e, np.ndarray))
+        self.assertEqual(list(e), [2, 3])
 
         # create VLEN of obj ref's
         ref_type = {"class": "H5T_REFERENCE", "base": "H5T_STD_REF_OBJ"}
@@ -352,14 +368,14 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(check_dtype(vlen=out.dtype), np.dtype("S48"))
 
         e = out[0]
-        self.assertTrue(isinstance(e, tuple))
-        self.assertEqual(e, (id0,))
+        self.assertTrue(isinstance(e, np.ndarray))
+        self.assertEqual(list(e), [id0,])
         e = out[1]
-        self.assertTrue(isinstance(e, tuple))
-        self.assertEqual(e, (id0, id1))
+        self.assertTrue(isinstance(e, np.ndarray))
+        self.assertEqual(list(e), [id0, id1])
         e = out[2]
-        self.assertTrue(isinstance(e, tuple))
-        self.assertEqual(e, (id0, id1, id2))
+        self.assertTrue(isinstance(e, np.ndarray))
+        self.assertEqual(list(e), [id0, id1, id2])
 
         # compound type
         dt = np.dtype([("a", "i4"), ("b", "S5")])
@@ -939,7 +955,6 @@ class ArrayUtilTest(unittest.TestCase):
             """ compare two values element by element."""
             if type(a) in (list, tuple, np.void, np.ndarray):
                 if len(a) != len(b):
-                    print("number of elements doesn't match")
                     return False
                 nelements = len(a)
                 for i in range(nelements):
@@ -999,15 +1014,16 @@ class ArrayUtilTest(unittest.TestCase):
         data = [[42, "Hello"], [0, 0], [0, 0], [84, "Bye"]]
         arr = jsonToArray(shape, dt, data)
         self.assertTrue(isinstance(arr, np.ndarray))
+        self.assertEqual(tuple(arr[0]), (42, 'Hello'))
+        self.assertEqual(tuple(arr[3]), (84, 'Bye'))
         buffer = arrayToBytes(arr)
         self.assertEqual(len(buffer), 40)
 
         expected = bytearray(40)
-        expected[0:8] = b"*\x00\x00\x00\x05\x00\x00\x00"
-        expected[8:19] = b"Hello\x00\x00\x00\x00\x00\x00"
-        expected[19:26] = b"\x00\x00\x00\x00\x00\x00\x00"
-        expected[26:40] = b"\x00\x00\x00T\x00\x00\x00\x03\x00\x00\x00Bye"
-
+        expected[0:10] = b'*\x00\x00\x00\x05\x00\x00\x00He'
+        expected[10:20] = b'llo\x00\x00\x00\x00\x00\x00\x00'
+        expected[20:30] = b'\x00\x00\x00\x00\x00\x00\x00\x00\x00T'
+        expected[30:40] = b'\x00\x00\x00\x03\x00\x00\x00Bye'
         self.assertEqual(buffer, expected)
 
         # convert back to array
@@ -1219,16 +1235,14 @@ class ArrayUtilTest(unittest.TestCase):
 
     def testJsonToArrayOnNoneArray(self):
         data_dtype = np.dtype("i4")
-        data_shape = [0, ]
-        data_json = [None]
+        data_shape = [3, ]
+        data_json = [None, None, None]
         arr = None
-
         try:
             arr = jsonToArray(data_shape, data_dtype, data_json)
         except Exception as e:
             print(f"Exception while testing jsonToArray on array with None elements: {e}")
-
-        self.assertTrue(len(arr) == 0)
+        self.assertEqual(arr.shape, (3, ))
         self.assertTrue(arr.dtype == data_dtype)
 
     def testGetBroadcastShape(self):
@@ -1259,7 +1273,7 @@ class ArrayUtilTest(unittest.TestCase):
 
         arr = jsonToArray(shape, dt, data)
 
-        self.assertEqual(len(arr), 0)
+        self.assertEqual(arr.shape, (1,))
         self.assertEqual(arr.dtype, dt)
 
 

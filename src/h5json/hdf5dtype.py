@@ -235,7 +235,7 @@ def check_dtype(**kwds):
     name, dt = kwds.popitem()
 
     if name not in ("vlen", "enum", "ref"):
-        raise TypeError('Unknown special type "%s"' % name)
+        raise TypeError(f"Unknown special type {name}")
 
     try:
         return dt.metadata[name]
@@ -341,11 +341,7 @@ def getTypeItem(dt, metadata=None):
         # vlen string or data
         #
         # check for h5py variable length extension
-        vlen_check = None
-        if metadata and "vlen" in metadata:
-            vlen_check = metadata["vlen"]
-            if vlen_check is not None and not isinstance(vlen_check, np.dtype):
-                vlen_check = np.dtype(vlen_check)
+        vlen_check = vlenBaseType(dt)
 
         if metadata and "ref" in metadata:
             ref_check = metadata["ref"]
@@ -507,6 +503,21 @@ def isVlen(dt):
         if dt.base.metadata and "vlen" in dt.base.metadata:
             is_vlen = True
     return is_vlen
+
+
+def vlenBaseType(dt):
+    """
+    Return the base dtype of a vlen, otherwise none
+    """
+    if len(dt):
+        raise TypeError("BaseType can't be deterined for compound type")
+    if dt.base.metadata and "vlen" in dt.base.metadata:
+        base_dt = dt.base.metadata["vlen"]
+        if base_dt not in (bytes, str):
+            base_dt = np.dtype(base_dt)
+    else:
+        base_dt = None
+    return base_dt
 
 
 def isOpaqueDtype(dt):

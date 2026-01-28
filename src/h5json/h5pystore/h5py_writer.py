@@ -15,7 +15,7 @@ from os import stat as os_stat
 import time
 
 from ..objid import getCollectionForId, isValidUuid, createObjId
-from ..hdf5dtype import createDataType
+from ..hdf5dtype import createDataType, isVlen, vlenBaseType
 from ..h5py_util import is_reference, is_regionreference, has_reference, convert_dtype
 from ..shape_util import getShapeDims, getShapeClass, isExtensible, getMaxDims
 from ..array_util import jsonToArray
@@ -140,6 +140,32 @@ class H5pyWriter(H5Writer):
                 e = src_arr_flat[i]
                 element = self._copy_element(e, src_arr.dtype, tgt_dt, fout=fout)
                 tgt_arr_flat[i] = element
+            tgt_arr = tgt_arr_flat.reshape(src_arr.shape)
+        elif len(src_arr.dtype) == 0 and isVlen(src_arr.dtype) and vlenBaseType(src_arr.dtype) in (bytes, str):
+            # vlen strings need elements converted to Python str for h5py
+            count = int(np.prod(src_arr.shape))
+            tgt_dt = h5py.special_dtype(vlen=str)
+            tgt_arr = np.zeros(src_arr.shape, dtype=tgt_dt)
+            tgt_arr_flat = tgt_arr.reshape((count,))
+            src_arr_flat = src_arr.reshape((count,))
+            for i in range(count):
+                e = src_arr_flat[i]
+                if isinstance(e, str):
+                    tgt_arr_flat[i] = e
+                elif isinstance(e, bytes):
+                    tgt_arr_flat[i] = e.decode('utf-8')
+                elif isinstance(e, np.ndarray) and e.dtype.kind == 'S':
+                    # numpy byte string array - convert to Python string
+                    tgt_arr_flat[i] = e.item().decode('utf-8')
+                elif isinstance(e, np.ndarray) and e.dtype.kind == 'U':
+                    # numpy unicode array - get Python string
+                    tgt_arr_flat[i] = e.item()
+                elif isinstance(e, np.bytes_):
+                    tgt_arr_flat[i] = e.decode('utf-8')
+                elif isinstance(e, np.str_):
+                    tgt_arr_flat[i] = str(e)
+                else:
+                    tgt_arr_flat[i] = e
             tgt_arr = tgt_arr_flat.reshape(src_arr.shape)
         else:
             # can just copy the entire array
@@ -366,6 +392,7 @@ class H5pyWriter(H5Writer):
         sel_all = selections.select(dset.shape, ...)
         arr = self.db.getDatasetValues(dset_id, sel_all)
         if arr is not None:
+            arr = self._copy_array(arr, fout=dset.file)
             dset[...] = arr
 
     def createAttribute(self, obj, name, attr_json):

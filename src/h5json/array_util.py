@@ -15,7 +15,7 @@ import base64
 import binascii
 import numpy as np
 
-from .hdf5dtype import isVlen, is_float16_dtype, guess_dtype
+from .hdf5dtype import isVlen, is_float16_dtype, guess_dtype, vlenBaseType
 
 MAX_VLEN_ELEMENT = 1_000_000  # restrict largest vlen element to one million
 
@@ -108,8 +108,6 @@ def jsonToArray(data_shape, data_dtype, data_json):
     Return numpy array from the given json array.
     """
 
-    # print(f"jsonToArray - data_shape: {data_shape} dtype: {data_dtype} data: {data_json}")
-
     def get_array(data, rank, dtype):
         # helper function to create an array with encoding if needed
         try:
@@ -120,28 +118,72 @@ def jsonToArray(data_shape, data_dtype, data_json):
             arr = np.array(data, dtype=dtype)
         return arr
 
+    def fillVlenArray(rank, data, arr, index):
+        for i in range(len(data)):
+            if rank > 1:
+                index = fillVlenArray(rank - 1, data[i], arr, index)
+            elif len(arr.dtype) > 0:
+                # deal with compound dtype
+                element_data = data[i]
+                arr_element = []
+                for j in range(len(arr.dtype)):
+                    compound_data = element_data[j]
+                    compound_dtype = arr.dtype[j]
+                    if isVlen(compound_dtype):
+                        base_dt = vlenBaseType(compound_dtype)
+                        if base_dt is str and isinstance(compound_data, bytes):
+                            compound_data = compound_data.decode('utf8')
+                        if base_dt in (str, bytes):
+                            arr_element.append(compound_data)
+                        else:
+                            arr_element.append(np.array(compound_data, base_dt))
+                    else:
+                        arr_element.append(compound_data)
+                arr[i] = tuple(arr_element)
+                index += 1
+            else:
+                base_dt = vlenBaseType(arr.dtype)
+                element_data = data[i]
+                # If base dtype is str and data is bytes, decode it first
+                if base_dt is str and isinstance(element_data, bytes):
+                    element_data = element_data.decode('utf8')
+                arr_element = np.array(element_data, base_dt)
+                arr[index] = arr_element
+                index += 1
+        return index
+
     if data_json is None:
-        return np.array([]).astype(data_dtype)
+        return np.array(data_shape).astype(data_dtype)
 
-    if isinstance(data_json, (list, tuple)):
-        if None in data_json:
-            return np.array([]).astype(data_dtype)
-
-    # need some special conversion for compound types --
-    # each element must be a tuple, but the JSON decoder
-    # gives us a list instead.
-    if len(data_dtype) > 0 and not isinstance(data_json, (list, tuple)):
-        raise TypeError("expected list data for compound data type")
     npoints = getNumElements(data_shape)
     np_shape_rank = len(data_shape)
 
-    if type(data_json) in (list, tuple):
-        data_json = toTuple(np_shape_rank, data_json)
+    was_list_input = type(data_json) in (list, tuple)
+    if was_list_input:
+        converted_data = []
+        if npoints == 1 and len(data_json) == len(data_dtype):
+            converted_data.append(toTuple(0, data_json))
+        else:
+            converted_data = toTuple(np_shape_rank, data_json)
+        data_json = converted_data
+    else:
+        if isinstance(data_json, str):
+            data_json = data_json.encode("utf8")
+        data_json = [data_json,]  # listify
 
     if isVlen(data_dtype):
-        # for vlen data we need to initialize of zero numpy array to ensure the right shape
+        # For scalar vlen where input was a list with multiple items (e.g. ['ref1', 'ref2']
+        # for vlen refs), the items represent vlen contents for the single scalar, not
+        # separate array elements. Wrap so fillVlenArray sees one element.
+        # Skip wrapping if already has 1 element (e.g. [('foo', 'bar')] is already correct).
+        if np_shape_rank == 0 and len(data_dtype) == 0 and was_list_input and len(data_json) > 1:
+            data_json = [data_json]
+        # for vlen data we need to initialize a zero numpy array to ensure the right shape
+        arr = np.zeros((npoints,), dtype=data_dtype)
+        fillVlenArray(np_shape_rank, data_json, arr, 0)
+    elif all(e is None for e in data_json):
+        # just create a zero array
         arr = np.zeros(data_shape, dtype=data_dtype)
-        arr[...] = data_json
     else:
         try:
             arr = get_array(data_json, np_shape_rank, data_dtype)
