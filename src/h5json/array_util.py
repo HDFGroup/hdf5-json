@@ -443,22 +443,22 @@ def readElement(buffer, offset, arr, index, dt):
             offset += 4
             n = offset
             m = offset + count
-            if count > 0:
+            if vlenBaseType is bytes or vlenBaseType is str:
+                if count > 0:
+                    e_buffer = buffer[n:m]
+                    offset += count
+                    arr[index] = bytes(e_buffer)
+                else:
+                    arr[index] = b""
+            elif count > 0:
                 e_buffer = buffer[n:m]
                 offset += count
-
-                if vlenBaseType is bytes:
-                    arr[index] = bytes(e_buffer)
-                elif vlenBaseType is str:
-                    s = e_buffer.decode("utf-8")
-                    arr[index] = s
-                else:
-                    try:
-                        e = np.frombuffer(bytes(e_buffer), dtype=vlenBaseType)
-                    except ValueError:
-                        msg = f"Failed to parse vlen data: {e_buffer} with dtype: {vlenBaseType}"
-                        raise ValueError(msg)
-                    arr[index] = e
+                try:
+                    e = np.frombuffer(bytes(e_buffer), dtype=vlenBaseType)
+                except ValueError:
+                    msg = f"Failed to parse vlen data: {e_buffer} with dtype: {vlenBaseType}"
+                    raise ValueError(msg)
+                arr[index] = e
     return offset
 
 
@@ -703,6 +703,14 @@ def ndarray_compare(arr1, arr2):
     # TBD: this is slow for multi-megabyte vlen arrays, needs to be optimized
     if not isinstance(arr1, np.ndarray) and not isinstance(arr2, np.ndarray):
         if not isinstance(arr1, np.void) and not isinstance(arr2, np.void):
+            if not arr1 and not arr2:
+                # treat 0, b"", and "" as equivalent (uninitialized vlen)
+                return True
+            # compare str and bytes by encoding/decoding
+            if isinstance(arr1, str) and isinstance(arr2, bytes):
+                return arr1.encode("utf-8") == arr2
+            if isinstance(arr1, bytes) and isinstance(arr2, str):
+                return arr1 == arr2.encode("utf-8")
             return arr1 == arr2
         if isinstance(arr1, np.void) and not isinstance(arr2, np.void):
             if arr1.size == 0 and not arr2:

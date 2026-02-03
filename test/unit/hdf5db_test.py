@@ -566,6 +566,33 @@ class Hdf5dbTest(unittest.TestCase):
 
         db.close()
 
+    def testVlenStringDataset(self):
+        nrows = 4
+        shape = (nrows,)
+        dtype = special_dtype(vlen=str)
+        data = ["Hello", "HDF5", "REST", "API"]
+        init_arr = np.array(data, dtype=dtype)
+
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dset_id = db.createDataset(shape, dtype=dtype)
+        db.createHardLink(root_id, "dset", dset_id)
+        sel_all = selections.select(shape, ...)
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, shape)
+
+        db.setDatasetValues(dset_id, sel_all, init_arr)
+
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertTrue(np.array_equal(arr, init_arr))
+        sel_one = selections.select(shape, slice(2, 3))
+        arr = db.getDatasetValues(dset_id, sel_one)
+        self.assertEqual(arr.shape, (1,))
+        self.assertEqual(arr[0], 'REST')
+
+        db.close()
+
     def testScalarDataset(self):
         dtype = np.int32
 

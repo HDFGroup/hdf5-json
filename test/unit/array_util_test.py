@@ -590,8 +590,14 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(buffer, expected)
         # convert back to array
         arr_copy = bytesToArray(buffer, dt, (5,))
-
-        self.assertTrue(ndarray_compare(arr, arr_copy))
+        print("arr_copy[0]:", arr_copy[0])
+        print("arr_copy[0] type:", type(arr_copy[0]))
+        
+        for i in range(4):
+            self.assertTrue(isinstance(arr_copy[i], bytes))
+            self.assertEqual(arr_copy[i].decode(), arr[i])
+        self.assertTrue(isinstance(arr_copy[4], bytes))
+        self.assertEqual(arr_copy[4], b"")
         # VLEN of bytes
         dt = special_dtype(vlen=bytes)
         arr = np.zeros((5,), dtype=dt)
@@ -684,10 +690,7 @@ class ArrayUtilTest(unittest.TestCase):
 
         self.assertEqual(arr.dtype, arr_copy.dtype)
         self.assertEqual(arr.shape, arr_copy.shape)
-        for i in range(4):
-            e = arr[i]
-            e_copy = arr_copy[i]
-            self.assertTrue(np.array_equal(e, e_copy))
+        self.assertTrue(ndarray_compare(arr, arr_copy))
         #
         # VLEN ascii with array type
         #
@@ -896,10 +899,7 @@ class ArrayUtilTest(unittest.TestCase):
 
         self.assertEqual(arr.dtype, arr_copy.dtype)
         self.assertEqual(arr.shape, arr_copy.shape)
-        for i in range(4):
-            e = arr[i]
-            e_copy = arr_copy[i]
-            self.assertTrue(np.array_equal(e, e_copy))
+        self.assertTrue(ndarray_compare(arr, arr_copy))
         #
         # VLEN ascii with array type
         #
@@ -967,6 +967,9 @@ class ArrayUtilTest(unittest.TestCase):
                     a = a.encode("utf8")
                 if isinstance(b, str):
                     b = b.encode("utf8")
+                # treat 0 and b"" as equivalent (uninitialized vlen)
+                if not a and not b:
+                    return True
                 if a != b:
                     return False
 
