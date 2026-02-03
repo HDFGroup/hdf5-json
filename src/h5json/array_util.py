@@ -144,11 +144,12 @@ def jsonToArray(data_shape, data_dtype, data_json):
             else:
                 base_dt = vlenBaseType(arr.dtype)
                 element_data = data[i]
-                # If base dtype is str and data is bytes, decode it first
                 if base_dt is str and isinstance(element_data, bytes):
                     element_data = element_data.decode('utf8')
-                arr_element = np.array(element_data, base_dt)
-                arr[index] = arr_element
+                if base_dt in (str, bytes):
+                    arr[index] = element_data
+                else:
+                    arr[index] = np.array(element_data, base_dt)
                 index += 1
         return index
 

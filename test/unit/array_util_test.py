@@ -235,7 +235,7 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(out.dtype.metadata["vlen"], bytes)
         self.assertEqual(out.dtype.kind, "O")
         e = out[2]
-        self.assertEqual(e, "three".encode())
+        self.assertEqual(e, "three")
 
         # test utf8 strings
         dt = np.dtype("S26")
@@ -243,7 +243,7 @@ class ArrayUtilTest(unittest.TestCase):
         data = "eight: \u516b"
         out = jsonToArray(shape, dt, data)
         self.assertTrue(isinstance(out, np.ndarray))
-        self.assertEqual(out[()], data.encode("utf8"))
+        self.assertEqual(out[()], data.encode())
 
         dt = special_dtype(vlen=str)
         out = jsonToArray(shape, dt, data)
