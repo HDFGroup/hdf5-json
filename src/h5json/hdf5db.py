@@ -346,7 +346,7 @@ class Hdf5db:
         """ return object with given id """
         self._checkReader()
         obj_id = getHashTagForId(obj_id)
-        if obj_id not in self.db or (refresh and not self.is_new(obj_id)):
+        if obj_id not in self.db or (refresh and not self.is_new(obj_id) and not self.is_dirty(obj_id)):
             # load the obj from the reader
             self.log.debug(f"getObjectById - fetching {obj_id} from reader")
             obj_json = self.reader.getObjectById(obj_id)
@@ -852,6 +852,8 @@ class Hdf5db:
     def _addLink(self, grp_id, name, link_json):
         obj_json = self.getObjectById(grp_id)
         links = obj_json["links"]
+        if name in links:
+            self.log.warning(f"Link [{name}] already exists in {grp_id}")
         links[name] = link_json
         self.make_dirty(grp_id)
 
