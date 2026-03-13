@@ -78,6 +78,13 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertTrue(isValidUuid(g2_id, obj_class="groups"))
         db.createHardLink(root_id, "g2", g2_id)
 
+        root_obj = db.getObjectById(root_id)
+        self.assertTrue("links" in root_obj)
+        root_links = root_obj["links"]
+        self.assertTrue("g1" in root_links)
+        self.assertTrue("g2" in root_links)
+        self.assertEqual(len(root_links), 2)
+
         g1_1_id = db.createGroup()
         self.assertTrue(isSchema2Id(g1_1_id))
         self.assertFalse(isRootObjId(g1_1_id))

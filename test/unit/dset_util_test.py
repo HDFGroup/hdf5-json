@@ -104,11 +104,13 @@ class DsetUtilTest(unittest.TestCase):
             self.assertTrue(False)  # should not reach here
         except ValueError:
             pass  # filters are invalid with contiguous layout
+
         cpl["layout"] = chunked_layout
         try:
             validateDatasetCreationProps(cpl, type_json, dset_json["shape"])
         except ValueError:
             self.assertTrue(False)  # shouldn't raise exception
+
         # add an invlaid level option for deflate
         deflate_filter["level"] = 20
         try:
@@ -116,11 +118,13 @@ class DsetUtilTest(unittest.TestCase):
             self.assertTrue(False)  # should not reach here
         except ValueError:
             pass  # invalid deflate level
+
         deflate_filter["level"] = 5
         try:
             validateDatasetCreationProps(cpl, type_json, dset_json["shape"])
         except ValueError:
             self.assertTrue(False)  # shouldn't raise exception
+
         # try with just a filter name
         gzip_filter = getFilterItem("gzip")
         cpl["filters"] = [gzip_filter, ]
@@ -128,6 +132,7 @@ class DsetUtilTest(unittest.TestCase):
             validateDatasetCreationProps(cpl, type_json, dset_json["shape"])
         except ValueError:
             self.assertTrue(False)  # shouldn't raise exception
+
         # try with an invalid filter name
         cpl["filters"] = ["invalid_filter_name", ]
         try:
@@ -139,6 +144,16 @@ class DsetUtilTest(unittest.TestCase):
         deflate_filter = {'class': 'H5Z_FILTER_DEFLATE', 'id': 1, 'level': 9, 'name': 'deflate'}
         fletcher_filter = {'class': 'H5Z_FILTER_FLETCHER32', 'id': 3, 'name': 'fletcher32'}
         filters = [fletcher_filter, deflate_filter]
+        cpl["filters"] = filters
+        try:
+            validateDatasetCreationProps(cpl, type_json, dset_json["shape"])
+        except ValueError:
+            self.assertTrue(False)  # shouldn't raise exception
+
+        sc_filter = {'class': 'H5Z_FILTER_SCALEOFFSET', 'id': 6, 'name': 'scaleoffset'}
+        sc_filter['scaleOffset'] = 12
+        sc_filter['scaleType'] = 'H5Z_SO_INT'
+        filters = [sc_filter, ]
         cpl["filters"] = filters
         try:
             validateDatasetCreationProps(cpl, type_json, dset_json["shape"])
