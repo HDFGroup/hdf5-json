@@ -590,14 +590,8 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(buffer, expected)
         # convert back to array
         arr_copy = bytesToArray(buffer, dt, (5,))
-        print("arr_copy[0]:", arr_copy[0])
-        print("arr_copy[0] type:", type(arr_copy[0]))
-        
-        for i in range(4):
-            self.assertTrue(isinstance(arr_copy[i], bytes))
-            self.assertEqual(arr_copy[i].decode(), arr[i])
-        self.assertTrue(isinstance(arr_copy[4], bytes))
-        self.assertEqual(arr_copy[4], b"")
+        self.assertTrue(ndarray_compare(arr, arr_copy))
+
         # VLEN of bytes
         dt = special_dtype(vlen=bytes)
         arr = np.zeros((5,), dtype=dt)

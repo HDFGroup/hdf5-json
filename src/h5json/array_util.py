@@ -447,9 +447,14 @@ def readElement(buffer, offset, arr, index, dt):
                 if count > 0:
                     e_buffer = buffer[n:m]
                     offset += count
-                    arr[index] = bytes(e_buffer)
+                    if vlenBaseType is str:
+                        e_buffer = e_buffer.decode("utf-8")
+                    arr[index] = e_buffer
                 else:
-                    arr[index] = b""
+                    if vlenBaseType is str:
+                        arr[index] = ""
+                    else:
+                        arr[index] = b""
             elif count > 0:
                 e_buffer = buffer[n:m]
                 offset += count
