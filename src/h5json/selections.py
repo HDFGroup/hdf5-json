@@ -252,6 +252,11 @@ class Selection(object):
         """ Shape of selection (always 1-D for this class) """
         return (self.nselect,)
 
+    @property
+    def tgtshape(self):
+        """ shape of selection in rank of dataspace"""
+        return self.mshape
+
     def getSelectNpoints(self):
         npoints = None
         if self._select_type == H5S_SELECT_NONE:
@@ -388,6 +393,11 @@ class SimpleSelection(Selection):
     def mshape(self):
         """ Shape of current selection """
         return self._mshape
+    
+    @property
+    def tgtshape(self):
+        """ shape of selection in rank of dataspace"""
+        return [self.count[dim] for dim in range(len(self._shape))]
 
     @property
     def start(self):

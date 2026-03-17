@@ -673,7 +673,7 @@ class Hdf5db:
             # done with NULL and SCALAR cases
             return arr
 
-        # simple daaset
+        # simple dataset
         arr = None
         fetch = True
 
@@ -708,6 +708,7 @@ class Hdf5db:
             # apply the update to the array to be returned
             src_sel = selections.translate(update_sel, x_sel)
             tgt_sel = selections.translate(sel, x_sel)
+
             arr[tgt_sel.slices] = update_val[src_sel.slices]
 
         return arr
@@ -741,6 +742,8 @@ class Hdf5db:
             dims = getShapeDims(shape_json)
             if sel.shape != dims:
                 raise ValueError("Selection shape does not match dataset shape")
+            if len(arr.shape) != len(dims):
+                raise TypeError("Expected ndarray with same rank as dataset")
         updates = self._getDatasetUpdates(dset_id)
         if sel.select_type == selections.H5S_SELECT_ALL:
             # for select all, throw out any existing updates since this will overwrite them

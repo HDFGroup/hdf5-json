@@ -448,11 +448,11 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertEqual(arr.shape, shape)
         self.assertEqual(arr.min(), 0)
         self.assertEqual(arr.max(), 0)
-        row = np.zeros((ncols,), dtype=dtype)
+        row = np.zeros((1, ncols,), dtype=dtype)
 
         # set values row by row
         for i in range(nrows):
-            row[:] = list(range(i * 10, (i + 1) * 10))
+            row[0, :] = list(range(i * 10, (i + 1) * 10))
             row_sel = selections.select(shape, (slice(i, i + 1), slice(0, ncols)))
             db.setDatasetValues(dset_id, row_sel, row)
 
