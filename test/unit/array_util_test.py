@@ -567,6 +567,15 @@ class ArrayUtilTest(unittest.TestCase):
         arr_copy = bytesToArray(buffer, dt, (4,))
         self.assertTrue(ndarray_compare(arr, arr_copy))
 
+        # VLEN of generic object ndarray
+        arr = np.zeros((4,), dtype=object)
+
+        try:
+            arrayToBytes(arr)
+            self.assertTrue(False)  # expected type error
+        except TypeError:
+            pass  # expected, object arrays not supported for arrayToBytes
+
         # VLEN of strings
         dt = special_dtype(vlen=str)
         arr = np.zeros((5,), dtype=dt)

@@ -393,7 +393,7 @@ class SimpleSelection(Selection):
     def mshape(self):
         """ Shape of current selection """
         return self._mshape
-    
+
     @property
     def tgtshape(self):
         """ shape of selection in rank of dataspace"""

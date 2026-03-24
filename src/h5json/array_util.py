@@ -514,6 +514,9 @@ def arrayToBytes(arr, encoding=None):
             offset = copyElement(e, arr1d.dtype, buffer, offset)
         data = bytes(buffer)
     else:
+        if arr.dtype.kind == "O":
+            # object array, can't convert to bytes
+            raise TypeError("Object arrays with no vlen  are not supported for arrayToBytes")
         # fixed length type
         data = arr.tobytes()
 

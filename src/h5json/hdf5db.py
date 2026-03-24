@@ -743,7 +743,7 @@ class Hdf5db:
             if sel.shape != dims:
                 raise ValueError("Selection shape does not match dataset shape")
             if len(arr.shape) != len(dims):
-                raise TypeError("Expected ndarray with same rank as dataset")
+                arr = arr.reshape(sel.mshape)  # reshape to match dataset rank
         updates = self._getDatasetUpdates(dset_id)
         if sel.select_type == selections.H5S_SELECT_ALL:
             # for select all, throw out any existing updates since this will overwrite them

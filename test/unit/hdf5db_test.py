@@ -600,6 +600,44 @@ class Hdf5dbTest(unittest.TestCase):
 
         db.close()
 
+    def testVlenIntDataset(self):
+        nrows = 4
+        shape = (nrows,)
+        dtype = special_dtype(vlen=np.int32)
+
+        init_arr = np.empty((nrows,), dtype=dtype)
+        for i in range(nrows):
+            init_arr[i] = np.array(list(range(i, 2 * i + 1)), dtype=np.int32)
+
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dset_id = db.createDataset(shape, dtype=dtype)
+        db.createHardLink(root_id, "dset", dset_id)
+        sel_all = selections.select(shape, ...)
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, shape)
+
+        db.setDatasetValues(dset_id, sel_all, init_arr)
+
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertTrue(isinstance(arr, np.ndarray))
+        self.assertEqual(arr.dtype.kind, 'O')
+        self.assertTrue("vlen" in arr.dtype.metadata)
+        self.assertEqual(arr.dtype.metadata["vlen"], np.dtype(np.int32))
+        for i in range(nrows):
+            e = arr[i]
+            self.assertTrue(isinstance(e, np.ndarray))
+            self.assertEqual(e.dtype, np.int32)
+            self.assertTrue(np.array_equal(e, init_arr[i]))
+
+        sel_one = selections.select(shape, slice(2, 3))
+        arr = db.getDatasetValues(dset_id, sel_one)
+        self.assertEqual(arr.shape, (1,))
+        self.assertTrue(np.array_equal(arr[0], init_arr[2]))
+
+        db.close()
+
     def testScalarDataset(self):
         dtype = np.int32
 

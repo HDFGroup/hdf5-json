@@ -215,8 +215,7 @@ def check_dtype(**kwds):
 
     vlen = dtype
         If the dtype represents an HDF5 vlen, returns the Python base class.
-        Currently only builting string vlens (str) are supported.  Returns
-        None if the dtype does not represent an HDF5 vlen.
+        Returns None if the dtype does not represent an HDF5 vlen.
 
     enum = dtype
         If the dtype represents an HDF5 enumerated type, returns the dictionary
