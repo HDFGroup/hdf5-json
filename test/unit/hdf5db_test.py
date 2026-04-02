@@ -199,6 +199,12 @@ class Hdf5dbTest(unittest.TestCase):
 
         self.assertEqual(item_type["class"], "H5T_INTEGER")
         self.assertEqual(item_type["base"], "H5T_STD_I32LE")
+
+        value = db.getAttributeValue(root_id, "A1")
+        self.assertTrue(isinstance(value, np.ndarray))
+        self.assertEqual(value.shape, ())
+        self.assertEqual(value.dtype, np.int32)
+        self.assertEqual(value[()], 42)
         db.close()
 
     def testFixedStringAttribute(self):
@@ -218,7 +224,10 @@ class Hdf5dbTest(unittest.TestCase):
         now = int(time.time())
         self.assertTrue(item["created"] > now - 1)
         ret_value = db.getAttributeValue(root_id, "A1")
-        self.assertEqual(ret_value, value.encode("ascii"))
+        self.assertTrue(isinstance(ret_value, np.ndarray))
+        self.assertEqual(ret_value.shape, ())
+        self.assertEqual(ret_value.dtype, np.dtype("S13"))
+        self.assertEqual(ret_value[()], value.encode("ascii"))
         db.close()
 
     def testVlenAsciiAttribute(self):
@@ -240,6 +249,13 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertEqual(item_type["length"], "H5T_VARIABLE")
         self.assertEqual(item_type["charSet"], "H5T_CSET_ASCII")
         self.assertEqual(item["value"], "Hello, world!")
+
+        ret_value = db.getAttributeValue(root_id, "A1")
+        self.assertTrue(isinstance(ret_value, np.ndarray))
+        self.assertEqual(ret_value.shape, ())
+        self.assertEqual(ret_value.dtype, dt)
+        self.assertEqual(ret_value[()], value)
+
         now = int(time.time())
         self.assertTrue(item["created"] > now - 1)
         db.close()
@@ -263,6 +279,13 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertEqual(item_type["length"], "H5T_VARIABLE")
         self.assertEqual(item_type["charSet"], "H5T_CSET_UTF8")
         self.assertEqual(item["value"], "Hello, world!")
+
+        ret_value = db.getAttributeValue(root_id, "A1")
+        self.assertTrue(isinstance(ret_value, np.ndarray))
+        self.assertEqual(ret_value.shape, ())
+        self.assertEqual(ret_value.dtype, dt)
+        self.assertEqual(ret_value[()].encode(), value)
+
         now = int(time.time())
         self.assertTrue(item["created"] > now - 1)
         db.close()
@@ -282,6 +305,50 @@ class Hdf5dbTest(unittest.TestCase):
         item_type = item["type"]
         self.assertEqual(item_type["class"], "H5T_INTEGER")
         self.assertEqual(item_type["base"], "H5T_STD_I16LE")
+
+        ret_value = db.getAttributeValue(root_id, "A1")
+        self.assertTrue(isinstance(ret_value, np.ndarray))
+        self.assertEqual(ret_value.shape, (len(value),))
+        self.assertEqual(ret_value.dtype, np.int16)
+        for i in range(len(value)):
+            self.assertEqual(ret_value[i], value[i])
+
+        now = int(time.time())
+        self.assertTrue(item["created"] > now - 1)
+
+        db.close()
+
+    def testCompoundAttribute(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dt_compound = np.dtype([("field1", "S8"), ("field2", np.int32)])
+        value = [("hello", 42), ('', 0), ("world", 99),]
+        db.createAttribute(root_id, "A1", value, dtype=dt_compound)
+        item = db.getAttribute(root_id, "A1")
+        item_value = item['value']
+        self.assertEqual(len(item_value), 3)
+        for i in range(3):
+            e = item_value[i]
+            # self.assertTrue(isinstance(e, tuple))  # TBD
+            self.assertEqual(tuple(e), value[i])
+
+        item_shape = item["shape"]
+        self.assertEqual(item_shape["class"], "H5S_SIMPLE")
+        self.assertEqual(item_shape["dims"], [3,])
+        item_type = item["type"]
+        self.assertEqual(item_type["class"], "H5T_COMPOUND")
+
+        ret_value = db.getAttributeValue(root_id, "A1")
+        self.assertTrue(isinstance(ret_value, np.ndarray))
+        self.assertEqual(ret_value.shape, (3,))
+        self.assertEqual(ret_value.dtype, dt_compound)
+        for i in range(3):
+            e = ret_value[i]
+            self.assertEqual((e[0].decode(), e[1]), value[i])
+
+        now = int(time.time())
+        self.assertTrue(item["created"] > now - 1)
+
         db.close()
 
     def testCreateReferenceAttribute(self):
