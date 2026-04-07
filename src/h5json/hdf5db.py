@@ -587,7 +587,6 @@ class Hdf5db:
                 # by jsonToArray...
                 if shape is None or dtype is None:
                     raise
-                print(f"calling jsonToArray for shape: {shape} dtype: {dtype} value: {value}")
                 value = jsonToArray(shape, dtype, value)
             if dtype is None:
                 dtype = value.dtype
