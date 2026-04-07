@@ -375,7 +375,6 @@ class Hdf5db:
             raise KeyError("parent_id: {parent_id} not found")
 
         obj_id = parent_id
-        searched_ids = set(obj_id)
 
         link_names = h5path.split('/')
         self.log.debug(f"link_names: {link_names}")
@@ -403,11 +402,7 @@ class Hdf5db:
             if link_class == 'H5L_TYPE_HARD':
                 # hard link
                 obj_id = link_tgt['id']
-                if obj_id in searched_ids:
-                    self.log.warning(f"circular reference using path: {h5path}")
-                    raise KeyError(h5path)
                 obj_json = self.getObjectById(obj_id)
-                searched_ids.add(obj_id)
             elif link_class == 'H5L_TYPE_SOFT':
                 self.log.warning("getObjectIdByPath can't follow soft links")
             elif link_class == 'H5L_TYPE_EXTERNAL':
@@ -426,7 +421,7 @@ class Hdf5db:
         obj_json = self.getObjectById(obj_id)
         return obj_json
 
-    def getPathsForObjectId(self, obj_id, parent_id=None, path_prefix=""):
+    def getPathsForObjectId(self, obj_id, parent_id=None, path_prefix="", _visited=None):
         """ Return list of paths for the given object id starting from parent_id if set,
         otherwise the root_id """
         # TBD: this function will be rather slow for domains with a large number
@@ -437,6 +432,14 @@ class Hdf5db:
         else:
             parent_id = getHashTagForId(parent_id)
 
+        if _visited is None:
+            _visited = set()
+
+        if parent_id in _visited:
+            self.log.warning(f"circular reference detected at path: {path_prefix}")
+            return []
+        _visited.add(parent_id)
+
         obj_json = self.getObjectById(parent_id)
         if obj_json is None:
             self.log.warning("getPathsForObjectId - parent_id not found")
@@ -444,7 +447,6 @@ class Hdf5db:
 
         paths = []
         obj_id = getHashTagForId(obj_id)
-        searched_ids = set(obj_id)
 
         if parent_id == obj_id:
             paths.append(path_prefix if path_prefix else "/")
@@ -457,11 +459,8 @@ class Hdf5db:
                 if link_class == 'H5L_TYPE_HARD':
                     # hard link
                     tgt_obj_id = link_tgt['id']
-                    if tgt_obj_id in searched_ids:
-                        self.log.warning(f"circular reference using path: {path_prefix}/{link_name}")
-                        continue
-                    searched_ids.add(tgt_obj_id)
-                    kwargs = {"parent_id": tgt_obj_id, "path_prefix": path_prefix + "/" + link_name}
+                    kwargs = {"parent_id": tgt_obj_id, "_visited": _visited}
+                    kwargs["path_prefix"] = path_prefix + "/" + link_name
                     paths.extend(self.getPathsForObjectId(obj_id, **kwargs))
                 elif link_class == 'H5L_TYPE_SOFT':
                     self.log.warning("getPathsForObjectId can't follow soft links")

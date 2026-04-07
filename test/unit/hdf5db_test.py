@@ -168,7 +168,41 @@ class Hdf5dbTest(unittest.TestCase):
         db.deleteAttribute(g1_id, "a1")
         self.assertEqual(len(db.getAttributes(g1_id)), 1)
         self.assertEqual(db.getAttribute(g1_id, "a1"), None)
+        db.close()
 
+    def testCircularLinks(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        g1_id = db.createGroup()
+        db.createHardLink(root_id, "g1", g1_id)
+        g2_id = db.createGroup()
+        db.createHardLink(g1_id, "g2", g2_id)
+        # create circular link
+        db.createHardLink(g2_id, "g1", g1_id)
+
+        g1_json = db.getObjectById(g1_id)
+        self.assertTrue("links" in g1_json)
+        g1_links = g1_json["links"]
+        self.assertTrue("g2" in g1_links)
+        self.assertEqual(len(g1_links), 1)
+
+        g2_json = db.getObjectById(g2_id)
+        self.assertTrue("links" in g2_json)
+        g2_links = g2_json["links"]
+        self.assertTrue("g1" in g2_links)
+        self.assertEqual(len(g2_links), 1)
+
+        paths = db.getPathsForObjectId(g2_id)
+        # only the canonical path is returned
+        self.assertEqual(paths, ["/g1/g2"])
+        grp_id = db.getObjectIdByPath("/g1/g2")
+        self.assertEqual(grp_id, g2_id)
+        # you can still get objects via circular paths...
+        grp_id = db.getObjectIdByPath("/g1/g2/g1")
+        self.assertEqual(grp_id, g1_id)
+        grp_id = db.getObjectIdByPath("/g1/g2/g1/g2")
+        self.assertEqual(grp_id, g2_id)
+        
         db.close()
 
     def testNullSpaceAttribute(self):
