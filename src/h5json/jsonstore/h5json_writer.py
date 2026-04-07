@@ -39,7 +39,6 @@ class H5JsonWriter(H5Writer):
         super().__init__(filepath, append=append, no_data=no_data, app_logger=app_logger)
         if append:
             raise ValueError("H5JsonWriter does not support append mode")
-        self.alias_db = {}
         self.json = {}
         self._data_limit = data_limit
         self._root_id = None
@@ -83,43 +82,8 @@ class H5JsonWriter(H5Writer):
 
     def getAliasList(self, obj_id):
         """ return list of alias """
-        if obj_id not in self.alias_db:
-            self.alias_db[obj_id] = []
-        return self.alias_db[obj_id]
 
-    def updateAliasList(self):
-        """ update the alias list for each object """
-        # clear exiting aliases
-        obj_ids = self.db.getCollection()
-        for obj_id in obj_ids:
-            self.alias_db[obj_id] = []
-
-        self._setAlias(self._root_uuid, set(), "/")
-
-    def _setAlias(self, obj_id, id_set, h5path):
-        """ add the given h5path to the object's alias list
-            If the object is a group, recurse through each hard link """
-        obj_json = self.db.getObjectById(obj_id)
-        alias_list = self.getAliasList(obj_id)
-        if h5path in alias_list:
-            return  # nothing to do
-        alias_list.append(h5path)
-        if getCollectionForId(obj_id) != "groups":
-            return  # done
-        id_set.add(obj_id)  # keep track of objects we've visited to avoid loops
-        links = obj_json["links"]
-        if h5path[-1] != '/':
-            h5path += '/'
-
-        for link_name in links:
-            link_json = links[link_name]
-            if link_json["class"] == "H5L_TYPE_HARD":
-                tgt_id = link_json["id"]
-                if tgt_id in id_set:
-                    self.log.info("_setAlias - circular loop found")
-                else:
-                    self._setAlias(tgt_id, id_set, f"{h5path}{link_name}")
-        id_set.remove(obj_id)
+        return self.db.getPathsForObjectId(obj_id)
 
     def dumpAttribute(self, obj_id, attr_name):
         self.log.info(f"dumpAttribute: [{attr_name}]")
@@ -298,8 +262,6 @@ class H5JsonWriter(H5Writer):
 
         self.json["apiVersion"] = db_version_info["hdf5-json-version"]
         self.json["root"] = getUuidFromId(self._root_uuid)
-
-        self.updateAliasList()  # create alias_db with obj_id to alias list dict
 
         self.dumpGroups()
 

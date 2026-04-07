@@ -66,11 +66,18 @@ class Hdf5dbTest(unittest.TestCase):
         db = Hdf5db(app_logger=self.log)
         root_id = db.open()
 
+        paths = db.getPathsForObjectId(root_id)
+        self.assertEqual(paths, ["/"])
+
         g1_id = db.createGroup()
         self.assertTrue(isSchema2Id(g1_id))
         self.assertFalse(isRootObjId(g1_id))
         self.assertTrue(isValidUuid(g1_id, obj_class="groups"))
+        paths = db.getPathsForObjectId(g1_id)
+        self.assertEqual(paths, [])
         db.createHardLink(root_id, "g1", g1_id)
+        paths = db.getPathsForObjectId(g1_id)
+        self.assertEqual(paths, ["/g1"])
 
         g2_id = db.createGroup()
         self.assertTrue(isSchema2Id(g2_id))
@@ -90,6 +97,8 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertFalse(isRootObjId(g1_1_id))
         self.assertTrue(isValidUuid(g1_1_id, obj_class="groups"))
         db.createHardLink(g1_id, "g1.1", g1_1_id)
+        paths = db.getPathsForObjectId(g1_1_id)
+        self.assertEqual(paths, ["/g1/g1.1"])
 
         self.assertEqual(db.getObjectIdByPath("g1"), g1_id)
         self.assertEqual(db.getObjectIdByPath("/g1"), g1_id)

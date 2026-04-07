@@ -426,6 +426,52 @@ class Hdf5db:
         obj_json = self.getObjectById(obj_id)
         return obj_json
 
+    def getPathsForObjectId(self, obj_id, parent_id=None, path_prefix=""):
+        """ Return list of paths for the given object id starting from parent_id if set,
+        otherwise the root_id """
+        # TBD: this function will be rather slow for domains with a large number
+        # of objects (it will search through the complete heirarchy).
+
+        if parent_id is None:
+            parent_id = self.root_id
+        else:
+            parent_id = getHashTagForId(parent_id)
+
+        obj_json = self.getObjectById(parent_id)
+        if obj_json is None:
+            self.log.warning("getPathsForObjectId - parent_id not found")
+            raise KeyError("parent_id: {parent_id} not found")
+
+        paths = []
+        obj_id = getHashTagForId(obj_id)
+        searched_ids = set(obj_id)
+
+        if parent_id == obj_id:
+            paths.append(path_prefix if path_prefix else "/")
+
+        if 'links' in obj_json:
+            links = obj_json['links']
+            for link_name in links:
+                link_tgt = links[link_name]
+                link_class = link_tgt['class']
+                if link_class == 'H5L_TYPE_HARD':
+                    # hard link
+                    tgt_obj_id = link_tgt['id']
+                    if tgt_obj_id in searched_ids:
+                        self.log.warning(f"circular reference using path: {path_prefix}/{link_name}")
+                        continue
+                    searched_ids.add(tgt_obj_id)
+                    kwargs = {"parent_id": tgt_obj_id, "path_prefix": path_prefix + "/" + link_name}
+                    paths.extend(self.getPathsForObjectId(obj_id, **kwargs))
+                elif link_class == 'H5L_TYPE_SOFT':
+                    self.log.warning("getPathsForObjectId can't follow soft links")
+                elif link_class == 'H5L_TYPE_EXTERNAL':
+                    self.log.warning("getPathsForObjectId can't follow external links")
+                else:
+                    self.log.error(f"link type: {link_class} not supported")
+
+        return paths
+
     def getDtype(self, obj_json):
         """ Return numpy data type for given dataset, datatype, or attribute
         """
@@ -535,7 +581,15 @@ class Hdf5db:
             else:
                 dtype = np.dtype(dtype)
         else:
-            value = np.asarray(value, dtype=dtype, order='C')
+            try:
+                value = np.asarray(value, dtype=dtype, order='C')
+            except ValueError:
+                # some special cases for compound and vlen types are handled
+                # by jsonToArray...
+                if shape is None or dtype is None:
+                    raise
+                print(f"calling jsonToArray for shape: {shape} dtype: {dtype} value: {value}")
+                value = jsonToArray(shape, dtype, value)
             if dtype is None:
                 dtype = value.dtype
             else:
