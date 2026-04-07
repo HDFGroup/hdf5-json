@@ -202,7 +202,7 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertEqual(grp_id, g1_id)
         grp_id = db.getObjectIdByPath("/g1/g2/g1/g2")
         self.assertEqual(grp_id, g2_id)
-        
+
         db.close()
 
     def testNullSpaceAttribute(self):
