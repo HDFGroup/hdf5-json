@@ -43,6 +43,11 @@ class Reference:
             if not isinstance(bind, str):
                 raise TypeError("Expected string id")
 
+            if bind.find('/') != -1:
+                parts = bind.split('/')
+                if parts[0] not in ("groups", "datasets", "datatypes"):
+                    raise TypeError("Expected id to start with 'groups/', 'datasets/' or 'datatypes/'")
+                bind = parts[1]
             self._id = getHashTagForId(bind)
 
     def __repr__(self):
