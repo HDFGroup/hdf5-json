@@ -21,16 +21,22 @@ from __future__ import absolute_import
 
 import numpy as np
 
-H5S_SEL_POINTS = 0
+
+# Selection types
+H5S_SEL_NONE = 0
+H5S_SEL_POINTS = 1
+H5S_SEL_HYPERSLABS = 2
+H5S_SEL_ALL = 3
+H5S_SEL_FANCY = 4
+
+
+# Boolean selection operations
 H5S_SELECT_SET = 1
 H5S_SELECT_APPEND = 2
 H5S_SELECT_PREPEND = 3
 H5S_SELECT_OR = 4
 H5S_SELECT_NONE = 5
-H5S_SELECT_ALL = 6
-H5S_SELECT_HYPERSLABS = 7
-H5S_SELECT_NOTB = 8
-H5S_SELLECT_FANCY = 9
+H5S_SELECT_NOTB = 6
 
 
 def select(obj, args):
@@ -73,14 +79,18 @@ def select(obj, args):
     if len(args) == 1:
 
         arg = args[0]
+        if hasattr(arg, "shape"):
+            obj_shape = obj.shape
+        else:
+            obj_shape = obj
 
         if isinstance(arg, Selection):
-            if arg.shape != obj.shape:
+            if arg.shape != obj_shape:
                 raise TypeError("Mismatched selection shape")
             return arg
 
         elif isinstance(arg, np.ndarray) or isinstance(arg, list):
-            sel = PointSelection(obj.shape)
+            sel = PointSelection(obj_shape)
             sel[arg]
             return sel
         """
@@ -119,37 +129,119 @@ def select(obj, args):
 def _check_bool_args(s1, s2):
     """ verify argument for boolean operations """
     # TBD: this is currently only working for simple selections with stride 1
-    valid_select_types = (H5S_SELECT_HYPERSLABS, H5S_SELECT_ALL)
+    valid_s1_types = (H5S_SEL_HYPERSLABS, H5S_SEL_ALL)
+    valid_s2_types = (H5S_SEL_HYPERSLABS, H5S_SEL_POINTS, H5S_SEL_ALL)
+
     if not isinstance(s1, Selection):
         raise TypeError("Expected selection type for first arg")
     if not isinstance(s2, Selection):
         raise TypeError("Expected selection type for second arg")
-    if s1.select_type not in valid_select_types:
+    if s1.select_type not in valid_s1_types:
         raise TypeError("Expected hyperslab selection for first arg")
-    if s2.select_type not in valid_select_types:
+    if s2.select_type not in valid_s2_types:
         raise TypeError("Expected hyperslab selection for second arg")
     if s1.shape != s2.shape:
         raise ValueError("selections have incompatible shapes")
 
 
-def intersect(s1, s2):
-    """ Return the intersection of two selections """
-    # TBD: this is currently only working for simple selections with stride 1
-    _check_bool_args(s1, s2)
+def _iter_points(point_sel):
+    """Yield each point in a PointSelection as a tuple of ints."""
+    pts = point_sel.points
+    rank = len(point_sel.shape)
+    pts_arr = np.asarray(pts)
 
-    slices = []
+    if pts_arr.size == 0:
+        return
+
+    if pts_arr.ndim == 1:
+        if rank == 1:
+            # Each scalar element is a coordinate in 1-D space
+            for p in pts_arr:
+                yield (int(p),)
+        else:
+            # Single point in rank-N space stored as a flat array [c0, c1, ..., c_{N-1}]
+            yield tuple(int(x) for x in pts_arr)
+    else:
+        # Shape (N, rank): each row is one point
+        for row in pts_arr:
+            yield tuple(int(x) for x in row)
+
+
+def _filter_points_by_hyperslab(point_sel, hyper_sel):
+    """Return a PointSelection of points from point_sel that lie within hyper_sel."""
+    start = hyper_sel.start
+    count = hyper_sel.count
+    step = hyper_sel.step
+    rank = len(point_sel.shape)
+
+    result_pts = []
+    for pt in _iter_points(point_sel):
+        if all(
+            start[d] <= pt[d] < start[d] + count[d] * step[d] and (pt[d] - start[d]) % step[d] == 0
+            for d in range(rank)
+        ):
+            result_pts.append(pt)
+
+    result = PointSelection(point_sel.shape)
+    if rank == 1:
+        result.set([p[0] for p in result_pts] if result_pts else [])
+    else:
+        result.set(result_pts if result_pts else [])
+    return result
+
+
+def _intersect_points_points(s1, s2):
+    """Return a PointSelection of points common to both s1 and s2."""
+    common = sorted(set(_iter_points(s1)) & set(_iter_points(s2)))
+
     rank = len(s1.shape)
-    for dim in range(rank):
-        start = max(s1.start[dim], s2.start[dim])
-        stop = min(s1.start[dim] + s1.count[dim], s2.start[dim] + s2.count[dim])
-        if s1.step[dim] > 1 or s2.step[dim] > 1:
-            raise ValueError("stepped slices not currently supported")
-        if start > stop:
-            stop = start
-        slices.append(slice(start, stop, 1))
-    slices = tuple(slices)
+    result = PointSelection(s1.shape)
+    if rank == 1:
+        result.set([p[0] for p in common] if common else [])
+    else:
+        result.set(common if common else [])
+    return result
 
-    return select(s1.shape, slices)
+
+def intersect(s1, s2):
+    """ Return the intersection of two selections.
+
+    Supports hyperslab/hyperslab, hyperslab/point, and point/point combinations.
+    """
+    if not isinstance(s1, Selection):
+        raise TypeError("Expected selection type for first arg")
+    if not isinstance(s2, Selection):
+        raise TypeError("Expected selection type for second arg")
+    if s1.shape != s2.shape:
+        raise ValueError("selections have incompatible shapes")
+
+    t1 = s1.select_type
+    t2 = s2.select_type
+    hyperslab_types = (H5S_SEL_HYPERSLABS, H5S_SEL_ALL)
+
+    if t1 in hyperslab_types and t2 in hyperslab_types:
+        slices = []
+        rank = len(s1.shape)
+        for dim in range(rank):
+            start = max(s1.start[dim], s2.start[dim])
+            stop = min(s1.start[dim] + s1.count[dim], s2.start[dim] + s2.count[dim])
+            if s1.step[dim] > 1 or s2.step[dim] > 1:
+                raise ValueError("stepped slices not currently supported")
+            if start > stop:
+                stop = start
+            slices.append(slice(start, stop, 1))
+        return select(s1.shape, tuple(slices))
+
+    if t1 == H5S_SEL_POINTS and t2 in hyperslab_types:
+        return _filter_points_by_hyperslab(s1, s2)
+
+    if t1 in hyperslab_types and t2 == H5S_SEL_POINTS:
+        return _filter_points_by_hyperslab(s2, s1)
+
+    if t1 == H5S_SEL_POINTS and t2 == H5S_SEL_POINTS:
+        return _intersect_points_points(s1, s2)
+
+    raise TypeError(f"Unsupported selection types for intersection: {t1}, {t2}")
 
 
 def contained(s1, s2):
@@ -177,7 +269,7 @@ def contained(s1, s2):
 
 def translate(s1, s2):
     """ Given two selections, s1 and s2, return a new selection
-    definied by s2 relative to s1's stat and count.
+    definied by s2 relative to s1's start and count.
     s2 must be contained in s1 """
 
     _check_bool_args(s1, s2)
@@ -186,14 +278,25 @@ def translate(s1, s2):
         raise ValueError("translate - selections not overlapping")
 
     rank = len(s1.shape)
-
-    slices = []
-    for dim in range(rank):
-        start = s2.start[dim] - s1.start[dim]
-        count = s2.count[dim]
-        slices.append(slice(start, start + count, 1))
-    slices = tuple(slices)
-    return select(s1.shape, slices)
+    args = []
+    if s2.select_type == H5S_SEL_POINTS:
+        points = []
+        for pt in _iter_points(sel_inter):
+            for d in range(rank):
+                if pt[d] < s1.start[d] or pt[d] >= s1.start[d] + s1.count[d]:
+                    continue
+            points.append(tuple(pt[d] - s1.start[d] for d in range(rank)))
+        if len(points) == 0:
+            raise ValueError("translate - selections not overlapping")
+        args.append(points)
+    elif s2.select_type == H5S_SEL_HYPERSLABS:
+        for dim in range(rank):
+            start = s2.start[dim] - s1.start[dim]
+            count = s2.count[dim]
+            args.append(slice(start, start + count, 1))
+    else:
+        raise TypeError("translate - unsupported selection type for s2")
+    return select(s1.shape, tuple(args))
 
 
 class Selection(object):
@@ -229,7 +332,7 @@ class Selection(object):
         shape = tuple(shape)
         self._shape = shape
 
-        self._select_type = H5S_SELECT_ALL
+        self._select_type = H5S_SEL_ALL
 
     @property
     def select_type(self):
@@ -259,9 +362,9 @@ class Selection(object):
 
     def getSelectNpoints(self):
         npoints = None
-        if self._select_type == H5S_SELECT_NONE:
+        if self._select_type == H5S_SEL_NONE:
             npoints = 0
-        elif self._select_type == H5S_SELECT_ALL:
+        elif self._select_type == H5S_SEL_ALL:
             dims = self._shape
             npoints = 1
             for nextent in dims:
@@ -294,6 +397,7 @@ class PointSelection(Selection):
         """ Create a Point selection.   """
         Selection.__init__(self, shape, *args, **kwds)
         self._points = []
+        self._select_type = H5S_SEL_POINTS
 
     @property
     def points(self):
@@ -302,9 +406,9 @@ class PointSelection(Selection):
 
     def getSelectNpoints(self):
         npoints = None
-        if self._select_type == H5S_SELECT_NONE:
+        if self._select_type == H5S_SEL_NONE:
             npoints = 0
-        elif self._select_type == H5S_SELECT_ALL:
+        elif self._select_type == H5S_SEL_ALL:
             dims = self._shape
             npoints = 1
             for nextent in dims:
@@ -342,8 +446,6 @@ class PointSelection(Selection):
             self._points.extend(tmp)
         else:
             raise ValueError("Unsupported operation")
-
-    # def _perform_list_selection(points, H5S_SELECT_SET):
 
     def __getitem__(self, arg):
         """ Perform point-wise selection from a NumPy boolean array """
@@ -416,7 +518,7 @@ class SimpleSelection(Selection):
         rank = len(self._shape)
         self._sel = ((0,) * rank, self._shape, (1,) * rank, (False,) * rank)
         self._mshape = self._shape
-        self._select_type = H5S_SELECT_ALL
+        self._select_type = H5S_SEL_ALL
 
     def __getitem__(self, args):
 
@@ -426,13 +528,13 @@ class SimpleSelection(Selection):
         if self._shape == ():
             if len(args) > 0 and args[0] not in (Ellipsis, ()):
                 raise TypeError("Invalid index for scalar dataset (only ..., () allowed)")
-            self._select_type = H5S_SELECT_ALL
+            self._select_type = H5S_SEL_ALL
             return self
 
         start, count, step, scalar = _handle_simple(self._shape, args)
         self._sel = (start, count, step, scalar)
 
-        self._select_type = H5S_SELECT_HYPERSLABS
+        self._select_type = H5S_SEL_HYPERSLABS
 
         self._mshape = tuple(x for x, y in zip(count, scalar) if not y)
 
@@ -442,14 +544,14 @@ class SimpleSelection(Selection):
         """Return number of elements in current selection
         """
         npoints = None
-        if self._select_type == H5S_SELECT_NONE:
+        if self._select_type == H5S_SEL_NONE:
             npoints = 0
-        elif self._select_type == H5S_SELECT_ALL:
+        elif self._select_type == H5S_SEL_ALL:
             dims = self._shape
             npoints = 1
             for nextent in dims:
                 npoints *= nextent
-        elif self._select_type == H5S_SELECT_HYPERSLABS:
+        elif self._select_type == H5S_SEL_HYPERSLABS:
             dims = self._shape
             npoints = 1
             rank = len(dims)
@@ -490,8 +592,7 @@ class SimpleSelection(Selection):
         if self._shape == ():
             if np.product(target_shape) != 1:
                 raise TypeError(f"Can't broadcast {target_shape} to scalar")
-            self._id.select_all()
-            yield self._id
+            yield self._sel
             return
 
         start, count, step, scalar = self._sel
@@ -513,17 +614,18 @@ class SimpleSelection(Selection):
         tshape = tuple(tshape)
 
         chunks = tuple(x // y for x, y in zip(count, tshape))
-        nchunks = int(np.product(chunks))
+        nchunks = int(np.prod(chunks))
 
         if nchunks == 1:
-            yield self._id
+            yield self._sel
         else:
-            sid = self._id.copy()
-            sid.select_hyperslab((0,) * rank, tshape, step)
             for idx in range(nchunks):
-                offset = tuple(x * y * z + s for x, y, z, s in zip(np.unravel_index(idx, chunks), tshape, step, start))
-                sid.offset_simple(offset)
-                yield sid
+                offset = []
+                for x, y, z, s in zip(np.unravel_index(idx, chunks), tshape, step, start):
+                    offset.append(int(x * y * z + s))
+                offset = tuple(offset)
+                sel = [tuple([sum(x) for x in zip(offset, start)]), tshape, step, scalar]
+                yield sel
 
     @property
     def slices(self):
@@ -567,6 +669,7 @@ class FancySelection(Selection):
     def __init__(self, shape, *args, **kwds):
         Selection.__init__(self, shape, *args, **kwds)
         self._slices = []
+        self._select_type = H5S_SEL_FANCY
 
     def __getitem__(self, args):
 
@@ -574,7 +677,7 @@ class FancySelection(Selection):
             args = (args,)
 
         args = _expand_ellipsis(args, len(self._shape))
-        select_type = H5S_SELECT_HYPERSLABS  # will adjust if we have a coord
+        select_type = H5S_SEL_HYPERSLABS  # will adjust if we have a coord
 
         # Create list of slices and/or coordinates
         slices = []
@@ -611,7 +714,7 @@ class FancySelection(Selection):
                     if sorted(arg) != list(arg):
                         raise TypeError("Indexing elements must be in increasing order")
                 mshape.append(len(arg))
-                select_type = H5S_SELLECT_FANCY
+                select_type = H5S_SEL_FANCY
             elif isinstance(arg, list) or hasattr(arg, 'dtype'):
                 # coordinate selection
                 slices.append(arg)
@@ -627,7 +730,7 @@ class FancySelection(Selection):
                     # this shouldn't happen since HSDS would have thrown an error
                     raise ValueError("coordinate num element missmatch")
                 mshape.append(len(arg))
-                select_type = H5S_SELLECT_FANCY
+                select_type = H5S_SEL_FANCY
             elif isinstance(arg, int):
                 if arg < 0 or arg >= length:
                     raise IndexError(f"Index ({arg}) out of range (0-{length - 1})")
@@ -804,9 +907,9 @@ def guess_shape(sid):
 
     elif sel_class == 'H5S_SCALAR':
         # NumPy has no way of expressing empty 0-rank selections, so we use None
-        if sel_type == H5S_SELECT_NONE:
+        if sel_type == H5S_SEL_NONE:
             return None
-        if sel_type == H5S_SELECT_ALL:
+        if sel_type == H5S_SEL_ALL:
             return tuple()
 
     elif sel_class != 'H5S_SIMPLE':
@@ -817,10 +920,10 @@ def guess_shape(sid):
     N = sid.get_select_npoints()
     rank = len(sid.shape)
 
-    if sel_type == H5S_SELECT_NONE:
+    if sel_type == H5S_SEL_NONE:
         return (0,) * rank
 
-    elif sel_type == H5S_SELECT_ALL:
+    elif sel_type == H5S_SEL_ALL:
         return sid.shape
 
     elif sel_type == H5S_SEL_POINTS:
@@ -828,7 +931,7 @@ def guess_shape(sid):
         # the dataspace rank
         return (N,)
 
-    elif sel_type != H5S_SELECT_HYPERSLABS:
+    elif sel_type != H5S_SEL_HYPERSLABS:
         raise TypeError(f"Unrecognized selection method {sel_type}")
 
     # We have a hyperslab-based selection
@@ -895,9 +998,9 @@ class ScalarSelection(Selection):
             arg = args[0]
         if arg == ():
             self._mshape = None
-            self._select_type = H5S_SELECT_ALL
+            self._select_type = H5S_SEL_ALL
         elif arg == (Ellipsis,):
             self._mshape = ()
-            self._select_type = H5S_SELECT_ALL
+            self._select_type = H5S_SEL_ALL
         else:
             raise ValueError("Illegal slicing argument for scalar dataspace")

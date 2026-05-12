@@ -208,7 +208,7 @@ class H5JsonReader(H5Reader):
             dims = shape_json["dims"]
 
         arr = jsonToArray(dims, dtype, json_value)
-        if sel is None or sel.select_type == selections.H5S_SELECT_ALL:
+        if sel is None or sel.select_type == selections.H5S_SEL_ALL:
             pass  # just return the entire array
         elif isinstance(sel, selections.SimpleSelection):
             arr = arr[sel.slices]

@@ -548,10 +548,17 @@ class H5pyReader(H5Reader):
         if isOpaqueDtype(dset.dtype):
             # TBD: Opaque data not supported yet
             return None
-        if sel is None or sel.select_type == selections.H5S_SELECT_ALL:
+        if sel is None or sel.select_type == selections.H5S_SEL_ALL:
             arr = dset[...]
         elif isinstance(sel, selections.SimpleSelection):
             arr = dset[sel.slices]
+        elif isinstance(sel, selections.PointSelection):
+            # h5py has no native point-selection API, so read each point individually.
+            # sel.points rows are numpy arrays; wrap each in a tuple so h5py
+            # interprets it as a multi-dimensional index rather than fancy indexing.
+            arr = np.zeros((sel.nselect,), dtype=dset.dtype)
+            for i, pt in enumerate(selections._iter_points(sel)):
+                arr[i] = dset[pt]
         else:
             raise NotImplementedError("selection type not supported")
 

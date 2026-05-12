@@ -201,8 +201,8 @@ class H5pyWriterTest(unittest.TestCase):
 
         db.open()
         sel = selections.select((10, 10), (slice(4, 5), slice(4, 5)))
-        arr = np.zeros((), dtype=np.int32)
-        arr[()] = 42
+        arr = np.zeros((1, 1), dtype=np.int32)
+        arr[0, 0] = 42
         db.setDatasetValues(dset_111_id, sel, arr)
         db.close()
 
@@ -726,6 +726,7 @@ class H5pyWriterTest(unittest.TestCase):
 
         db.open()
         arr = np.asarray(range(10), dtype=np.int32)
+        arr = arr.reshape(1, 10)
         sel = selections.select((10, 10), (slice(5, 6), slice(0, 10)))
         db.setDatasetValues(dset_id, sel, arr)
         db.close()

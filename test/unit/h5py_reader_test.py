@@ -92,6 +92,14 @@ class H5pyReaderTest(unittest.TestCase):
         self.assertEqual(arr.shape, (1, 10))
         self.assertEqual(list(arr[0]), list(range(0, 40, 4)))
 
+        # do a point selection; dset1.1.1[i,j] = i*j, so diagonals are i*i
+        sel = selections.select(dims, [(0, 0), (1, 1), (2, 2), (3, 3)])
+        arr = db.getDatasetValues(dset111_id, sel)
+        self.assertTrue(isinstance(arr, np.ndarray))
+        self.assertEqual(arr.shape, (4,))
+        for i in range(4):
+            self.assertEqual(arr[i], i * i)
+
         # try adding an attribute
         db.createAttribute(dset111_id, "attr3", value=42)
         dset_json = db.getObjectById(dset111_id)

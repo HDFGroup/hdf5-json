@@ -672,7 +672,10 @@ class Hdf5db:
         def init_arr(dtype, cpl):
             """ create an ndarray with the give shape, dtype and fill_value
                 (if the latter is found in the creation properties list) """
-            arr_shape = sel.count if isinstance(sel.count, tuple) else (sel.count, )
+            if hasattr(sel, "count"):
+                arr_shape = sel.count if isinstance(sel.count, tuple) else (sel.count, )
+            else:
+                arr_shape = (sel.nselect,)
             arr = np.zeros(arr_shape, dtype=dtype)
             if "fillValue" in cpl:
                 fillValue = cpl["fillValue"]
@@ -707,7 +710,7 @@ class Hdf5db:
             raise ValueError("Selection shape does not match dataset shape")
 
         if shape_class == "H5S_SCALAR":
-            if sel.select_type != selections.H5S_SELECT_ALL:
+            if sel.select_type != selections.H5S_SEL_ALL:
                 # TBD: support other selection types
                 raise ValueError("Only SELECT_ALL selections are supported for scalar datasets")
             if sel.shape != ():
@@ -751,6 +754,7 @@ class Hdf5db:
             arr = init_arr(dtype, cpl)
 
         # apply any updates that impact this selection
+
         for (update_sel, update_val) in updates:
             # get the part of the update that is in common with the requested selection
             x_sel = selections.intersect(sel, update_sel)
@@ -758,10 +762,20 @@ class Hdf5db:
                 # this update doesn't effect the selection, so ignore
                 continue
             # apply the update to the array to be returned
-            src_sel = selections.translate(update_sel, x_sel)
-            tgt_sel = selections.translate(sel, x_sel)
-
-            arr[tgt_sel.slices] = update_val[src_sel.slices]
+            if sel.select_type == selections.H5S_SEL_POINTS:
+                # For point selections apply each intersecting point individually.
+                # arr is 1-D with one entry per selected point; map each intersection
+                # point back to its position in sel and its offset in update_val.
+                rank = len(sel.shape)
+                sel_pts = list(selections._iter_points(sel))
+                for pt in selections._iter_points(x_sel):
+                    tgt_idx = sel_pts.index(pt)
+                    src_coords = tuple(pt[d] - update_sel.start[d] for d in range(rank))
+                    arr[tgt_idx] = update_val[src_coords]
+            else:
+                src_sel = selections.translate(update_sel, x_sel)
+                tgt_sel = selections.translate(sel, x_sel)
+                arr[tgt_sel.slices] = update_val[src_sel.slices]
 
         return arr
 
@@ -769,47 +783,63 @@ class Hdf5db:
         """
         Write the given ndarray to the dataset using the selection
         """
-        dset_json = self.getObjectById(dset_id)
-        shape_json = dset_json["shape"]
+
         if not isinstance(sel, selections.Selection):
             raise TypeError("Expected Selection class")
-        if sel.select_type not in (selections.H5S_SELECT_HYPERSLABS, selections.H5S_SELECT_ALL):
-            # TBD: support other selection types
-            raise ValueError("Only hyperslab selections are currently supported")
+
+        dset_json = self.getObjectById(dset_id)
+        shape_json = dset_json["shape"]
+
+        shape_class = getShapeClass(shape_json)
+        if shape_class == "H5S_NULL":
+            raise ValueError("writing to null space dataset not supported")
+
+        updates = self._getDatasetUpdates(dset_id)
+
+        if shape_class == "H5S_SCALAR":
+            if sel.select_type != selections.H5S_SEL_ALL:
+                # TBD: support other selection types
+                raise ValueError("Only SELECT_ALL selections are supported for scalar datasets")
+            if sel.shape != ():
+                raise ValueError("Selection shape does not match dataset shape")
+
+            if arr.shape != ():
+                raise ValueError("Expected scalar array for scalar dataset")
+
         if not isinstance(arr, np.ndarray):
             raise TypeError("Expected ndarray for data value")
+
         tgt_dt = self.getDtype(dset_json)
         src_dt = arr.dtype
         if src_dt != tgt_dt:
             raise TypeError("arr.dtype doesn't match dataset dtype")
-        shape_class = getShapeClass(shape_json)
-        if shape_class == "H5S_NULL":
-            raise ValueError("writing to null space dataset not supported")
-        if shape_class == "H5S_SCALAR":
-            if sel.shape != ():
-                raise ValueError("Selection shape does not match dataset shape")
-            if len(arr.shape) > 0:
-                raise TypeError("Expected scalar ndarray for scalar dataset")
-        else:
+
+        if sel.select_type == selections.H5S_SEL_POINTS:
+            if sel.nselect != arr.shape[0]:
+                raise TypeError("Selection shape does not match number of points")
+        elif sel.select_type == selections.H5S_SEL_ALL:
+            if sel.shape != getShapeDims(shape_json):
+                raise TypeError("Selection shape does not match dataset shape")
+        elif sel.select_type == selections.H5S_SEL_HYPERSLABS:
             dims = getShapeDims(shape_json)
             if sel.shape != dims:
-                raise ValueError("Selection shape does not match dataset shape")
+                raise TypeError("Selection shape does not match dataset shape")
             if len(arr.shape) != len(dims):
-                arr = arr.reshape(sel.mshape)  # reshape to match dataset rank
-        updates = self._getDatasetUpdates(dset_id)
-        if sel.select_type == selections.H5S_SELECT_ALL:
+                raise TypeError("Array shape does not match dataset shape")
+            try:
+                sel.broadcast(arr.shape)
+            except TypeError:
+                # selection can't be broadcast to array shape
+                raise
+        else:
+            raise TypeError("Unsupported selection type")
+
+        if sel.select_type == selections.H5S_SEL_ALL or sel.shape == sel.mshape:
             # for select all, throw out any existing updates since this will overwrite them
             updates.clear()
-        arr = arr.copy()  # make a copy in case the client updates it later
-        rank = len(sel.shape)
-        if len(arr.shape) < rank:
-            # reshape to keep compatiblity with dataset rank
-            if sel.select_type == selections.H5S_SELECT_ALL:
-                # this should not result in a dimension reduction
-                raise ValueError("unexpected selection shape")
-            if sel.select_type != selections.H5S_SELECT_HYPERSLABS:
-                raise ValueError("tbd")
-            arr = arr.reshape(sel.mshape)
+
+        # make a copy in case the client updates it later
+        arr = arr.copy()
         updates.append((sel, arr))
         self.make_dirty(dset_id)
 
@@ -833,7 +863,7 @@ class Hdf5db:
         updates = self._getDatasetUpdates(dset_id)
         for i in range(len(updates)):
             (sel_update, arr) = updates[i]
-            if sel_update.select_type == selections.H5S_SELECT_HYPERSLABS:
+            if sel_update.select_type == selections.H5S_SEL_HYPERSLABS:
                 slices = list(sel_update.slices)
                 for dim in range(rank):
                     s = slices[dim]

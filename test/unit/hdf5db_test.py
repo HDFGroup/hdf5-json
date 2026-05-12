@@ -599,12 +599,24 @@ class Hdf5dbTest(unittest.TestCase):
                 self.assertEqual(val.shape, (1, 1))
                 self.assertEqual(val[0, 0], i * 10 + j)
 
+        # do a point selection
+        sel = selections.select(shape, [(0, 0), (1, 1), (2, 2), (3, 3)])
+        val = db.getDatasetValues(dset_id, sel)
+        self.assertTrue(isinstance(val, np.ndarray))
+        self.assertEqual(val.shape, (4,))
+        for i in range(4):
+            self.assertEqual(val[i], i * 10 + i)
+
+        # point selection write
+        arr = np.zeros((4,), dtype=dtype)
+        db.setDatasetValues(dset_id, sel, arr)
+
         # test select all write
-        sel = selections.select(shape, ...)
+        sel_all = selections.select(shape, ...)
         arr = np.zeros(shape, dtype=dtype)
         arr[...] = 42
-        db.setDatasetValues(dset_id, sel, arr)
-        arr = db.getDatasetValues(dset_id, sel)
+        db.setDatasetValues(dset_id, sel_all, arr)
+        arr = db.getDatasetValues(dset_id, sel_all)
         for i in range(nrows):
             for j in range(ncols):
                 self.assertEqual(arr[i, j], 42)
@@ -612,7 +624,10 @@ class Hdf5dbTest(unittest.TestCase):
         # try with broadcasting
         arr_one_value = np.zeros((1, 1), dtype=dtype)
         arr_one_value[0, 0] = 7
-        db.setDatasetValues(dset_id, sel, arr_one_value)
+        db.setDatasetValues(dset_id, sel_all, arr_one_value)
+        # check that entire dataset is updated to the single value
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertTrue((arr == 7).all())
 
         db.close()
 
