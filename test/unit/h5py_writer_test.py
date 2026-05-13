@@ -96,12 +96,13 @@ class H5pyWriterTest(unittest.TestCase):
 
         g1_1_id = db.createGroup()
         db.createHardLink(g1_id, "g1.1", g1_1_id)
-        dset_111_id = db.createDataset(shape=(10, 10), dtype=np.int32)
+        shape = (10, 10)
+        dset_111_id = db.createDataset(shape=shape, dtype=np.int32)
 
         # try setting dset values with broadcasting
         arr_one_value = np.zeros((1, 1), dtype=np.int32)
         arr_one_value[0, 0] = 42
-        sel_all = selections.select((10, 10), ...)
+        sel_all = selections.select(shape, ...)
         db.setDatasetValues(dset_111_id, sel_all, arr_one_value)
 
         db.createHardLink(g1_1_id, "dset1.1.1", dset_111_id)
@@ -124,9 +125,9 @@ class H5pyWriterTest(unittest.TestCase):
             g11 = g1["g1.1"]
             self.assertTrue("dset1.1.1" in g11)
             dset = g11["dset1.1.1"]
-            self.assertEqual(dset.shape, (10, 10))
-            for i in range(10):
-                for j in range(10):
+            self.assertEqual(dset.shape, shape)
+            for i in range(shape[0]):
+                for j in range(shape[1]):
                     self.assertEqual(dset[i, j], 42)
             self.assertTrue("g2" in f)
             g2 = f["g2"]
@@ -135,19 +136,19 @@ class H5pyWriterTest(unittest.TestCase):
 
         # write dataset values element by element
         db.open()
-        arr = np.zeros((10, 10), dtype=np.int32)
-        for i in range(10):
-            for j in range(10):
+        arr = np.zeros(shape, dtype=np.int32)
+        for i in range(shape[0]):
+            for j in range(shape[1]):
                 arr[i, j] = i * j
-        sel_all = selections.select((10, 10), ...)
+        sel_all = selections.select(shape, ...)
         db.setDatasetValues(dset_111_id, sel_all, arr)
         db.close()
 
         # verify changes in h5py
         with h5py.File(filepath) as f:
             dset = f["/g1/g1.1/dset1.1.1"]
-            for i in range(10):
-                for j in range(10):
+            for i in range(shape[0]):
+                for j in range(shape[1]):
                     self.assertEqual(dset[i, j], i * j)
 
         db.open()
@@ -200,7 +201,7 @@ class H5pyWriterTest(unittest.TestCase):
             self.assertFalse("tmp_group" in g2)
 
         db.open()
-        sel = selections.select((10, 10), (slice(4, 5), slice(4, 5)))
+        sel = selections.select(shape, (slice(4, 5), slice(4, 5)))
         arr = np.zeros((1, 1), dtype=np.int32)
         arr[0, 0] = 42
         db.setDatasetValues(dset_111_id, sel, arr)
@@ -208,11 +209,32 @@ class H5pyWriterTest(unittest.TestCase):
 
         with h5py.File(filepath) as f:
             dset = f["/g1/g1.1/dset1.1.1"]
-            for i in range(10):
-                for j in range(10):
+            for i in range(shape[0]):
+                for j in range(shape[1]):
                     if i == 4 and j == 4:
                         # this is the one element that was updated
                         expected = 42
+                    else:
+                        expected = i * j
+                    self.assertEqual(dset[i, j], expected)
+
+        # try a point write
+        db.open()
+        points = []
+        for i in range(shape[0]):
+            points.append((i, i))
+        sel = selections.select(shape, points)
+        arr = np.zeros((len(points),), dtype=np.int32)
+        db.setDatasetValues(dset_111_id, sel, arr)
+        db.close()
+
+        with h5py.File(filepath) as f:
+            dset = f["/g1/g1.1/dset1.1.1"]
+            for i in range(shape[0]):
+                for j in range(shape[1]):
+                    if i == j:
+                        # the diagonal elements were updated to 0
+                        expected = 0
                     else:
                         expected = i * j
                     self.assertEqual(dset[i, j], expected)

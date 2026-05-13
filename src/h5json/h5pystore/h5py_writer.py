@@ -373,14 +373,28 @@ class H5pyWriter(H5Writer):
         updates = self.db._getDatasetUpdates(dset_id)
 
         for (sel, val) in updates:
-            slices = []
-            for dim in range(len(sel.shape)):
-                start = sel.start[dim]
-                stop = start + sel.count[dim]
-                step = sel.step[dim]
-                slices.append(slice(start, stop, step))
-            slices = tuple(slices)
-            dset[slices] = val
+            if sel is None or sel.select_type == selections.H5S_SEL_NONE:
+                pass  # no updates
+            elif sel.select_type == selections.H5S_SEL_ALL:
+                dset[...] = val
+                self.log.debug(f"h5py_writer dset {dset.name} updated with sel_all")
+            elif isinstance(sel, selections.SimpleSelection):
+                slices = []
+                for dim in range(len(sel.shape)):
+                    start = sel.start[dim]
+                    stop = start + sel.count[dim]
+                    step = sel.step[dim]
+                    slices.append(slice(start, stop, step))
+                slices = tuple(slices)
+                dset[slices] = val
+            elif isinstance(sel, selections.PointSelection):
+                for i in range(len(sel.points)):
+                    point = tuple(sel.points[i])
+                    dset[point] = val[i]
+                self.log.debug(f"h5py_writer dset {dset.name} updated with point selection")
+            else:
+                raise TypeError(f"Unexpected selection type: {type(sel)}")
+
             self.log.debug(f"h5py_writer dset {dset.name} updated")
 
     def initializeDatasetValues(self, dset_id, dset):
