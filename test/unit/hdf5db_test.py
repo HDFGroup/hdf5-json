@@ -540,7 +540,75 @@ class Hdf5dbTest(unittest.TestCase):
 
         db.close()
 
-    def testSimpleDataset(self):
+    def test1DDataset(self):
+        nelements = 10
+        shape = (nelements,)
+        dtype = np.int32
+
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dset_id = db.createDataset(shape, dtype=dtype)
+        db.createHardLink(root_id, "dset", dset_id)
+        db.createAttribute(dset_id, "a1", "Hello, world")
+        sel_all = selections.select(shape, ...)
+        arr = db.getDatasetValues(dset_id, sel_all)
+
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, shape)
+        self.assertEqual(arr.min(), 0)
+        self.assertEqual(arr.max(), 0)
+
+        # set values element by element
+        for i in range(nelements):
+            sel = selections.select(shape, slice(i, i + 1))
+            db.setDatasetValues(dset_id, sel, np.array([i], dtype=dtype))
+
+        # read entire dataset
+        arr = db.getDatasetValues(dset_id, sel_all)
+        for i in range(nelements):
+            val = np.array([i], dtype=dtype)
+            np.testing.assert_array_equal(arr[i], val)
+
+        # read element by element
+        for i in range(nelements):
+            sel = selections.select(shape, slice(i, i + 1))
+            val = db.getDatasetValues(dset_id, sel)
+            self.assertTrue(isinstance(val, np.ndarray))
+            self.assertEqual(val.shape, (1,))
+            self.assertEqual(val[0], i)
+
+        # do a point selection
+        sel = selections.select(shape, [2, 3, 5, 7])
+        val = db.getDatasetValues(dset_id, sel)
+        self.assertTrue(isinstance(val, np.ndarray))
+        self.assertEqual(val.shape, (4,))
+
+        self.assertEqual(val[0], 2)
+        self.assertEqual(val[1], 3)
+        self.assertEqual(val[2], 5)
+        self.assertEqual(val[3], 7)
+
+        # point selection write
+        arr = np.zeros((4,), dtype=dtype)
+        db.setDatasetValues(dset_id, sel, arr)
+        arr = db.getDatasetValues(dset_id, sel_all)
+        for i in range(nelements):
+            if i in (2, 3, 5, 7):
+                self.assertEqual(arr[i], 0)  # these were set to 0 by point selection write
+            else:
+                self.assertEqual(arr[i], i)
+
+        # try with broadcasting
+        arr_one_value = np.zeros((1), dtype=dtype)
+        arr_one_value[0] = 42
+        db.setDatasetValues(dset_id, sel_all, arr_one_value)
+        # check that entire dataset is updated to the single value
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertTrue((arr == 42).all())
+
+        db.close()
+
+    def test2DDataset(self):
         nrows = 8
         ncols = 10
         shape = (nrows, ncols)

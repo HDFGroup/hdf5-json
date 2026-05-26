@@ -90,7 +90,7 @@ class Hdf5db:
         self._dirty_objects = set()     # set of modified objects
         self._deleted_objects = set()   # set of deleted objects
         self._resized_datasets = set()  # set of dataset ids that have been resized
-        self._dataset_updates = {}         # list of dataset values updates keyed by dset_id
+        self._dataset_updates = {}      # list of dataset values updates keyed by dset_id
 
         self._root_id = None
 
@@ -105,6 +105,14 @@ class Hdf5db:
             self._writer.set_db(self)
         else:
             self._writer = None
+
+    def _getDatasetUpdates(self, dset_id):
+        """ Return list of updates for the given dataset id """
+
+        if dset_id not in self._dataset_updates:
+            self._dataset_updates[dset_id] = []
+
+        return self._dataset_updates[dset_id]
 
     @property
     def db(self):
@@ -184,14 +192,6 @@ class Hdf5db:
     def resized_datasets(self):
         return self._resized_datasets
 
-    def _getDatasetUpdates(self, dset_id):
-        """ Get list of update tuples """
-        if getCollectionForId(dset_id) != "datasets":
-            raise TypeError("expected dataset id")
-        if dset_id not in self._dataset_updates:
-            self._dataset_updates[dset_id] = []
-        return self._dataset_updates[dset_id]
-
     def make_dirty(self, obj_id):
         """ Mark the object as dirty and update the lastModified timestamp """
         obj_id = getHashTagForId(obj_id)
@@ -222,6 +222,7 @@ class Hdf5db:
         self._deleted_objects.clear()
         self._resized_datasets.clear()
         self._dataset_updates.clear()
+
         return True
 
     def readAll(self):
@@ -711,7 +712,6 @@ class Hdf5db:
 
         if shape_class == "H5S_SCALAR":
             if sel.select_type != selections.H5S_SEL_ALL:
-                # TBD: support other selection types
                 raise ValueError("Only SELECT_ALL selections are supported for scalar datasets")
             if sel.shape != ():
                 raise ValueError("Selection shape does not match dataset shape")
@@ -754,28 +754,59 @@ class Hdf5db:
             arr = init_arr(dtype, cpl)
 
         # apply any updates that impact this selection
-
-        for (update_sel, update_val) in updates:
-            # get the part of the update that is in common with the requested selection
-            x_sel = selections.intersect(sel, update_sel)
-            if x_sel.nselect == 0:
-                # this update doesn't effect the selection, so ignore
-                continue
-            # apply the update to the array to be returned
-            if sel.select_type == selections.H5S_SEL_POINTS:
-                # For point selections apply each intersecting point individually.
-                # arr is 1-D with one entry per selected point; map each intersection
-                # point back to its position in sel and its offset in update_val.
-                rank = len(sel.shape)
-                sel_pts = list(selections._iter_points(sel))
-                for pt in selections._iter_points(x_sel):
-                    tgt_idx = sel_pts.index(pt)
-                    src_coords = tuple(pt[d] - update_sel.start[d] for d in range(rank))
-                    arr[tgt_idx] = update_val[src_coords]
-            else:
-                src_sel = selections.translate(update_sel, x_sel)
-                tgt_sel = selections.translate(sel, x_sel)
-                arr[tgt_sel.slices] = update_val[src_sel.slices]
+        if sel.select_type == selections.H5S_SEL_POINTS:
+            # For point selections apply each intersecting point individually.
+            # arr is 1-D with one entry per selected point; map each intersection
+            # point back to its position in sel and its offset in update_val.
+            points = sel.points
+            for tgt_idx in range(len(points)):
+                pt = points[tgt_idx]
+                pt_sel = selections.select(sel.shape, [pt])
+                for (update_sel, update_val) in updates:
+                    x_sel = selections.intersect(update_sel, pt_sel)
+                    if x_sel.nselect == 0:
+                        pass  # no intersection, ignore
+                    elif x_sel.nselect > 1:
+                        raise ValueError("unexpected multiple points in intersection of point selection")
+                    else:
+                        if update_sel.select_type == selections.H5S_SEL_POINTS:
+                            # update_val is 1-D indexed by position in update_sel.points
+                            update_pts = list(selections._iter_points(update_sel))
+                            pt_tuple = next(iter(selections._iter_points(pt_sel)))
+                            src_idx = update_pts.index(pt_tuple)
+                            arr[tgt_idx] = update_val[src_idx]
+                        else:
+                            src_sel = selections.translate(update_sel, x_sel)
+                            # src_sel is a PointSelection with 1 translated point
+                            # index update_val using the full N-D coordinates
+                            src_pt = next(iter(selections._iter_points(src_sel)))
+                            arr[tgt_idx] = update_val[src_pt] if len(src_pt) > 1 else update_val[src_pt[0]]
+        else:
+            # hyperslab selections
+            for (update_sel, update_val) in updates:
+                # get the part of the update that is in common with the requested selection
+                x_sel = selections.intersect(sel, update_sel)
+                if x_sel.nselect == 0:
+                    # this update doesn't effect the selection, so ignore
+                    continue
+                if update_sel.select_type == selections.H5S_SEL_POINTS:
+                    # update_val is 1-D indexed by position in update_sel.points
+                    update_pts = list(selections._iter_points(update_sel))
+                    update_pt_to_idx = {pt: i for i, pt in enumerate(update_pts)}
+                    rank = len(sel.shape)
+                    sel_start = sel.start
+                    for pt in selections._iter_points(x_sel):
+                        src_idx = update_pt_to_idx[pt]
+                        tgt_coords = tuple(pt[d] - sel_start[d] for d in range(rank))
+                        if rank == 1:
+                            arr[tgt_coords[0]] = update_val[src_idx]
+                        else:
+                            arr[tgt_coords] = update_val[src_idx]
+                else:
+                    # apply the update to the array to be returned
+                    src_sel = selections.translate(update_sel, x_sel)
+                    tgt_sel = selections.translate(sel, x_sel)
+                    arr[tgt_sel.slices] = update_val[src_sel.slices]
 
         return arr
 

@@ -167,8 +167,29 @@ def _iter_points(point_sel):
             yield tuple(int(x) for x in row)
 
 
+def _bboxes_overlap(s1, s2):
+    """Return True if the bounding boxes of s1 and s2 overlap in every dimension."""
+    min1, max1 = s1.bbox
+    if min1 is None:
+        return False
+    min2, max2 = s2.bbox
+    if min2 is None:
+        return False
+    return all(min1[d] < max2[d] and min2[d] < max1[d] for d in range(len(s1.shape)))
+
+
+def _empty_point_sel(shape):
+    """Return an empty PointSelection for the given shape."""
+    result = PointSelection(shape)
+    result.set([])
+    return result
+
+
 def _filter_points_by_hyperslab(point_sel, hyper_sel):
     """Return a PointSelection of points from point_sel that lie within hyper_sel."""
+    if not _bboxes_overlap(point_sel, hyper_sel):
+        return _empty_point_sel(point_sel.shape)
+
     start = hyper_sel.start
     count = hyper_sel.count
     step = hyper_sel.step
@@ -192,6 +213,9 @@ def _filter_points_by_hyperslab(point_sel, hyper_sel):
 
 def _intersect_points_points(s1, s2):
     """Return a PointSelection of points common to both s1 and s2."""
+    if not _bboxes_overlap(s1, s2):
+        return _empty_point_sel(s1.shape)
+
     common = sorted(set(_iter_points(s1)) & set(_iter_points(s2)))
 
     rank = len(s1.shape)
@@ -345,6 +369,33 @@ class Selection(object):
         return self._shape
 
     @property
+    def bbox(self):
+        """ Bounding box of selection, as a tuple of (min, max) corner coordinates.
+
+        For point-based selections, this is the smallest hyperslab that contains
+        all selected points.  For hyperslab-based selections, this is the
+        smallest hyperslab that contains the selection (which may be larger than
+        the actual selection if stepped slices are used).
+        """
+        if self._select_type == H5S_SEL_POINTS:
+            pts_arr = np.asarray(self._points)
+            if pts_arr.size == 0:
+                return None, None
+            # For rank-1, pts_arr is 1-D (shape (N,)); reshape so axis=0 reduces over points.
+            rank = len(self._shape)
+            if pts_arr.ndim == 1 and rank == 1:
+                pts_arr = pts_arr.reshape(-1, 1)
+            min_corner = tuple(int(x) for x in np.min(pts_arr, axis=0))
+            max_corner = tuple(int(x) + 1 for x in np.max(pts_arr, axis=0))
+            return min_corner, max_corner
+        elif self._select_type in (H5S_SEL_HYPERSLABS, H5S_SEL_ALL):
+            start = self.start
+            stop = tuple(start[dim] + (self.count[dim] - 1) * self.step[dim] + 1 for dim in range(len(self._shape)))
+            return start, stop
+        else:
+            raise TypeError("Bounding box is not defined for this selection type")
+
+    @property
     def nselect(self):
         """ Number of elements currently selected """
 
@@ -426,11 +477,10 @@ class PointSelection(Selection):
 
     def _perform_selection(self, points, op):
         """ Internal method which actually performs the selection """
-        if isinstance(points, np.ndarray) or True:
-            points = np.asarray(points, order='C', dtype='u8')
-            if len(points.shape) == 1:
-                # points.shape = (1,points.shape[0])
-                pass
+        points = np.asarray(points, order='C', dtype='u8')
+        if len(points.shape) == 1:
+            # points.shape = (1,points.shape[0])
+            pass
 
         if self._select_type != H5S_SEL_POINTS:
             op = H5S_SELECT_SET
