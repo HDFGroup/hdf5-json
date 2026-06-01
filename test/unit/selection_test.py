@@ -251,6 +251,24 @@ class PointSelectionTest(unittest.TestCase):
         self.assertEqual(bbox[0], (0, 1))
         self.assertEqual(bbox[1], (3, 4))
 
+    def testListOfCoords1D(self):
+        shape = (10,)
+        sel = selections.select(shape, [2, 3, 5, 7])
+        self.assertIsInstance(sel, PointSelection)
+        self.assertEqual(sel.select_type, H5S_SEL_POINTS)
+        self.assertEqual(sel.nselect, 4)
+        points = sel.points
+        self.assertEqual(len(points), 4)
+        for i in range(len(points)):
+            pt = points[i]
+            self.assertTrue(pt in (2, 3, 5, 7))
+
+        bbox = sel.bbox
+        self.assertTrue(isinstance(bbox, tuple))
+        self.assertEqual(len(bbox), 2)
+        self.assertEqual(bbox[0], (2,))
+        self.assertEqual(bbox[1], (8,))
+
     def testListOfCoords2D(self):
         shape = (8, 10)
         sel = selections.select(shape, [(0, 0), (1, 1), (2, 2), (3, 3)])

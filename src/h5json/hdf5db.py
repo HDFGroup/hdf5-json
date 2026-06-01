@@ -673,7 +673,9 @@ class Hdf5db:
         def init_arr(dtype, cpl):
             """ create an ndarray with the give shape, dtype and fill_value
                 (if the latter is found in the creation properties list) """
-            if hasattr(sel, "count"):
+            if isinstance(sel, selections.ScalarSelection):
+                arr_shape = ()
+            elif hasattr(sel, "count"):
                 arr_shape = sel.count if isinstance(sel.count, tuple) else (sel.count, )
             else:
                 arr_shape = (sel.nselect,)

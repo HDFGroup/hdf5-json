@@ -70,9 +70,16 @@ def select(obj, args):
     if not isinstance(args, tuple):
         args = (args,)
 
-    if hasattr(obj, "shape") and obj.shape == ():
+    if hasattr(obj, "shape"):
+        obj_shape = obj.shape
+    elif isinstance(obj, tuple):
+        obj_shape = obj
+    else:
+        raise TypeError("Object must be a dataset or a shape tuple")
+
+    if len(obj_shape) == 0:
         # scalar object
-        sel = ScalarSelection(obj.shape, args)
+        sel = ScalarSelection(obj_shape, args)
         return sel
 
     # "Special" indexing objects
@@ -80,12 +87,12 @@ def select(obj, args):
 
         arg = args[0]
         if hasattr(arg, "shape"):
-            obj_shape = obj.shape
+            arg_shape = arg.shape
         else:
-            obj_shape = obj
+            arg_shape = obj_shape
 
         if isinstance(arg, Selection):
-            if arg.shape != obj_shape:
+            if arg_shape != obj_shape:
                 raise TypeError("Mismatched selection shape")
             return arg
 
@@ -114,14 +121,12 @@ def select(obj, args):
                 int(a)
             except Exception:
                 use_fancy = True
-        if use_fancy and hasattr(obj, "shape"):
-            sel = FancySelection(obj.shape)
+        if use_fancy:
+            sel = FancySelection(obj_shape)
             sel[args]
             return sel
-    if hasattr(obj, "shape"):
-        sel = SimpleSelection(obj.shape)
-    else:
-        sel = SimpleSelection(obj)
+    sel = SimpleSelection(obj_shape)
+     
     sel[args]
     return sel
 
