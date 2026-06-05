@@ -28,8 +28,8 @@ from h5json.selections import (
 
 def make_point_sel(shape, mask):
     """Build a PointSelection from a boolean ndarray mask."""
-    sel = PointSelection(shape)
-    sel[mask]
+    points = np.transpose(mask.nonzero())
+    sel = PointSelection(shape, points)
     return sel
 
 
@@ -218,6 +218,7 @@ class PointSelectionTest(unittest.TestCase):
         self.assertIsInstance(sel, PointSelection)
         self.assertEqual(sel.select_type, H5S_SEL_POINTS)
         self.assertEqual(sel.nselect, 3)
+        self.assertEqual(sel.mshape, (3,))
         points = sel.points
         self.assertEqual(len(points), 3)
         for i in range(len(points)):
@@ -240,6 +241,7 @@ class PointSelectionTest(unittest.TestCase):
         sel = make_point_sel(shape, mask)
         self.assertEqual(sel.select_type, H5S_SEL_POINTS)
         self.assertEqual(sel.nselect, 2)
+        self.assertEqual(sel.mshape, (2,))
         pts = sel.points
         self.assertEqual(pts.shape, (2, 2))
         self.assertEqual(list(pts[0]), [0, 1])
@@ -254,9 +256,11 @@ class PointSelectionTest(unittest.TestCase):
     def testListOfCoords1D(self):
         shape = (10,)
         sel = selections.select(shape, [2, 3, 5, 7])
+
         self.assertIsInstance(sel, PointSelection)
         self.assertEqual(sel.select_type, H5S_SEL_POINTS)
         self.assertEqual(sel.nselect, 4)
+        self.assertEqual(sel.mshape, (4,))
         points = sel.points
         self.assertEqual(len(points), 4)
         for i in range(len(points)):
@@ -275,6 +279,7 @@ class PointSelectionTest(unittest.TestCase):
         self.assertIsInstance(sel, PointSelection)
         self.assertEqual(sel.select_type, H5S_SEL_POINTS)
         self.assertEqual(sel.nselect, 4)
+        self.assertEqual(sel.mshape, (4,))
         points = sel.points
         self.assertEqual(len(points), 4)
         for i in range(len(points)):
@@ -306,11 +311,12 @@ class PointSelectionTest(unittest.TestCase):
         mask1 = np.zeros(10, dtype=bool)
         mask1[[1, 2, 3]] = True
         sel = make_point_sel(shape, mask1)
+        self.assertTrue(isinstance(sel, PointSelection))
         self.assertEqual(sel.nselect, 3)
 
         mask2 = np.zeros(10, dtype=bool)
         mask2[[5, 6]] = True
-        sel[mask2]
+        sel.set([5, 6,])
         self.assertEqual(sel.nselect, 2)
 
     def testRepr(self):
@@ -329,35 +335,35 @@ class FancySelectionTest(unittest.TestCase):
 
     def testCoordList1D(self):
         shape = (10,)
-        sel = FancySelection(shape)
-        sel[[2, 5, 8]]
-        self.assertEqual(sel.select_type, H5S_SEL_FANCY)
-
-    def testGetQueryParamSlice(self):
-        shape = (10,)
-        sel = FancySelection(shape)
-        sel[slice(2, 8)]
-        param = sel.getQueryParam()
-        self.assertEqual(param, "[2:8]")
-
-    def testGetQueryParamList(self):
-        shape = (10,)
-        sel = FancySelection(shape)
-        sel[[1, 3, 5]]
-        param = sel.getQueryParam()
-        self.assertEqual(param, "[[1,3,5]]")
+        try:
+            FancySelection(shape, [2, 5, 8])
+            self.assertTrue(False)
+        except TypeError:
+            pass  # FancySelection requires rank 2 or higher
 
     def testGetQueryParam2D(self):
         shape = (10, 10)
-        sel = FancySelection(shape)
-        sel[(slice(1, 4), slice(2, 6))]
+        sel = FancySelection(shape, [slice(1, 4), slice(2, 6)])
         param = sel.getQueryParam()
         self.assertEqual(param, "[1:4,2:6]")
 
+    def testFancyCoord(self):
+        shape = (10, 10)
+        sel = FancySelection(shape, [slice(0, 5), [3, 7]])
+        self.assertIsInstance(sel, FancySelection)
+        self.assertEqual(sel.select_type, H5S_SEL_FANCY)
+        self.assertEqual(sel.nselect, 10)  # 5 rows x 2 columns
+        self.assertEqual(sel.mshape, (5, 2))
+        slices = sel.slices
+        self.assertEqual(len(slices), 2)
+        self.assertEqual(slices[0], slice(0, 5, 1))
+        self.assertEqual(slices[1], [3, 7])
+        param = sel.getQueryParam()
+        self.assertEqual(param, "[0:5,[3,7]]")
+
     def testRepr(self):
-        shape = (10,)
-        sel = FancySelection(shape)
-        sel[slice(0, 5)]
+        shape = (10, 10)
+        sel = FancySelection(shape, [slice(0, 5), [3, 7]])
         self.assertIn("FancySelection", repr(sel))
 
 

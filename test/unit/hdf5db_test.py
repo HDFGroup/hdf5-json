@@ -579,8 +579,9 @@ class Hdf5dbTest(unittest.TestCase):
 
         # do a point selection
         sel = selections.select(shape, [2, 3, 5, 7])
-        
+
         val = db.getDatasetValues(dset_id, sel)
+
         self.assertTrue(isinstance(val, np.ndarray))
         self.assertEqual(val.shape, (4,))
 
@@ -841,7 +842,7 @@ class Hdf5dbTest(unittest.TestCase):
         db.createHardLink(root_id, "dset", dset_id)
         db.createAttribute(dset_id, "a1", "Hello, world")
         sel_all = selections.select((), ...)
-         
+
         arr = db.getDatasetValues(dset_id, sel_all)
         self.assertEqual(arr.dtype, dtype)
         self.assertEqual(arr.shape, ())
