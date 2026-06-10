@@ -349,7 +349,7 @@ class FancySelectionTest(unittest.TestCase):
 
     def testFancyCoord(self):
         shape = (10, 10)
-        sel = FancySelection(shape, [slice(0, 5), [3, 7]])
+        sel = selections.select(shape, (slice(0, 5), [3, 7]))
         self.assertIsInstance(sel, FancySelection)
         self.assertEqual(sel.select_type, H5S_SEL_FANCY)
         self.assertEqual(sel.nselect, 10)  # 5 rows x 2 columns
@@ -363,7 +363,11 @@ class FancySelectionTest(unittest.TestCase):
 
     def testRepr(self):
         shape = (10, 10)
-        sel = FancySelection(shape, [slice(0, 5), [3, 7]])
+        sel = selections.select(shape, (slice(0, 5), [3, 7]))
+        self.assertIsInstance(sel, FancySelection)
+        self.assertEqual(sel.select_type, H5S_SEL_FANCY)
+        self.assertEqual(sel.nselect, 10)  # 5 rows x 2 columns
+        self.assertEqual(sel.mshape, (5, 2))
         self.assertIn("FancySelection", repr(sel))
 
 

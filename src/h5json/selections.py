@@ -121,8 +121,7 @@ def select(obj, args):
             except Exception:
                 use_fancy = True
         if use_fancy:
-            sel = FancySelection(obj_shape)
-            sel[args]
+            sel = FancySelection(obj_shape, args)
             return sel
 
     sel = SimpleSelection(obj_shape, args)
