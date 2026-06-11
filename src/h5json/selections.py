@@ -230,10 +230,60 @@ def _intersect_points_points(s1, s2):
     return result
 
 
+def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
+    """Return the intersection of a FancySelection with a hyperslab selection.
+
+    For each dimension, slice ranges are clipped and coordinate lists are
+    filtered to those that fall within the hyperslab.  Returns an empty
+    PointSelection when the intersection is empty.
+    """
+    rank = len(fancy_sel.shape)
+    h_start = hyper_sel.start
+    h_count = hyper_sel.count
+    h_step = hyper_sel.step
+
+    new_slices = []
+    for dim in range(rank):
+        s = fancy_sel.slices[dim]
+        hs = h_start[dim]
+        hc = h_count[dim]
+        hst = h_step[dim]
+
+        if isinstance(s, slice):
+            if s.step > 1 or hst > 1:
+                raise ValueError("stepped slices not currently supported")
+            new_start = max(s.start, hs)
+            new_stop = min(s.stop, hs + hc)
+            if new_stop <= new_start:
+                return _empty_point_sel(fancy_sel.shape)
+            new_slices.append(slice(new_start, new_stop, 1))
+        elif isinstance(s, list):
+            if hst == 1:
+                filtered = [x for x in s if hs <= x < hs + hc]
+            else:
+                filtered = [x for x in s if hs <= x < hs + hc * hst and (x - hs) % hst == 0]
+            if not filtered:
+                return _empty_point_sel(fancy_sel.shape)
+            new_slices.append(filtered)
+        elif isinstance(s, int):
+            if hst == 1:
+                in_range = hs <= s < hs + hc
+            else:
+                in_range = hs <= s < hs + hc * hst and (s - hs) % hst == 0
+            if not in_range:
+                return _empty_point_sel(fancy_sel.shape)
+            new_slices.append(s)
+        else:
+            raise TypeError(f"Unexpected FancySelection slice type: {type(s)}")
+
+    return FancySelection(fancy_sel.shape, new_slices)
+
+
 def intersect(s1, s2):
     """ Return the intersection of two selections.
 
-    Supports hyperslab/hyperslab, hyperslab/point, and point/point combinations.
+    Supports hyperslab/hyperslab, hyperslab/point, point/point, and
+    hyperslab/fancy combinations.
     """
     if not isinstance(s1, Selection):
         raise TypeError("Expected selection type for first arg")
@@ -268,17 +318,121 @@ def intersect(s1, s2):
     if t1 == H5S_SEL_POINTS and t2 == H5S_SEL_POINTS:
         return _intersect_points_points(s1, s2)
 
+    if t1 == H5S_SEL_FANCY and t2 in hyperslab_types:
+        return _intersect_fancy_hyperslab(s1, s2)
+
+    if t1 in hyperslab_types and t2 == H5S_SEL_FANCY:
+        return _intersect_fancy_hyperslab(s2, s1)
+
     raise TypeError(f"Unsupported selection types for intersection: {t1}, {t2}")
+
+
+def _dim_contained(s1_dim, s2_dim):
+    """Return True if every value represented by s1_dim is also in s2_dim.
+
+    Each argument is a per-dimension component: a slice, list of ints, or int.
+    Stepped slices are handled conservatively (return False).
+    """
+    # Normalise s1 to either a contiguous range or an explicit set.
+    if isinstance(s1_dim, int):
+        s1_start, s1_stop = s1_dim, s1_dim + 1
+        s1_contiguous = True
+    elif isinstance(s1_dim, list):
+        s1_set = set(s1_dim)
+        s1_contiguous = False
+    elif isinstance(s1_dim, slice):
+        s1_start = s1_dim.start if s1_dim.start is not None else 0
+        s1_stop = s1_dim.stop
+        s1_step = s1_dim.step if s1_dim.step is not None else 1
+        if s1_step > 1:
+            return False  # conservative for stepped slices
+        s1_contiguous = True
+    else:
+        return False
+
+    if isinstance(s2_dim, slice):
+        s2_start = s2_dim.start if s2_dim.start is not None else 0
+        s2_stop = s2_dim.stop
+        s2_step = s2_dim.step if s2_dim.step is not None else 1
+        if s2_step > 1:
+            return False
+        if s1_contiguous:
+            return s1_start >= s2_start and s1_stop <= s2_stop
+        else:
+            return all(s2_start <= x < s2_stop for x in s1_set)
+    elif isinstance(s2_dim, list):
+        s2_set = set(s2_dim)
+        if s1_contiguous:
+            return all(x in s2_set for x in range(s1_start, s1_stop))
+        else:
+            return s1_set <= s2_set
+    elif isinstance(s2_dim, int):
+        if s1_contiguous:
+            return s1_start == s2_dim and s1_stop == s2_dim + 1
+        else:
+            return s1_set == {s2_dim}
+    else:
+        return False
+
+
+def _fancy_contained(s1, s2):
+    """Return True if every element selected by s1 is also selected by s2.
+
+    At least one of s1/s2 must be a FancySelection; the other may be a
+    SimpleSelection (hyperslab or select-all).
+
+    FancySelections with multiple list dimensions represent paired (non-grid)
+    coordinates.  Containment for those is returned False conservatively.
+    """
+    rank = len(s1.shape)
+    hyperslab_types = (H5S_SEL_HYPERSLABS, H5S_SEL_ALL)
+
+    def get_dims(sel):
+        if sel.select_type in hyperslab_types:
+            return [
+                slice(sel.start[d], sel.start[d] + sel.count[d] * sel.step[d], sel.step[d])
+                for d in range(rank)
+            ]
+        else:  # H5S_SEL_FANCY
+            return list(sel.slices)
+
+    s1_dims = get_dims(s1)
+    s2_dims = get_dims(s2)
+
+    # Paired-coordinate FancySelections (multiple list dims) are not a
+    # Cartesian product — per-dimension checking would be incorrect.
+    if sum(1 for d in s1_dims if isinstance(d, list)) > 1:
+        return False
+
+    return all(_dim_contained(s1_dims[d], s2_dims[d]) for d in range(rank))
 
 
 def contained(s1, s2):
     """ return True if s1 is contained in s2, otherwise False """
+    if not isinstance(s1, Selection):
+        raise TypeError("Expected selection type for first arg")
+    if not isinstance(s2, Selection):
+        raise TypeError("Expected selection type for second arg")
+    if s1.shape != s2.shape:
+        raise ValueError("selections have incompatible shapes")
+
+    t1 = s1.select_type
+    t2 = s2.select_type
+    fancy_types = (H5S_SEL_FANCY,)
+    hyperslab_types = (H5S_SEL_HYPERSLABS, H5S_SEL_ALL)
+
+    if t1 in fancy_types or t2 in fancy_types:
+        allowed = hyperslab_types + fancy_types
+        if t1 not in allowed:
+            raise TypeError(f"Unsupported selection type for contained(): {t1}")
+        if t2 not in allowed:
+            raise TypeError(f"Unsupported selection type for contained(): {t2}")
+        return _fancy_contained(s1, s2)
+
     _check_bool_args(s1, s2)
 
     is_contained = True
     rank = len(s1.shape)
-    if len(s2.shape) != rank:
-        raise ValueError("contained can be used in selections of different ranks")
     for dim in range(rank):
         if s1.step[dim] > 1 or s2.step[dim] > 1:
             # TBD: do the right thing for stepped selections
@@ -298,6 +452,64 @@ def translate(s1, s2):
     """ Given two selections, s1 and s2, return a new selection
     definied by s2 relative to s1's start and count.
     s2 must be contained in s1 """
+
+    if s1.select_type == H5S_SEL_FANCY:
+        if not isinstance(s2, Selection):
+            raise TypeError("Expected selection type for second arg")
+        if s2.select_type not in (H5S_SEL_HYPERSLABS, H5S_SEL_ALL):
+            raise TypeError("translate with FancySelection s1 only supports hyperslab s2")
+        if s1.shape != s2.shape:
+            raise ValueError("selections have incompatible shapes")
+
+        sel_inter = intersect(s1, s2)
+        if sel_inter.nselect == 0:
+            raise ValueError("translate - selections not overlapping")
+
+        rank = len(s1.shape)
+        new_slices = []
+        for dim in range(rank):
+            s1_dim = s1.slices[dim]
+            inter_dim = sel_inter.slices[dim]
+            if isinstance(s1_dim, slice):
+                offset = s1_dim.start if s1_dim.start is not None else 0
+                if isinstance(inter_dim, slice):
+                    new_slices.append(slice(inter_dim.start - offset, inter_dim.stop - offset, inter_dim.step))
+                elif isinstance(inter_dim, list):
+                    new_slices.append([x - offset for x in inter_dim])
+                else:
+                    new_slices.append(inter_dim - offset)
+            elif isinstance(s1_dim, list):
+                index_map = {val: idx for idx, val in enumerate(s1_dim)}
+                if isinstance(inter_dim, list):
+                    new_slices.append([index_map[x] for x in inter_dim])
+                else:
+                    new_slices.append(index_map[inter_dim])
+        return FancySelection(s1.shape, new_slices)
+
+    if s2.select_type == H5S_SEL_FANCY:
+        if not isinstance(s1, Selection):
+            raise TypeError("Expected selection type for first arg")
+        if s1.select_type not in (H5S_SEL_HYPERSLABS, H5S_SEL_ALL):
+            raise TypeError("Expected hyperslab selection for first arg")
+        if s1.shape != s2.shape:
+            raise ValueError("selections have incompatible shapes")
+
+        sel_inter = intersect(s1, s2)
+        if sel_inter.nselect == 0:
+            raise ValueError("translate - selections not overlapping")
+
+        rank = len(s1.shape)
+        new_slices = []
+        for dim in range(rank):
+            s = sel_inter.slices[dim]
+            offset = s1.start[dim]
+            if isinstance(s, slice):
+                new_slices.append(slice(s.start - offset, s.stop - offset, s.step))
+            elif isinstance(s, list):
+                new_slices.append([x - offset for x in s])
+            else:  # int
+                new_slices.append(s - offset)
+        return FancySelection(s1.shape, new_slices)
 
     _check_bool_args(s1, s2)
     sel_inter = intersect(s1, s2)

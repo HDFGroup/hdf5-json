@@ -616,6 +616,72 @@ class IntersectPointPointTest(unittest.TestCase):
         self.assertEqual(list(r_fwd.points.flatten()), list(r_rev.points.flatten()))
 
 
+class IntersectFancyHyperslabTest(unittest.TestCase):
+    def __init__(self, *args, **kwargs):
+        super(IntersectFancyHyperslabTest, self).__init__(*args, **kwargs)
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.WARNING)
+
+    def testFancyCoordIntersectHyperslab(self):
+        # rows 0-4, columns [1,3,7,9] intersected with rows 2-7, columns 2-8
+        # expected: rows 2-4, columns [3,7]
+        shape = (10, 10)
+        fancy = selections.select(shape, (slice(0, 5), [1, 3, 7, 9]))
+        hyp = selections.select(shape, (slice(2, 8), slice(2, 8)))
+        result = selections.intersect(fancy, hyp)
+        self.assertIsInstance(result, FancySelection)
+        self.assertEqual(result.select_type, H5S_SEL_FANCY)
+        self.assertEqual(result.slices[0], slice(2, 5, 1))
+        self.assertEqual(result.slices[1], [3, 7])
+        self.assertEqual(result.nselect, 6)  # 3 rows x 2 columns
+
+    def testHyperslabIntersectFancy(self):
+        # commuted — same result
+        shape = (10, 10)
+        fancy = selections.select(shape, (slice(0, 5), [1, 3, 7, 9]))
+        hyp = selections.select(shape, (slice(2, 8), slice(2, 8)))
+        result = selections.intersect(hyp, fancy)
+        self.assertIsInstance(result, FancySelection)
+        self.assertEqual(result.slices[0], slice(2, 5, 1))
+        self.assertEqual(result.slices[1], [3, 7])
+
+    def testFancyCoordNoOverlapInColumns(self):
+        # hyperslab columns 5-9 don't contain any of the fancy columns [1,3]
+        shape = (10, 10)
+        fancy = selections.select(shape, (slice(0, 5), [1, 3]))
+        hyp = selections.select(shape, (slice(0, 5), slice(5, 10)))
+        result = selections.intersect(fancy, hyp)
+        self.assertEqual(result.nselect, 0)
+
+    def testFancyCoordNoOverlapInRows(self):
+        # hyperslab rows 6-9 don't overlap with fancy rows 0-4
+        shape = (10, 10)
+        fancy = selections.select(shape, (slice(0, 5), [3, 7]))
+        hyp = selections.select(shape, (slice(6, 10), slice(0, 10)))
+        result = selections.intersect(fancy, hyp)
+        self.assertEqual(result.nselect, 0)
+
+    def testFancyIntersectSelectAll(self):
+        # SelectAll clips nothing; result equals the original FancySelection
+        shape = (10, 10)
+        fancy = selections.select(shape, (slice(0, 5), [3, 7]))
+        s_all = selections.select(shape, ...)
+        result = selections.intersect(fancy, s_all)
+        self.assertIsInstance(result, FancySelection)
+        self.assertEqual(result.select_type, H5S_SEL_FANCY)
+        self.assertEqual(result.nselect, fancy.nselect)
+        self.assertEqual(result.slices[0], slice(0, 5, 1))
+        self.assertEqual(result.slices[1], [3, 7])
+
+    def testFancyIntersectFancyRaises(self):
+        # FancySelection/FancySelection not yet supported
+        shape = (10, 10)
+        fancy1 = selections.select(shape, (slice(0, 5), [3, 7]))
+        fancy2 = selections.select(shape, (slice(2, 8), [1, 5, 9]))
+        with self.assertRaises(TypeError):
+            selections.intersect(fancy1, fancy2)
+
+
 class ContainedTest(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(ContainedTest, self).__init__(*args, **kwargs)
@@ -645,6 +711,69 @@ class ContainedTest(unittest.TestCase):
         outer = selections.select(shape, (slice(0, 10), slice(0, 10)))
         self.assertTrue(selections.contained(inner, outer))
         self.assertFalse(selections.contained(outer, inner))
+
+
+class ContainedFancyTest(unittest.TestCase):
+
+    def __init__(self, *args, **kwargs):
+        super(ContainedFancyTest, self).__init__(*args, **kwargs)
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.WARNING)
+
+    def testFancyContainedInHyperslab(self):
+        # fancy rows 2-4, cols [3,7] — fully inside hyperslab rows 0-7, cols 2-8
+        shape = (10, 10)
+        fancy = selections.select(shape, (slice(2, 5), [3, 7]))
+        hyp = selections.select(shape, (slice(0, 8), slice(2, 9)))
+        self.assertTrue(selections.contained(fancy, hyp))
+
+    def testFancyNotContainedInHyperslab_rows(self):
+        # fancy rows start at 0, hyperslab starts at 2 — not contained
+        shape = (10, 10)
+        fancy = selections.select(shape, (slice(0, 5), [3, 7]))
+        hyp = selections.select(shape, (slice(2, 8), slice(0, 10)))
+        self.assertFalse(selections.contained(fancy, hyp))
+
+    def testFancyNotContainedInHyperslab_cols(self):
+        # fancy column 9 is outside hyperslab columns 2-8
+        shape = (10, 10)
+        fancy = selections.select(shape, (slice(0, 5), [3, 9]))
+        hyp = selections.select(shape, (slice(0, 8), slice(2, 9)))
+        self.assertFalse(selections.contained(fancy, hyp))
+
+    def testHyperslabContainedInFancy(self):
+        # hyp rows 2-3, cols 3-4 — fancy covers rows 0-7 and cols [3,4,5,7]
+        shape = (10, 10)
+        hyp = selections.select(shape, (slice(2, 4), slice(3, 5)))
+        fancy = selections.select(shape, (slice(0, 8), [3, 4, 5, 7]))
+        self.assertTrue(selections.contained(hyp, fancy))
+
+    def testHyperslabNotContainedInFancy(self):
+        # hyp wants cols 3-5 (3,4,5) but fancy only has [3,5] — col 4 missing
+        shape = (10, 10)
+        hyp = selections.select(shape, (slice(0, 5), slice(3, 6)))
+        fancy = selections.select(shape, (slice(0, 8), [3, 5, 7]))
+        self.assertFalse(selections.contained(hyp, fancy))
+
+    def testFancyContainedInFancy(self):
+        # s1 rows 2-4 and cols [3,7] — both subsets of s2 rows 0-7 and cols [1,3,7,9]
+        shape = (10, 10)
+        s1 = selections.select(shape, (slice(2, 5), [3, 7]))
+        s2 = selections.select(shape, (slice(0, 8), [1, 3, 7, 9]))
+        self.assertTrue(selections.contained(s1, s2))
+
+    def testFancyNotContainedInFancy(self):
+        # s1 col 9 not in s2 cols [1,3,7]
+        shape = (10, 10)
+        s1 = selections.select(shape, (slice(2, 5), [3, 9]))
+        s2 = selections.select(shape, (slice(0, 8), [1, 3, 7]))
+        self.assertFalse(selections.contained(s1, s2))
+
+    def testFancyContainedInSelectAll(self):
+        shape = (10, 10)
+        fancy = selections.select(shape, (slice(0, 5), [3, 7]))
+        s_all = selections.select(shape, ...)
+        self.assertTrue(selections.contained(fancy, s_all))
 
 
 class TranslateTest(unittest.TestCase):
@@ -690,6 +819,35 @@ class TranslateTest(unittest.TestCase):
         s2 = selections.select(shape, slice(5, 8))
         with self.assertRaises(ValueError):
             selections.translate(s1, s2)
+
+    def testTranslate2DWithFancy(self):
+        # s1 window rows 2-7, cols 2-7; s2 fancy rows 2-4, cols [3,7]
+        # result should be rows 0-2, cols [1,5] (shifted by s1.start=(2,2))
+        shape = (10, 10)
+        s1 = selections.select(shape, (slice(2, 8), slice(2, 8)))
+        s2 = selections.select(shape, (slice(2, 5), [3, 7]))
+        result = selections.translate(s1, s2)
+        self.assertIsInstance(result, FancySelection)
+        self.assertEqual(result.select_type, H5S_SEL_FANCY)
+        self.assertEqual(result.slices[0], slice(0, 3, 1))
+        self.assertEqual(result.slices[1], [1, 5])
+        self.assertEqual(result.nselect, 6)  # 3 rows x 2 cols
+
+    def testTranslateFancyAsFirstArg(self):
+        # s1: rows 2-7 (slice), cols [2,3,4,5,6,7] (list)
+        # s2: rows 2-4, cols 3-5 (hyperslab)
+        # intersection: rows 2-4, cols [3,4,5]
+        # translated: rows 0-2 (subtract s1 row start 2),
+        #             cols [1,2,3] (positions of [3,4,5] in s1's list [2,3,4,5,6,7])
+        shape = (10, 10)
+        s1 = selections.select(shape, (slice(2, 8), [2, 3, 4, 5, 6, 7]))
+        s2 = selections.select(shape, (slice(2, 5), slice(3, 6)))
+        result = selections.translate(s1, s2)
+        self.assertIsInstance(result, FancySelection)
+        self.assertEqual(result.select_type, H5S_SEL_FANCY)
+        self.assertEqual(result.slices[0], slice(0, 3, 1))
+        self.assertEqual(result.slices[1], [1, 2, 3])
+        self.assertEqual(result.nselect, 9)  # 3 rows x 3 cols
 
 
 if __name__ == "__main__":
