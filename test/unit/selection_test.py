@@ -364,11 +364,11 @@ class FancySelectionTest(unittest.TestCase):
     def testRepr(self):
         shape = (10, 10)
         sel = selections.select(shape, (slice(0, 5), [3, 7]))
-        self.assertIsInstance(sel, FancySelection)
+        self.assertIsInstance(sel, SimpleSelection)
         self.assertEqual(sel.select_type, H5S_SEL_FANCY)
         self.assertEqual(sel.nselect, 10)  # 5 rows x 2 columns
         self.assertEqual(sel.mshape, (5, 2))
-        self.assertIn("FancySelection", repr(sel))
+        self.assertIn("SimpleSelection", repr(sel))
 
 
 class IntersectHyperslabTest(unittest.TestCase):
@@ -832,6 +832,21 @@ class TranslateTest(unittest.TestCase):
         self.assertEqual(result.slices[0], slice(0, 3, 1))
         self.assertEqual(result.slices[1], [1, 5])
         self.assertEqual(result.nselect, 6)  # 3 rows x 2 cols
+
+    def testTranslateFancyBothArgs(self):
+        # s1: rows 2-7 (slice), cols [2,3,4,5,6,7] (list)
+        # s2: rows 2-4 (slice), cols [3,4,5] (list)
+        # col intersection [3,4,5] maps to positions [1,2,3] in s1's list
+        # row intersection slice(2,5) maps to slice(0,3) relative to s1 start 2
+        shape = (10, 10)
+        s1 = selections.select(shape, (slice(2, 8), [2, 3, 4, 5, 6, 7]))
+        s2 = selections.select(shape, (slice(2, 5), [3, 4, 5]))
+        result = selections.translate(s1, s2)
+        self.assertIsInstance(result, SimpleSelection)
+        self.assertEqual(result.select_type, H5S_SEL_FANCY)
+        self.assertEqual(result.slices[0], slice(0, 3, 1))
+        self.assertEqual(result.slices[1], [1, 2, 3])
+        self.assertEqual(result.nselect, 9)  # 3 rows x 3 cols
 
     def testTranslateFancyAsFirstArg(self):
         # s1: rows 2-7 (slice), cols [2,3,4,5,6,7] (list)

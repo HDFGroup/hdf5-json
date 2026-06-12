@@ -378,7 +378,7 @@ class H5pyWriter(H5Writer):
             elif sel.select_type == selections.H5S_SEL_ALL:
                 dset[...] = val
                 self.log.debug(f"h5py_writer dset {dset.name} updated with sel_all")
-            elif isinstance(sel, selections.SimpleSelection):
+            elif sel.select_type == selections.H5S_SEL_HYPERSLABS:
                 slices = []
                 for dim in range(len(sel.shape)):
                     start = sel.start[dim]

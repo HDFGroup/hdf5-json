@@ -675,6 +675,8 @@ class Hdf5db:
                 (if the latter is found in the creation properties list) """
             if isinstance(sel, selections.ScalarSelection):
                 arr_shape = ()
+            elif sel.select_type == selections.H5S_SEL_FANCY:
+                arr_shape = sel.mshape
             elif hasattr(sel, "count"):
                 arr_shape = sel.count if isinstance(sel.count, tuple) else (sel.count, )
             else:
@@ -806,9 +808,30 @@ class Hdf5db:
                             arr[tgt_coords] = update_val[src_idx]
                 else:
                     # apply the update to the array to be returned
-                    src_sel = selections.translate(update_sel, x_sel)
-                    tgt_sel = selections.translate(sel, x_sel)
-                    arr[tgt_sel.slices] = update_val[src_sel.slices]
+                    rank = len(sel.shape)
+                    list_dims = [d for d in range(rank)
+                                 if isinstance(sel.slices[d], list)]
+                    if (sel.select_type == selections.H5S_SEL_FANCY and len(list_dims) > 1):
+                        # Paired-coordinate FancySelection: output is 1-D.
+                        # Map each intersected pair back to its output index.
+                        n_pairs = len(sel.slices[list_dims[0]])
+                        sel_pt_to_idx = {
+                            tuple(sel.slices[d][i] for d in range(rank)): i
+                            for i in range(n_pairs)
+                        }
+                        n_x = len(x_sel.slices[list_dims[0]])
+                        for i in range(n_x):
+                            pt = tuple(x_sel.slices[d][i] for d in range(rank))
+                            tgt_idx = sel_pt_to_idx.get(pt)
+                            if tgt_idx is None:
+                                continue
+                            src_pt = tuple(pt[d] - update_sel.start[d]
+                                           for d in range(rank))
+                            arr[tgt_idx] = update_val[src_pt]
+                    else:
+                        src_sel = selections.translate(update_sel, x_sel)
+                        tgt_sel = selections.translate(sel, x_sel)
+                        arr[tgt_sel.slices] = update_val[src_sel.slices]
 
         return arr
 

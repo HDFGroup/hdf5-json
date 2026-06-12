@@ -660,6 +660,24 @@ class Hdf5dbTest(unittest.TestCase):
             for i in range(nrows):
                 self.assertEqual(col[i, 0], i * 10 + j)
 
+        # read with a fancy selection
+        sel = selections.select(shape, (slice(0, 4), [0, 2, 4, 6, 8]))
+        val = db.getDatasetValues(dset_id, sel)
+        self.assertTrue(isinstance(val, np.ndarray))
+        self.assertEqual(val.shape, (4, 5))
+        for i in range(4):
+            for j in range(5):
+                self.assertEqual(val[i, j], i * 10 + j * 2)
+
+        # read with a fancy selection with two coordinates
+        sel = selections.select(shape, ([1, 3, 5, 7], [0, 2, 4, 6]))
+        val = db.getDatasetValues(dset_id, sel)
+        self.assertTrue(isinstance(val, np.ndarray))
+        self.assertEqual(val.shape, (4,))
+
+        for i in range(4):
+            self.assertEqual(val[i], ((i * 2) + 1) * 10 + i * 2)
+
         # read element by element
         for i in range(nrows):
             for j in range(ncols):

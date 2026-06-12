@@ -60,10 +60,10 @@ def select(obj, args):
         Returns a Selection instance.
 
     Indices, slices, ellipses only
-        Returns a SimpleSelection instance
+        Returns a SimpleSelection instance with H5S_SEL_HYPERSLABS.
 
     Indices, slices, ellipses, lists or boolean index arrays
-        Returns a FancySelection instance.
+        Returns a SimpleSelection instance with H5S_SEL_FANCY.
     """
     if not isinstance(args, tuple):
         args = (args,)
@@ -109,23 +109,7 @@ def select(obj, args):
             return Selection(shape, spaceid=sid)
         """
 
-    for a in args:
-        use_fancy = False
-        if isinstance(a, np.ndarray):
-            use_fancy = True
-        elif a is []:
-            use_fancy = True
-        elif not isinstance(a, slice) and a is not Ellipsis:
-            try:
-                int(a)
-            except Exception:
-                use_fancy = True
-        if use_fancy:
-            sel = FancySelection(obj_shape, args)
-            return sel
-
     sel = SimpleSelection(obj_shape, args)
-
     return sel
 
 
@@ -230,21 +214,64 @@ def _intersect_points_points(s1, s2):
     return result
 
 
+def _pt_in_hyperslab(val, hs, hc, hst):
+    """Return True if scalar val lies within the hyperslab range for one dim."""
+    if hst == 1:
+        return hs <= val < hs + hc
+    return hs <= val < hs + hc * hst and (val - hs) % hst == 0
+
+
 def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
     """Return the intersection of a FancySelection with a hyperslab selection.
 
-    For each dimension, slice ranges are clipped and coordinate lists are
-    filtered to those that fall within the hyperslab.  Returns an empty
+    For Cartesian-product selections (at most one list dimension) each
+    dimension is clipped independently.  For paired-coordinate selections
+    (multiple list dimensions) the coordinate pairs are filtered as a unit so
+    the two lists always retain the same length.  Returns an empty
     PointSelection when the intersection is empty.
     """
     rank = len(fancy_sel.shape)
     h_start = hyper_sel.start
     h_count = hyper_sel.count
     h_step = hyper_sel.step
+    slices = fancy_sel.slices  # tuple after the property fix
 
+    list_dims = [d for d in range(rank) if isinstance(slices[d], list)]
+
+    if len(list_dims) > 1:
+        # Paired-coordinate selection: check slice dims first, then filter pairs.
+        for dim in range(rank):
+            if isinstance(slices[dim], slice):
+                s = slices[dim]
+                hs, hc, hst = h_start[dim], h_count[dim], h_step[dim]
+                if s.step > 1 or hst > 1:
+                    raise ValueError("stepped slices not currently supported")
+                if min(s.stop, hs + hc) <= max(s.start, hs):
+                    return _empty_point_sel(fancy_sel.shape)
+
+        n_pairs = len(slices[list_dims[0]])
+        keep = [
+            i for i in range(n_pairs)
+            if all(_pt_in_hyperslab(slices[d][i], h_start[d], h_count[d], h_step[d])
+                   for d in list_dims)
+        ]
+        if not keep:
+            return _empty_point_sel(fancy_sel.shape)
+
+        new_slices = []
+        for dim in range(rank):
+            s = slices[dim]
+            if isinstance(s, list):
+                new_slices.append([s[i] for i in keep])
+            else:  # slice dim: intersect ranges normally
+                hs, hc = h_start[dim], h_count[dim]
+                new_slices.append(slice(max(s.start, hs), min(s.stop, hs + hc), 1))
+        return FancySelection(fancy_sel.shape, new_slices)
+
+    # Cartesian-product path: clip each dimension independently.
     new_slices = []
     for dim in range(rank):
-        s = fancy_sel.slices[dim]
+        s = slices[dim]
         hs = h_start[dim]
         hc = h_count[dim]
         hst = h_step[dim]
@@ -266,11 +293,7 @@ def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
                 return _empty_point_sel(fancy_sel.shape)
             new_slices.append(filtered)
         elif isinstance(s, int):
-            if hst == 1:
-                in_range = hs <= s < hs + hc
-            else:
-                in_range = hs <= s < hs + hc * hst and (s - hs) % hst == 0
-            if not in_range:
+            if not _pt_in_hyperslab(s, hs, hc, hst):
                 return _empty_point_sel(fancy_sel.shape)
             new_slices.append(s)
         else:
@@ -448,6 +471,45 @@ def contained(s1, s2):
     return is_contained
 
 
+def _fancy_dim_intersect(s1_dim, s2_dim):
+    """Return the per-dimension intersection of s1_dim and s2_dim in absolute
+    coordinates, or None if the intersection is empty.
+
+    Each argument is a per-dimension component: slice, list of ints, or int.
+    For list×list, the result preserves s2's order.
+    For list×slice, the result preserves s1's order (natural buffer order).
+    """
+    if isinstance(s1_dim, slice):
+        s1_start, s1_stop = s1_dim.start, s1_dim.stop
+        if isinstance(s2_dim, slice):
+            start = max(s1_start, s2_dim.start)
+            stop = min(s1_stop, s2_dim.stop)
+            return slice(start, stop, 1) if stop > start else None
+        elif isinstance(s2_dim, list):
+            filtered = [x for x in s2_dim if s1_start <= x < s1_stop]
+            return filtered if filtered else None
+        else:  # int
+            return s2_dim if s1_start <= s2_dim < s1_stop else None
+    elif isinstance(s1_dim, list):
+        s1_set = set(s1_dim)
+        if isinstance(s2_dim, slice):
+            filtered = [x for x in s1_dim if s2_dim.start <= x < s2_dim.stop]
+            return filtered if filtered else None
+        elif isinstance(s2_dim, list):
+            filtered = [x for x in s2_dim if x in s1_set]
+            return filtered if filtered else None
+        else:  # int
+            return s2_dim if s2_dim in s1_set else None
+    elif isinstance(s1_dim, int):
+        if isinstance(s2_dim, slice):
+            return s1_dim if s2_dim.start <= s1_dim < s2_dim.stop else None
+        elif isinstance(s2_dim, list):
+            return s1_dim if s1_dim in s2_dim else None
+        else:  # int
+            return s1_dim if s1_dim == s2_dim else None
+    return None
+
+
 def translate(s1, s2):
     """ Given two selections, s1 and s2, return a new selection
     definied by s2 relative to s1's start and count.
@@ -456,20 +518,33 @@ def translate(s1, s2):
     if s1.select_type == H5S_SEL_FANCY:
         if not isinstance(s2, Selection):
             raise TypeError("Expected selection type for second arg")
-        if s2.select_type not in (H5S_SEL_HYPERSLABS, H5S_SEL_ALL):
-            raise TypeError("translate with FancySelection s1 only supports hyperslab s2")
+        hyperslab_types = (H5S_SEL_HYPERSLABS, H5S_SEL_ALL)
+        if s2.select_type not in (*hyperslab_types, H5S_SEL_FANCY):
+            raise TypeError(f"translate with FancySelection s1 does not support s2 type: {s2.select_type}")
         if s1.shape != s2.shape:
             raise ValueError("selections have incompatible shapes")
 
-        sel_inter = intersect(s1, s2)
-        if sel_inter.nselect == 0:
-            raise ValueError("translate - selections not overlapping")
-
         rank = len(s1.shape)
+
+        # Compute the intersection in absolute coordinates.
+        if s2.select_type in hyperslab_types:
+            sel_inter = intersect(s1, s2)
+            if sel_inter.nselect == 0:
+                raise ValueError("translate - selections not overlapping")
+            inter_slices = sel_inter.slices
+        else:  # s2 is also FancySelection
+            inter_slices = []
+            for dim in range(rank):
+                inter_dim = _fancy_dim_intersect(s1.slices[dim], s2.slices[dim])
+                if inter_dim is None:
+                    raise ValueError("translate - selections not overlapping")
+                inter_slices.append(inter_dim)
+
+        # Express the intersection in s1's local coordinate frame.
         new_slices = []
         for dim in range(rank):
             s1_dim = s1.slices[dim]
-            inter_dim = sel_inter.slices[dim]
+            inter_dim = inter_slices[dim]
             if isinstance(s1_dim, slice):
                 offset = s1_dim.start if s1_dim.start is not None else 0
                 if isinstance(inter_dim, slice):
@@ -742,9 +817,16 @@ class PointSelection(Selection):
 
 class SimpleSelection(Selection):
 
-    """ A single "rectangular" (regular) selection composed of only slices
-        and integer arguments.  Can participate in broadcasting.
+    """A selection composed of slices, integers, and/or coordinate lists.
+
+    For pure slice/integer arguments the select_type is H5S_SEL_HYPERSLABS
+    (or H5S_SEL_ALL when no arguments are supplied).  When any dimension is
+    given as a list of coordinates or a boolean index array, the select_type
+    is H5S_SEL_FANCY.  The start/count/step properties and broadcast() are
+    only valid for hyperslab selections.
     """
+
+    # --- Properties ---
 
     @property
     def mshape(self):
@@ -753,7 +835,9 @@ class SimpleSelection(Selection):
 
     @property
     def tgtshape(self):
-        """ shape of selection in rank of dataspace"""
+        """ Shape of selection in rank of dataspace """
+        if self._select_type == H5S_SEL_FANCY:
+            return list(self._mshape)
         return [self.count[dim] for dim in range(len(self._shape))]
 
     @property
@@ -768,9 +852,23 @@ class SimpleSelection(Selection):
     def step(self):
         return self._sel[2]
 
+    @property
+    def slices(self):
+        """ Per-dimension slice/list/int components of the selection. """
+        if self._select_type == H5S_SEL_FANCY:
+            return tuple(self._slices)
+        rank = len(self._shape)
+        return tuple(
+            slice(self.start[d], self.start[d] + self.count[d], self.step[d])
+            for d in range(rank)
+        )
+
+    # --- Initializer ---
+
     def __init__(self, shape, hyperslab=None):
         Selection.__init__(self, shape)
         rank = len(self._shape)
+
         if self._shape == ():
             if hyperslab is not None and hyperslab not in (Ellipsis, ()):
                 raise TypeError("Invalid index for scalar dataset (only ..., () allowed)")
@@ -782,60 +880,155 @@ class SimpleSelection(Selection):
             self._sel = ((0,) * rank, self._shape, (1,) * rank, (False,) * rank)
             self._mshape = self._shape
             self._select_type = H5S_SEL_ALL
+            return self
+
+        def _is_fancy_arg(arg):
+            if isinstance(arg, (slice, type(Ellipsis))):
+                return False
+            if isinstance(arg, (list, np.ndarray)):
+                return True
+            try:
+                int(arg)
+                return False
+            except (TypeError, ValueError):
+                return True
+
+        if any(_is_fancy_arg(a) for a in hyperslab):
+            if len(hyperslab) != rank:
+                raise TypeError("Number of coordinate sets does not match dataset rank")
+            # Fancy path: process per-dimension slices, coordinate lists, and ints.
+            select_type = H5S_SEL_HYPERSLABS  # upgraded to FANCY when a coord list is found
+            slices = []
+            mshape = []
+            num_coordinates = None
+            for idx in range(rank):
+                length = self._shape[idx]
+                arg = hyperslab[idx]
+                if isinstance(arg, slice):
+                    _, count, _ = _translate_slice(arg, length)
+                    start = 0 if arg.start is None else arg.start
+                    stop = length if arg.stop is None else arg.stop
+                    step = 1 if arg.step is None else arg.step
+                    slices.append(slice(start, stop, step))
+                    mshape.append(count)
+                elif hasattr(arg, 'dtype') and arg.dtype == np.dtype('bool'):
+                    if len(arg.shape) != 1:
+                        raise TypeError("Boolean indexing arrays must be 1-D")
+                    arg = arg.nonzero()[0]
+                    try:
+                        slices.append(list(arg))
+                    except TypeError:
+                        pass
+                    else:
+                        if sorted(arg) != list(arg):
+                            raise TypeError("Indexing elements must be in increasing order")
+                    mshape.append(len(arg))
+                    select_type = H5S_SEL_FANCY
+                elif isinstance(arg, list) or hasattr(arg, 'dtype'):
+                    slices.append(arg)
+                    for x in arg:
+                        if x < 0 or x >= length:
+                            raise IndexError(f"Index ({arg}) out of range (0-{length - 1})")
+                    if num_coordinates is None:
+                        num_coordinates = len(arg)
+                    elif num_coordinates == len(arg):
+                        # second coord list doesn't add to mshape
+                        continue
+                    else:
+                        raise ValueError("coordinate num element missmatch")
+                    mshape.append(len(arg))
+                    select_type = H5S_SEL_FANCY
+                elif isinstance(arg, int):
+                    if arg < 0 or arg >= length:
+                        raise IndexError(f"Index ({arg}) out of range (0-{length - 1})")
+                    slices.append(arg)
+                elif isinstance(arg, type(Ellipsis)):
+                    slices.append(slice(0, length, 1))
+                else:
+                    raise TypeError(f"Unexpected arg type: {arg} - {type(arg)}")
+            self._slices = slices
+            self._select_type = select_type
+            self._mshape = tuple(mshape)
         else:
+            # Hyperslab path: slices and integer indices only.
             self._sel = _handle_simple(self._shape, hyperslab)
             self._mshape = tuple(x for x, y in zip(self._sel[1], self._sel[3]) if not y)
             self._select_type = H5S_SEL_HYPERSLABS
 
+    # --- Methods ---
+
     def getSelectNpoints(self):
-        """Return number of elements in current selection
-        """
-        npoints = None
+        """Return number of elements in current selection."""
         if self._select_type == H5S_SEL_NONE:
-            npoints = 0
-        elif self._select_type == H5S_SEL_ALL:
-            dims = self._shape
+            return 0
+        if self._select_type == H5S_SEL_ALL:
             npoints = 1
-            for nextent in dims:
-                npoints *= nextent
-        elif self._select_type == H5S_SEL_HYPERSLABS:
-            dims = self._shape
+            for n in self._shape:
+                npoints *= n
+            return npoints
+        if self._select_type == H5S_SEL_HYPERSLABS:
             npoints = 1
-            rank = len(dims)
-            for i in range(rank):
-                npoints *= self.count[i]
-        else:
-            raise IOError("Unsupported select type")
+            for c in self.count:
+                npoints *= c
+            return npoints
+        # H5S_SEL_FANCY
+        npoints = 1
+        for idx, s in enumerate(self._slices):
+            if isinstance(s, slice):
+                _, count, _ = _translate_slice(s, self._shape[idx])
+            elif isinstance(s, list):
+                count = len(s)
+            else:
+                count = 1  # scalar dim
+            npoints *= count
         return npoints
 
     def getQueryParam(self):
         """ Get select param for use with HDF Rest API"""
-        param = ''
         rank = len(self._shape)
         if rank == 0:
             return None
-
-        param += "["
-        for i in range(rank):
-            start = self.start[i]
-            stop = start + (self.count[i] * self.step[i])
-            if stop > self._shape[i]:
-                stop = self._shape[i]
-            dim_sel = str(start) + ':' + str(stop)
-            if self.step[i] != 1:
-                dim_sel += ':' + str(self.step[i])
-            if i != rank - 1:
-                dim_sel += ','
-            param += dim_sel
-        param += ']'
-        return param
+        query = ['[']
+        if self._select_type == H5S_SEL_FANCY:
+            for dim, s in enumerate(self._slices):
+                if isinstance(s, slice):
+                    query.append(f"{s.start}:{s.stop}")
+                    if s.step and s.step != 1:
+                        query.append(f":{s.step}")
+                elif isinstance(s, list) or hasattr(s, 'dtype'):
+                    query.append('[')
+                    for idx, n in enumerate(s):
+                        query.append(str(n))
+                        if idx + 1 < len(s):
+                            query.append(',')
+                    query.append(']')
+                else:
+                    query.append(str(s))
+                if dim + 1 < rank:
+                    query.append(',')
+        else:
+            for i in range(rank):
+                start = self.start[i]
+                stop = start + (self.count[i] * self.step[i])
+                if stop > self._shape[i]:
+                    stop = self._shape[i]
+                dim_sel = str(start) + ':' + str(stop)
+                if self.step[i] != 1:
+                    dim_sel += ':' + str(self.step[i])
+                if i != rank - 1:
+                    dim_sel += ','
+                query.append(dim_sel)
+        query.append(']')
+        return "".join(query)
 
     def broadcast(self, target_shape):
         """ Return an iterator over target dataspaces for broadcasting.
 
-        Follows the standard NumPy broadcasting rules against the current
-        selection shape (self._mshape).
+        Only supported for hyperslab selections.
         """
+        if self._select_type == H5S_SEL_FANCY:
+            raise TypeError("Broadcasting is not supported for complex selections")
+
         if self._shape == ():
             if np.product(target_shape) != 1:
                 raise TypeError(f"Can't broadcast {target_shape} to scalar")
@@ -843,7 +1036,6 @@ class SimpleSelection(Selection):
             return
 
         start, count, step, scalar = self._sel
-
         rank = len(count)
         target = list(target_shape)
 
@@ -874,179 +1066,16 @@ class SimpleSelection(Selection):
                 sel = [tuple([sum(x) for x in zip(offset, start)]), tshape, step, scalar]
                 yield sel
 
-    @property
-    def slices(self):
-        """ return tuple of slices for this selection """
-        rank = len(self.shape)
-        slices = []
-        for dim in range(rank):
-            start = self.start[dim]
-            stop = start + self.count[dim]
-            step = self.step[dim]
-            slices.append(slice(start, stop, step))
-        return tuple(slices)
-
     def __repr__(self):
+        if self._select_type == H5S_SEL_FANCY:
+            return f"SimpleSelection(shape:{self._shape}, slices: {self._slices})"
         s = f"SimpleSelection(shape:{self._shape}, start: {self._sel[0]},"
         s += f" count: {self._sel[1]}, step: {self._sel[2]}"
         return s
 
 
-class FancySelection(Selection):
-
-    """
-        Implements advanced NumPy-style selection operations in addition to
-        the standard slice-and-int behavior.
-
-        Indexing arguments may be ints, slices, lists of indicies, or
-        per-axis (1D) boolean arrays.
-
-        Broadcasting is not supported for these selections.
-    """
-
-    @property
-    def slices(self):
-        return self._slices
-
-    @property
-    def mshape(self):
-        """ Shape of current selection """
-        return self._mshape
-
-    def __init__(self, shape, coords=None):
-        Selection.__init__(self, shape)
-        rank = len(self._shape)
-        if rank < 2:
-            raise TypeError("FancySelection is only supported for rank 2 or higher")
-
-        if coords is None:
-            self._sel = ((0,) * rank, self._shape, (1,) * rank, (False,) * rank)
-            self._mshape = self._shape
-            self._select_type = H5S_SEL_ALL
-            return self
-
-        if len(coords) != rank:
-            raise TypeError("Number of coordinate sets does not match dataset rank")
-
-        select_type = H5S_SEL_HYPERSLABS  # will adjust if we have a coord
-
-        # Create list of slices and/or coordinates
-        slices = []
-        mshape = []
-        num_coordinates = None
-        for idx in range(rank):
-            length = self._shape[idx]
-            arg = coords[idx]
-            if isinstance(arg, slice):
-                _, count, _ = _translate_slice(arg, length)  # raise exception for invalid slice
-                if arg.start is None:
-                    start = 0
-                else:
-                    start = arg.start
-                if arg.stop is None:
-                    stop = length
-                else:
-                    stop = arg.stop
-                if arg.step is None:
-                    step = 1
-                else:
-                    step = arg.step
-                slices.append(slice(start, stop, step))
-                mshape.append(count)
-
-            elif hasattr(arg, 'dtype') and arg.dtype == np.dtype('bool'):
-                if len(arg.shape) != 1:
-                    raise TypeError("Boolean indexing arrays must be 1-D")
-                arg = arg.nonzero()[0]
-                try:
-                    slices.append(list(arg))
-                except TypeError:
-                    pass
-                else:
-                    if sorted(arg) != list(arg):
-                        raise TypeError("Indexing elements must be in increasing order")
-                mshape.append(len(arg))
-                select_type = H5S_SEL_FANCY
-            elif isinstance(arg, list) or hasattr(arg, 'dtype'):
-                # coordinate selection
-                slices.append(arg)
-                for x in arg:
-                    if x < 0 or x >= length:
-                        raise IndexError(f"Index ({arg}) out of range (0-{length - 1})")
-                if num_coordinates is None:
-                    num_coordinates = len(arg)
-                elif num_coordinates == len(arg):
-                    # second set of coordinates doesn't effect mshape
-                    continue
-                else:
-                    # this shouldn't happen since HSDS would have thrown an error
-                    raise ValueError("coordinate num element missmatch")
-                mshape.append(len(arg))
-                select_type = H5S_SEL_FANCY
-            elif isinstance(arg, int):
-                if arg < 0 or arg >= length:
-                    raise IndexError(f"Index ({arg}) out of range (0-{length - 1})")
-                slices.append(arg)
-            elif isinstance(arg, type(Ellipsis)):
-                slices.append(slice(0, length, 1))
-            else:
-                raise TypeError(f"Unexpected arg type: {arg} - {type(arg)}")
-        self._slices = slices
-        self._select_type = select_type
-        self._mshape = tuple(mshape)
-
-    def getSelectNpoints(self):
-        """Return number of elements in current selection
-        """
-        npoints = 1
-        for idx, s in enumerate(self._slices):
-            if isinstance(s, slice):
-                length = self._shape[idx]
-                _, count, _ = _translate_slice(s, length)
-            elif isinstance(s, list):
-                count = len(s)
-            else:
-                # scalar selection
-                count = 1
-            npoints *= count
-
-        return npoints
-
-    def getQueryParam(self):
-        """ Get select param for use with HDF Rest API"""
-        query = []
-        query.append('[')
-        rank = len(self._slices)
-        for dim, s in enumerate(self._slices):
-            if isinstance(s, slice):
-                if s.start is None and s.stop is None:
-                    query.append(':')
-                elif s.stop is None:
-                    query.append(f"{s.start}:")
-                else:
-                    query.append(f"{s.start}:{s.stop}")
-                if s.step and s.step != 1:
-                    query.append(f":{s.step}")
-            elif isinstance(s, list) or hasattr(s, 'dtype'):
-                query.append('[')
-                for idx, n in enumerate(s):
-                    query.append(str(n))
-                    if idx + 1 < len(s):
-                        query.append(',')
-                query.append(']')
-            else:
-                # scalar selection
-                query.append(str(s))
-            if dim + 1 < rank:
-                query.append(',')
-        query.append(']')
-        return "".join(query)
-
-    def broadcast(self, target_shape):
-        raise TypeError("Broadcasting is not supported for complex selections")
-
-    def __repr__(self):
-        return f"FancySelection(shape:{self._shape}, slices: {self._slices})"
+# Backward-compatible alias
+FancySelection = SimpleSelection
 
 
 def _expand_ellipsis(args, rank):
