@@ -758,80 +758,49 @@ class Hdf5db:
             arr = init_arr(dtype, cpl)
 
         # apply any updates that impact this selection
-        if sel.select_type == selections.H5S_SEL_POINTS:
-            # For point selections apply each intersecting point individually.
-            # arr is 1-D with one entry per selected point; map each intersection
-            # point back to its position in sel and its offset in update_val.
-            points = sel.points
-            for tgt_idx in range(len(points)):
-                pt = points[tgt_idx]
-                pt_sel = selections.select(sel.shape, [pt])
-                for (update_sel, update_val) in updates:
-                    x_sel = selections.intersect(update_sel, pt_sel)
-                    if x_sel.nselect == 0:
-                        pass  # no intersection, ignore
-                    elif x_sel.nselect > 1:
-                        raise ValueError("unexpected multiple points in intersection of point selection")
-                    else:
-                        if update_sel.select_type == selections.H5S_SEL_POINTS:
-                            # update_val is 1-D indexed by position in update_sel.points
-                            update_pts = list(selections._iter_points(update_sel))
-                            pt_tuple = next(iter(selections._iter_points(pt_sel)))
-                            src_idx = update_pts.index(pt_tuple)
-                            arr[tgt_idx] = update_val[src_idx]
-                        else:
-                            src_sel = selections.translate(update_sel, x_sel)
-                            # src_sel is a PointSelection with 1 translated point
-                            # index update_val using the full N-D coordinates
-                            src_pt = next(iter(selections._iter_points(src_sel)))
-                            arr[tgt_idx] = update_val[src_pt] if len(src_pt) > 1 else update_val[src_pt[0]]
-        else:
-            # hyperslab selections
-            for (update_sel, update_val) in updates:
-                # get the part of the update that is in common with the requested selection
-                x_sel = selections.intersect(sel, update_sel)
-                if x_sel.nselect == 0:
-                    # this update doesn't effect the selection, so ignore
-                    continue
-                if update_sel.select_type == selections.H5S_SEL_POINTS:
-                    # update_val is 1-D indexed by position in update_sel.points
-                    update_pts = list(selections._iter_points(update_sel))
-                    update_pt_to_idx = {pt: i for i, pt in enumerate(update_pts)}
-                    rank = len(sel.shape)
-                    sel_start = sel.start
-                    for pt in selections._iter_points(x_sel):
-                        src_idx = update_pt_to_idx[pt]
-                        tgt_coords = tuple(pt[d] - sel_start[d] for d in range(rank))
-                        if rank == 1:
-                            arr[tgt_coords[0]] = update_val[src_idx]
-                        else:
-                            arr[tgt_coords] = update_val[src_idx]
-                else:
-                    # apply the update to the array to be returned
-                    rank = len(sel.shape)
-                    list_dims = [d for d in range(rank)
-                                 if isinstance(sel.slices[d], list)]
-                    if (sel.select_type == selections.H5S_SEL_FANCY and len(list_dims) > 1):
-                        # Paired-coordinate FancySelection: output is 1-D.
-                        # Map each intersected pair back to its output index.
-                        n_pairs = len(sel.slices[list_dims[0]])
-                        sel_pt_to_idx = {
-                            tuple(sel.slices[d][i] for d in range(rank)): i
-                            for i in range(n_pairs)
+        rank = len(sel.shape)
+        sel_list_dims = [d for d in range(rank) if isinstance(sel.slices[d], list)]
+        is_paired_read = (sel.select_type == selections.H5S_SEL_POINTS and len(sel_list_dims) == rank)
+
+        for (update_sel, update_val) in updates:
+            x_sel = selections.intersect(sel, update_sel)
+            if x_sel.nselect == 0:
+                continue
+
+            if is_paired_read:
+                # Paired-coordinate read: output is 1-D, one entry per point pair.
+                # Map each intersected pair back to its 1-D output index.
+                n_pairs = len(sel.slices[sel_list_dims[0]])
+                sel_pt_to_idx = {
+                    tuple(sel.slices[d][i] for d in range(rank)): i
+                    for i in range(n_pairs)
+                }
+                upd_list_dims = [d for d in range(rank)
+                                 if isinstance(update_sel.slices[d], list)]
+                is_paired_update = update_sel.select_type == selections.H5S_SEL_POINTS
+                n_x = len(x_sel.slices[sel_list_dims[0]])
+                for i in range(n_x):
+                    pt = tuple(x_sel.slices[d][i] for d in range(rank))
+                    tgt_idx = sel_pt_to_idx.get(pt)
+                    if tgt_idx is None:
+                        continue
+                    if is_paired_update:
+                        n_upd = len(update_sel.slices[upd_list_dims[0]])
+                        upd_pt_to_idx = {
+                            tuple(update_sel.slices[d][j] for d in range(rank)): j
+                            for j in range(n_upd)
                         }
-                        n_x = len(x_sel.slices[list_dims[0]])
-                        for i in range(n_x):
-                            pt = tuple(x_sel.slices[d][i] for d in range(rank))
-                            tgt_idx = sel_pt_to_idx.get(pt)
-                            if tgt_idx is None:
-                                continue
-                            src_pt = tuple(pt[d] - update_sel.start[d]
-                                           for d in range(rank))
-                            arr[tgt_idx] = update_val[src_pt]
+                        src_idx = upd_pt_to_idx.get(pt)
+                        if src_idx is None:
+                            continue
+                        arr[tgt_idx] = update_val[src_idx]
                     else:
-                        src_sel = selections.translate(update_sel, x_sel)
-                        tgt_sel = selections.translate(sel, x_sel)
-                        arr[tgt_sel.slices] = update_val[src_sel.slices]
+                        src_pt = tuple(pt[d] - update_sel.start[d] for d in range(rank))
+                        arr[tgt_idx] = update_val[src_pt]
+            else:
+                src_sel = selections.translate(update_sel, x_sel)
+                tgt_sel = selections.translate(sel, x_sel)
+                arr[tgt_sel.slices] = update_val[src_sel.slices]
 
         return arr
 
@@ -873,6 +842,9 @@ class Hdf5db:
         if sel.select_type == selections.H5S_SEL_POINTS:
             if sel.nselect != arr.shape[0]:
                 raise TypeError("Selection shape does not match number of points")
+        elif sel.select_type == selections.H5S_SEL_FANCY:
+            if arr.shape != sel.mshape:
+                raise TypeError("Array shape does not match fancy selection shape")
         elif sel.select_type == selections.H5S_SEL_ALL:
             if sel.shape != getShapeDims(shape_json):
                 raise TypeError("Selection shape does not match dataset shape")

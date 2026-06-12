@@ -551,14 +551,25 @@ class H5pyReader(H5Reader):
         if sel is None or sel.select_type == selections.H5S_SEL_ALL:
             arr = dset[...]
         elif isinstance(sel, selections.SimpleSelection):
-            arr = dset[sel.slices]
-        elif isinstance(sel, selections.PointSelection):
-            # h5py has no native point-selection API, so read each point individually.
-            # sel.points rows are numpy arrays; wrap each in a tuple so h5py
-            # interprets it as a multi-dimensional index rather than fancy indexing.
-            arr = np.zeros((sel.nselect,), dtype=dset.dtype)
-            for i, pt in enumerate(selections._iter_points(sel)):
-                arr[i] = dset[pt]
+            rank = len(sel.shape)
+            slices = sel.slices
+            list_dims = [d for d in range(rank) if isinstance(slices[d], list)]
+            if len(list_dims) > 1:
+                # h5py only supports one coordinate array at a time.
+                # Decompose into n separate reads (one per paired-coordinate index)
+                # then stack the results.
+                list_dims_set = set(list_dims)
+                n = len(slices[list_dims[0]])
+                reads = []
+                for i in range(n):
+                    idx = tuple(
+                        int(slices[d][i]) if d in list_dims_set else slices[d]
+                        for d in range(rank)
+                    )
+                    reads.append(dset[idx])
+                arr = np.stack(reads)
+            else:
+                arr = dset[slices]
         else:
             raise NotImplementedError("selection type not supported")
 

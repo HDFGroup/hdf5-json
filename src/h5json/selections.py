@@ -95,10 +95,7 @@ def select(obj, args):
             return arg
 
         elif isinstance(arg, np.ndarray) or isinstance(arg, list):
-            sel = PointSelection(obj_shape)
-            # sel[arg]
-            sel.set(arg)
-            return sel
+            return SimpleSelection(obj_shape, _points_to_paired(obj_shape, arg))
         """
         #todo - RegionReference
         elif isinstance(arg, h5r.RegionReference):
@@ -116,7 +113,7 @@ def select(obj, args):
 def _check_bool_args(s1, s2):
     """ verify argument for boolean operations """
     # TBD: this is currently only working for simple selections with stride 1
-    valid_s1_types = (H5S_SEL_HYPERSLABS, H5S_SEL_ALL)
+    valid_s1_types = (H5S_SEL_HYPERSLABS, H5S_SEL_POINTS, H5S_SEL_ALL)
     valid_s2_types = (H5S_SEL_HYPERSLABS, H5S_SEL_POINTS, H5S_SEL_ALL)
 
     if not isinstance(s1, Selection):
@@ -131,27 +128,52 @@ def _check_bool_args(s1, s2):
         raise ValueError("selections have incompatible shapes")
 
 
-def _iter_points(point_sel):
-    """Yield each point in a PointSelection as a tuple of ints."""
-    pts = point_sel.points
-    rank = len(point_sel.shape)
-    pts_arr = np.asarray(pts)
+def _points_to_paired(shape, points):
+    """Convert a list of point coordinates or a boolean array into the
+    per-dimension tuple expected by SimpleSelection's fancy path.
 
-    if pts_arr.size == 0:
-        return
+    Examples
+    --------
+    1-D shape (10,), scalar indices [3, 5, 7]  ->  ([3, 5, 7],)
+    2-D shape (10,10), tuples [(1,2),(3,4)]    ->  ([1, 3], [2, 4])
+    2-D boolean mask                            ->  (row_list, col_list)
+    """
+    rank = len(shape)
+    arr = np.asarray(points)
 
-    if pts_arr.ndim == 1:
+    if arr.dtype.kind == 'b':
+        # Boolean mask: nonzero() returns one index array per dimension.
+        coords = arr.nonzero()
+        return tuple(list(c.astype(int)) for c in coords)
+
+    if arr.size == 0:
+        return tuple([] for _ in range(rank))
+
+    if arr.ndim == 1:
         if rank == 1:
-            # Each scalar element is a coordinate in 1-D space
-            for p in pts_arr:
-                yield (int(p),)
-        else:
-            # Single point in rank-N space stored as a flat array [c0, c1, ..., c_{N-1}]
-            yield tuple(int(x) for x in pts_arr)
-    else:
-        # Shape (N, rank): each row is one point
-        for row in pts_arr:
-            yield tuple(int(x) for x in row)
+            return ([int(x) for x in arr],)
+        if len(arr) == rank:
+            # Single point stored as a flat 1-D array [c0, c1, ..., c_{rank-1}]
+            return tuple([int(arr[d])] for d in range(rank))
+        raise TypeError(f"Cannot interpret 1-D array of length {len(arr)} as points for shape {shape}")
+
+    if arr.ndim == 2 and arr.shape[1] == rank:
+        # N×rank array: transpose to rank×N
+        return tuple([int(arr[i, d]) for i in range(arr.shape[0])] for d in range(rank))
+
+    raise TypeError(f"Cannot interpret array of shape {arr.shape} as point selection for shape {shape}")
+
+
+def _iter_points(sel):
+    """Yield each point in a paired-coordinate FancySelection as a tuple of ints."""
+    slices = sel.slices
+    rank = len(sel.shape)
+    list_dims = [d for d in range(rank) if isinstance(slices[d], list)]
+    if not list_dims:
+        return
+    n = len(slices[list_dims[0]])
+    for i in range(n):
+        yield tuple(int(slices[d][i]) for d in range(rank))
 
 
 def _bboxes_overlap(s1, s2):
@@ -165,53 +187,27 @@ def _bboxes_overlap(s1, s2):
     return all(min1[d] < max2[d] and min2[d] < max1[d] for d in range(len(s1.shape)))
 
 
-def _empty_point_sel(shape):
-    """Return an empty PointSelection for the given shape."""
-    result = PointSelection(shape)
-    result.set([])
-    return result
+def _empty_paired_sel(shape):
+    """Return an empty paired-coordinate FancySelection for the given shape."""
+    rank = len(shape)
+    return SimpleSelection(shape, tuple([] for _ in range(rank)))
 
 
-def _filter_points_by_hyperslab(point_sel, hyper_sel):
-    """Return a PointSelection of points from point_sel that lie within hyper_sel."""
-    if not _bboxes_overlap(point_sel, hyper_sel):
-        return _empty_point_sel(point_sel.shape)
-
-    start = hyper_sel.start
-    count = hyper_sel.count
-    step = hyper_sel.step
-    rank = len(point_sel.shape)
-
-    result_pts = []
-    for pt in _iter_points(point_sel):
-        if all(
-            start[d] <= pt[d] < start[d] + count[d] * step[d] and (pt[d] - start[d]) % step[d] == 0
-            for d in range(rank)
-        ):
-            result_pts.append(pt)
-
-    result = PointSelection(point_sel.shape)
-    if rank == 1:
-        result.set([p[0] for p in result_pts] if result_pts else [])
-    else:
-        result.set(result_pts if result_pts else [])
-    return result
-
-
-def _intersect_points_points(s1, s2):
-    """Return a PointSelection of points common to both s1 and s2."""
+def _intersect_paired_fancy(s1, s2):
+    """Return the intersection of two paired-coordinate FancySelections."""
     if not _bboxes_overlap(s1, s2):
-        return _empty_point_sel(s1.shape)
-
-    common = sorted(set(_iter_points(s1)) & set(_iter_points(s2)))
+        return _empty_paired_sel(s1.shape)
 
     rank = len(s1.shape)
-    result = PointSelection(s1.shape)
-    if rank == 1:
-        result.set([p[0] for p in common] if common else [])
-    else:
-        result.set(common if common else [])
-    return result
+    pts1 = set(zip(*[s1.slices[d] for d in range(rank)]))
+    pts2 = set(zip(*[s2.slices[d] for d in range(rank)]))
+    common = sorted(pts1 & pts2)
+
+    if not common:
+        return _empty_paired_sel(s1.shape)
+
+    return SimpleSelection(s1.shape,
+                           tuple([int(pt[d]) for pt in common] for d in range(rank)))
 
 
 def _pt_in_hyperslab(val, hs, hc, hst):
@@ -228,7 +224,7 @@ def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
     dimension is clipped independently.  For paired-coordinate selections
     (multiple list dimensions) the coordinate pairs are filtered as a unit so
     the two lists always retain the same length.  Returns an empty
-    PointSelection when the intersection is empty.
+    paired FancySelection when the intersection is empty.
     """
     rank = len(fancy_sel.shape)
     h_start = hyper_sel.start
@@ -247,7 +243,7 @@ def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
                 if s.step > 1 or hst > 1:
                     raise ValueError("stepped slices not currently supported")
                 if min(s.stop, hs + hc) <= max(s.start, hs):
-                    return _empty_point_sel(fancy_sel.shape)
+                    return _empty_paired_sel(fancy_sel.shape)
 
         n_pairs = len(slices[list_dims[0]])
         keep = [
@@ -256,7 +252,7 @@ def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
                    for d in list_dims)
         ]
         if not keep:
-            return _empty_point_sel(fancy_sel.shape)
+            return _empty_paired_sel(fancy_sel.shape)
 
         new_slices = []
         for dim in range(rank):
@@ -282,7 +278,7 @@ def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
             new_start = max(s.start, hs)
             new_stop = min(s.stop, hs + hc)
             if new_stop <= new_start:
-                return _empty_point_sel(fancy_sel.shape)
+                return _empty_paired_sel(fancy_sel.shape)
             new_slices.append(slice(new_start, new_stop, 1))
         elif isinstance(s, list):
             if hst == 1:
@@ -290,11 +286,11 @@ def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
             else:
                 filtered = [x for x in s if hs <= x < hs + hc * hst and (x - hs) % hst == 0]
             if not filtered:
-                return _empty_point_sel(fancy_sel.shape)
+                return _empty_paired_sel(fancy_sel.shape)
             new_slices.append(filtered)
         elif isinstance(s, int):
             if not _pt_in_hyperslab(s, hs, hc, hst):
-                return _empty_point_sel(fancy_sel.shape)
+                return _empty_paired_sel(fancy_sel.shape)
             new_slices.append(s)
         else:
             raise TypeError(f"Unexpected FancySelection slice type: {type(s)}")
@@ -305,8 +301,8 @@ def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
 def intersect(s1, s2):
     """ Return the intersection of two selections.
 
-    Supports hyperslab/hyperslab, hyperslab/point, point/point, and
-    hyperslab/fancy combinations.
+    Supports hyperslab/hyperslab, hyperslab/fancy, and paired-fancy/fancy
+    combinations.
     """
     if not isinstance(s1, Selection):
         raise TypeError("Expected selection type for first arg")
@@ -332,20 +328,20 @@ def intersect(s1, s2):
             slices.append(slice(start, stop, 1))
         return select(s1.shape, tuple(slices))
 
-    if t1 == H5S_SEL_POINTS and t2 in hyperslab_types:
-        return _filter_points_by_hyperslab(s1, s2)
-
-    if t1 in hyperslab_types and t2 == H5S_SEL_POINTS:
-        return _filter_points_by_hyperslab(s2, s1)
-
-    if t1 == H5S_SEL_POINTS and t2 == H5S_SEL_POINTS:
-        return _intersect_points_points(s1, s2)
-
-    if t1 == H5S_SEL_FANCY and t2 in hyperslab_types:
+    if t1 in (H5S_SEL_FANCY, H5S_SEL_POINTS) and t2 in hyperslab_types:
         return _intersect_fancy_hyperslab(s1, s2)
 
-    if t1 in hyperslab_types and t2 == H5S_SEL_FANCY:
+    if t1 in hyperslab_types and t2 in (H5S_SEL_FANCY, H5S_SEL_POINTS):
         return _intersect_fancy_hyperslab(s2, s1)
+
+    if t1 == H5S_SEL_POINTS and t2 == H5S_SEL_POINTS:
+        rank = len(s1.shape)
+        # Only paired-coordinate (all-list-dim) selections are supported.
+        s1_all_lists = sum(1 for s in s1.slices if isinstance(s, list)) == rank
+        s2_all_lists = sum(1 for s in s2.slices if isinstance(s, list)) == rank
+        if s1_all_lists and s2_all_lists:
+            return _intersect_paired_fancy(s1, s2)
+        raise TypeError(f"Unsupported selection types for intersection: {t1}, {t2}")
 
     raise TypeError(f"Unsupported selection types for intersection: {t1}, {t2}")
 
@@ -515,11 +511,11 @@ def translate(s1, s2):
     definied by s2 relative to s1's start and count.
     s2 must be contained in s1 """
 
-    if s1.select_type == H5S_SEL_FANCY:
+    if s1.select_type in (H5S_SEL_FANCY, H5S_SEL_POINTS):
         if not isinstance(s2, Selection):
             raise TypeError("Expected selection type for second arg")
         hyperslab_types = (H5S_SEL_HYPERSLABS, H5S_SEL_ALL)
-        if s2.select_type not in (*hyperslab_types, H5S_SEL_FANCY):
+        if s2.select_type not in (*hyperslab_types, H5S_SEL_FANCY, H5S_SEL_POINTS):
             raise TypeError(f"translate with FancySelection s1 does not support s2 type: {s2.select_type}")
         if s1.shape != s2.shape:
             raise ValueError("selections have incompatible shapes")
@@ -561,7 +557,7 @@ def translate(s1, s2):
                     new_slices.append(index_map[inter_dim])
         return FancySelection(s1.shape, new_slices)
 
-    if s2.select_type == H5S_SEL_FANCY:
+    if s2.select_type in (H5S_SEL_FANCY, H5S_SEL_POINTS):
         if not isinstance(s1, Selection):
             raise TypeError("Expected selection type for first arg")
         if s1.select_type not in (H5S_SEL_HYPERSLABS, H5S_SEL_ALL):
@@ -593,17 +589,7 @@ def translate(s1, s2):
 
     rank = len(s1.shape)
     args = []
-    if s2.select_type == H5S_SEL_POINTS:
-        points = []
-        for pt in _iter_points(sel_inter):
-            for d in range(rank):
-                if pt[d] < s1.start[d] or pt[d] >= s1.start[d] + s1.count[d]:
-                    continue
-            points.append(tuple(pt[d] - s1.start[d] for d in range(rank)))
-        if len(points) == 0:
-            raise ValueError("translate - selections not overlapping")
-        args.append(points)
-    elif s2.select_type == H5S_SEL_HYPERSLABS:
+    if s2.select_type == H5S_SEL_HYPERSLABS:
         for dim in range(rank):
             start = s2.start[dim] - s1.start[dim]
             count = s2.count[dim]
@@ -667,17 +653,24 @@ class Selection(object):
         smallest hyperslab that contains the selection (which may be larger than
         the actual selection if stepped slices are used).
         """
-        if self._select_type == H5S_SEL_POINTS:
-            pts_arr = np.asarray(self._points)
-            if pts_arr.size == 0:
-                return None, None
-            # For rank-1, pts_arr is 1-D (shape (N,)); reshape so axis=0 reduces over points.
-            rank = len(self._shape)
-            if pts_arr.ndim == 1 and rank == 1:
-                pts_arr = pts_arr.reshape(-1, 1)
-            min_corner = tuple(int(x) for x in np.min(pts_arr, axis=0))
-            max_corner = tuple(int(x) + 1 for x in np.max(pts_arr, axis=0))
-            return min_corner, max_corner
+        if self._select_type in (H5S_SEL_FANCY, H5S_SEL_POINTS):
+            slices = self.slices  # tuple of (slice|list|int) per dim
+            mins, maxs = [], []
+            for s in slices:
+                if isinstance(s, list):
+                    if not s:
+                        return None, None
+                    mins.append(min(s))
+                    maxs.append(max(s) + 1)
+                elif isinstance(s, slice):
+                    if s.start == s.stop:
+                        return None, None
+                    mins.append(s.start)
+                    maxs.append(s.stop)
+                else:  # int
+                    mins.append(s)
+                    maxs.append(s + 1)
+            return tuple(mins), tuple(maxs)
         elif self._select_type in (H5S_SEL_HYPERSLABS, H5S_SEL_ALL):
             start = self.start
             stop = tuple(start[dim] + (self.count[dim] - 1) * self.step[dim] + 1 for dim in range(len(self._shape)))
@@ -727,94 +720,6 @@ class Selection(object):
         return f"Selection(shape:{self._shape})"
 
 
-class PointSelection(Selection):
-
-    """
-        Represents a point-wise selection.  You can supply sequences of
-        points to the three methods append(), prepend() and set(), or a
-        single boolean array to __getitem__.
-    """
-    def __init__(self, shape, points=None):
-        """ Create a Point selection.   """
-        Selection.__init__(self, shape)
-        self._points = np.empty((0,), dtype=np.uint64)
-        self._select_type = H5S_SEL_POINTS
-        if points is not None:
-            self._perform_selection(points, H5S_SELECT_SET)
-
-    @property
-    def points(self):
-        """ selection points """
-        return self._points
-
-    def getSelectNpoints(self):
-        npoints = None
-        if self._select_type == H5S_SEL_NONE:
-            npoints = 0
-        elif self._select_type == H5S_SEL_ALL:
-            dims = self._shape
-            npoints = 1
-            for nextent in dims:
-                npoints *= nextent
-        elif self._select_type == H5S_SEL_POINTS:
-            dims = self._shape
-            rank = len(dims)
-            if len(self._points) == rank and not type(self._points[0]) in (list, tuple, np.ndarray):
-                npoints = 1
-            else:
-                npoints = len(self._points)
-        else:
-            raise IOError("Unsupported select type")
-        return npoints
-
-    def _perform_selection(self, points, op):
-        """ Internal method which actually performs the selection """
-        points = np.asarray(points, order='C', dtype='u8')
-
-        if self._select_type != H5S_SEL_POINTS:
-            op = H5S_SELECT_SET
-        self._select_type = H5S_SEL_POINTS
-
-        if op == H5S_SELECT_SET:
-            self._points = points
-        elif op == H5S_SELECT_APPEND:
-            self._points.extent(points)
-        elif op == H5S_SELECT_PREPEND:
-            tmp = self._points
-            self._points = points
-            self._points.extend(tmp)
-        else:
-            raise ValueError("Unsupported operation")
-
-    def append(self, points):
-        """ Add the sequence of points to the end of the current selection """
-        self._perform_selection(points, H5S_SELECT_APPEND)
-
-    def prepend(self, points):
-        """ Add the sequence of points to the beginning of the current selection """
-        self._perform_selection(points, H5S_SELECT_PREPEND)
-
-    def set(self, points):
-        """ Replace the current selection with the given sequence of points"""
-
-        if isinstance(points, np.ndarray) and points.dtype.kind == 'b':
-            # boolean array selection
-            if not points.shape == self._shape:
-                raise TypeError("Boolean indexing array has incompatible shape")
-            if not points.shape == self._shape:
-                raise TypeError("Boolean indexing array has incompatible shape")
-            self._perform_selection(points, H5S_SELECT_SET)
-
-        elif isinstance(points, list) or isinstance(points, np.ndarray):
-            # selection with list of points
-            self._perform_selection(points, H5S_SELECT_SET)
-        else:
-            raise TypeError("PointSelection set() only works with list or numpy arrays")
-
-    def __repr__(self):
-        return f"PointSelection(shape:{self._shape}, {len(self._points)} points)"
-
-
 class SimpleSelection(Selection):
 
     """A selection composed of slices, integers, and/or coordinate lists.
@@ -836,7 +741,7 @@ class SimpleSelection(Selection):
     @property
     def tgtshape(self):
         """ Shape of selection in rank of dataspace """
-        if self._select_type == H5S_SEL_FANCY:
+        if self._select_type in (H5S_SEL_FANCY, H5S_SEL_POINTS):
             return list(self._mshape)
         return [self.count[dim] for dim in range(len(self._shape))]
 
@@ -855,7 +760,7 @@ class SimpleSelection(Selection):
     @property
     def slices(self):
         """ Per-dimension slice/list/int components of the selection. """
-        if self._select_type == H5S_SEL_FANCY:
+        if self._select_type in (H5S_SEL_FANCY, H5S_SEL_POINTS):
             return tuple(self._slices)
         rank = len(self._shape)
         return tuple(
@@ -885,7 +790,7 @@ class SimpleSelection(Selection):
         def _is_fancy_arg(arg):
             if isinstance(arg, (slice, type(Ellipsis))):
                 return False
-            if isinstance(arg, (list, np.ndarray)):
+            if isinstance(arg, (list, tuple, np.ndarray)):
                 return True
             try:
                 int(arg)
@@ -911,6 +816,7 @@ class SimpleSelection(Selection):
                     step = 1 if arg.step is None else arg.step
                     slices.append(slice(start, stop, step))
                     mshape.append(count)
+                    select_type = H5S_SEL_FANCY  # have both coordinates and slices
                 elif hasattr(arg, 'dtype') and arg.dtype == np.dtype('bool'):
                     if len(arg.shape) != 1:
                         raise TypeError("Boolean indexing arrays must be 1-D")
@@ -924,11 +830,13 @@ class SimpleSelection(Selection):
                             raise TypeError("Indexing elements must be in increasing order")
                     mshape.append(len(arg))
                     select_type = H5S_SEL_FANCY
-                elif isinstance(arg, list) or hasattr(arg, 'dtype'):
-                    slices.append(arg)
+                elif isinstance(arg, list) or isinstance(arg, tuple) or hasattr(arg, 'dtype'):
+                    slices.append(list(arg))
                     for x in arg:
                         if x < 0 or x >= length:
                             raise IndexError(f"Index ({arg}) out of range (0-{length - 1})")
+                    if select_type == H5S_SEL_HYPERSLABS:
+                        select_type = H5S_SEL_POINTS  # will set to FANCY if a slice is found
                     if num_coordinates is None:
                         num_coordinates = len(arg)
                     elif num_coordinates == len(arg):
@@ -937,7 +845,7 @@ class SimpleSelection(Selection):
                     else:
                         raise ValueError("coordinate num element missmatch")
                     mshape.append(len(arg))
-                    select_type = H5S_SEL_FANCY
+
                 elif isinstance(arg, int):
                     if arg < 0 or arg >= length:
                         raise IndexError(f"Index ({arg}) out of range (0-{length - 1})")
@@ -971,16 +879,11 @@ class SimpleSelection(Selection):
             for c in self.count:
                 npoints *= c
             return npoints
-        # H5S_SEL_FANCY
+        # H5S_SEL_FANCY — use _mshape which is set correctly for both Cartesian
+        # (slice+list) and paired-coordinate (all-list) selections.
         npoints = 1
-        for idx, s in enumerate(self._slices):
-            if isinstance(s, slice):
-                _, count, _ = _translate_slice(s, self._shape[idx])
-            elif isinstance(s, list):
-                count = len(s)
-            else:
-                count = 1  # scalar dim
-            npoints *= count
+        for m in self._mshape:
+            npoints *= m
         return npoints
 
     def getQueryParam(self):
@@ -989,7 +892,7 @@ class SimpleSelection(Selection):
         if rank == 0:
             return None
         query = ['[']
-        if self._select_type == H5S_SEL_FANCY:
+        if self._select_type in (H5S_SEL_FANCY, H5S_SEL_POINTS):
             for dim, s in enumerate(self._slices):
                 if isinstance(s, slice):
                     query.append(f"{s.start}:{s.stop}")
@@ -1026,7 +929,7 @@ class SimpleSelection(Selection):
 
         Only supported for hyperslab selections.
         """
-        if self._select_type == H5S_SEL_FANCY:
+        if self._select_type in (H5S_SEL_FANCY, H5S_SEL_POINTS):
             raise TypeError("Broadcasting is not supported for complex selections")
 
         if self._shape == ():
@@ -1067,7 +970,7 @@ class SimpleSelection(Selection):
                 yield sel
 
     def __repr__(self):
-        if self._select_type == H5S_SEL_FANCY:
+        if self._select_type in (H5S_SEL_FANCY, H5S_SEL_POINTS):
             return f"SimpleSelection(shape:{self._shape}, slices: {self._slices})"
         s = f"SimpleSelection(shape:{self._shape}, start: {self._sel[0]},"
         s += f" count: {self._sel[1]}, step: {self._sel[2]}"
@@ -1076,6 +979,10 @@ class SimpleSelection(Selection):
 
 # Backward-compatible alias
 FancySelection = SimpleSelection
+
+# Point selections are now represented as paired-coordinate FancySelections.
+PointSelection = SimpleSelection
+_empty_point_sel = _empty_paired_sel  # backward-compat alias
 
 
 def _expand_ellipsis(args, rank):

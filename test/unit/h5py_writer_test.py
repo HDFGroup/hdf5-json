@@ -239,6 +239,26 @@ class H5pyWriterTest(unittest.TestCase):
                         expected = i * j
                     self.assertEqual(dset[i, j], expected)
 
+        # try a fancy write (slice + coord list) — rows 0–2, columns [1, 3, 5]
+        db.open()
+        sel = selections.select(shape, (slice(0, 3), [1, 3, 5]))
+        self.assertEqual(sel.select_type, selections.H5S_SEL_FANCY)
+        arr = np.full((3, 3), 99, dtype=np.int32)
+        db.setDatasetValues(dset_111_id, sel, arr)
+        db.close()
+
+        with h5py.File(filepath) as f:
+            dset = f["/g1/g1.1/dset1.1.1"]
+            for i in range(shape[0]):
+                for j in range(shape[1]):
+                    if i < 3 and j in (1, 3, 5):
+                        expected = 99
+                    elif i == j:
+                        expected = 0  # zeroed by point write above
+                    else:
+                        expected = i * j
+                    self.assertEqual(dset[i, j], expected)
+
     def testResizableDataset(self):
         filepath = "test/unit/out/h5py_writer_test_testResizableDataset.h5"
         if os.path.isfile(filepath):

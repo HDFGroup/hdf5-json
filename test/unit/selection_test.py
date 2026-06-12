@@ -15,22 +15,22 @@ import numpy as np
 
 from h5json import selections
 from h5json.selections import (
-    H5S_SEL_POINTS,
     H5S_SEL_ALL,
     H5S_SEL_HYPERSLABS,
+    H5S_SEL_POINTS,
     H5S_SEL_FANCY,
-    PointSelection,
     SimpleSelection,
     FancySelection,
     ScalarSelection,
 )
 
+# Kept as aliases so tests can reference them for clarity.
+PointSelection = SimpleSelection
+
 
 def make_point_sel(shape, mask):
-    """Build a PointSelection from a boolean ndarray mask."""
-    points = np.transpose(mask.nonzero())
-    sel = PointSelection(shape, points)
-    return sel
+    """Build a paired-coordinate FancySelection from a boolean ndarray mask."""
+    return selections.select(shape, mask)
 
 
 class SimpleSelectionTest(unittest.TestCase):
@@ -205,6 +205,8 @@ class SimpleSelectionTest(unittest.TestCase):
 
 
 class PointSelectionTest(unittest.TestCase):
+    """Point selections are now paired-coordinate FancySelections."""
+
     def __init__(self, *args, **kwargs):
         super(PointSelectionTest, self).__init__(*args, **kwargs)
         self.logger = logging.getLogger()
@@ -215,21 +217,13 @@ class PointSelectionTest(unittest.TestCase):
         mask = np.zeros(10, dtype=bool)
         mask[[0, 3, 7]] = True
         sel = make_point_sel(shape, mask)
-        self.assertIsInstance(sel, PointSelection)
+        self.assertIsInstance(sel, SimpleSelection)
         self.assertEqual(sel.select_type, H5S_SEL_POINTS)
         self.assertEqual(sel.nselect, 3)
         self.assertEqual(sel.mshape, (3,))
-        points = sel.points
-        self.assertEqual(len(points), 3)
-        for i in range(len(points)):
-            pt = points[i]
-            self.assertTrue(isinstance(pt, np.ndarray))
-            self.assertEqual(pt.shape, (1,))
-            self.assertTrue(pt[0] in (0, 3, 7))
-
+        # 1-D: slices is a 1-tuple containing the selected index list
+        self.assertEqual(sel.slices, ([0, 3, 7],))
         bbox = sel.bbox
-        self.assertTrue(isinstance(bbox, tuple))
-        self.assertEqual(len(bbox), 2)
         self.assertEqual(bbox[0], (0,))
         self.assertEqual(bbox[1], (8,))
 
@@ -242,89 +236,57 @@ class PointSelectionTest(unittest.TestCase):
         self.assertEqual(sel.select_type, H5S_SEL_POINTS)
         self.assertEqual(sel.nselect, 2)
         self.assertEqual(sel.mshape, (2,))
-        pts = sel.points
-        self.assertEqual(pts.shape, (2, 2))
-        self.assertEqual(list(pts[0]), [0, 1])
-        self.assertEqual(list(pts[1]), [2, 3])
-
+        # slices = (row_list, col_list)
+        self.assertEqual(sel.slices, ([0, 2], [1, 3]))
         bbox = sel.bbox
-        self.assertTrue(isinstance(bbox, tuple))
-        self.assertEqual(len(bbox), 2)
         self.assertEqual(bbox[0], (0, 1))
         self.assertEqual(bbox[1], (3, 4))
 
     def testListOfCoords1D(self):
         shape = (10,)
         sel = selections.select(shape, [2, 3, 5, 7])
-
-        self.assertIsInstance(sel, PointSelection)
+        self.assertIsInstance(sel, SimpleSelection)
         self.assertEqual(sel.select_type, H5S_SEL_POINTS)
         self.assertEqual(sel.nselect, 4)
         self.assertEqual(sel.mshape, (4,))
-        points = sel.points
-        self.assertEqual(len(points), 4)
-        for i in range(len(points)):
-            pt = points[i]
-            self.assertTrue(pt in (2, 3, 5, 7))
-
+        self.assertEqual(sel.slices, ([2, 3, 5, 7],))
         bbox = sel.bbox
-        self.assertTrue(isinstance(bbox, tuple))
-        self.assertEqual(len(bbox), 2)
         self.assertEqual(bbox[0], (2,))
         self.assertEqual(bbox[1], (8,))
 
     def testListOfCoords2D(self):
         shape = (8, 10)
         sel = selections.select(shape, [(0, 0), (1, 1), (2, 2), (3, 3)])
-        self.assertIsInstance(sel, PointSelection)
+        self.assertIsInstance(sel, SimpleSelection)
         self.assertEqual(sel.select_type, H5S_SEL_POINTS)
         self.assertEqual(sel.nselect, 4)
         self.assertEqual(sel.mshape, (4,))
-        points = sel.points
-        self.assertEqual(len(points), 4)
-        for i in range(len(points)):
-            pt = points[i]
-            self.assertTrue(isinstance(pt, np.ndarray))
-            self.assertEqual(pt.shape, (2,))
-            self.assertTrue(pt[0] == pt[1])
-
+        self.assertEqual(sel.slices, ([0, 1, 2, 3], [0, 1, 2, 3]))
         bbox = sel.bbox
-        self.assertTrue(isinstance(bbox, tuple))
-        self.assertEqual(len(bbox), 2)
         self.assertEqual(bbox[0], (0, 0))
         self.assertEqual(bbox[1], (4, 4))
 
     def testEmptySet(self):
         shape = (10,)
-        sel = PointSelection(shape)
-        sel.set([])
+        sel = selections.select(shape, [])
         self.assertEqual(sel.nselect, 0)
-
         bbox = sel.bbox
-        self.assertTrue(isinstance(bbox, tuple))
-        self.assertEqual(len(bbox), 2)
-        self.assertEqual(bbox[0], None)
-        self.assertEqual(bbox[1], None)
+        self.assertIsNone(bbox[0])
+        self.assertIsNone(bbox[1])
 
-    def testSetReplacesPoints(self):
+    def testSelectDifferentPoints(self):
         shape = (10,)
-        mask1 = np.zeros(10, dtype=bool)
-        mask1[[1, 2, 3]] = True
-        sel = make_point_sel(shape, mask1)
-        self.assertTrue(isinstance(sel, PointSelection))
-        self.assertEqual(sel.nselect, 3)
-
-        mask2 = np.zeros(10, dtype=bool)
-        mask2[[5, 6]] = True
-        sel.set([5, 6,])
-        self.assertEqual(sel.nselect, 2)
+        sel1 = selections.select(shape, [1, 2, 3])
+        self.assertEqual(sel1.nselect, 3)
+        sel2 = selections.select(shape, [5, 6])
+        self.assertEqual(sel2.nselect, 2)
 
     def testRepr(self):
         shape = (10,)
         mask = np.zeros(10, dtype=bool)
         mask[[0, 1]] = True
         sel = make_point_sel(shape, mask)
-        self.assertIn("PointSelection", repr(sel))
+        self.assertIn("SimpleSelection", repr(sel))
 
 
 class FancySelectionTest(unittest.TestCase):
@@ -349,7 +311,7 @@ class FancySelectionTest(unittest.TestCase):
 
     def testFancyCoord(self):
         shape = (10, 10)
-        sel = selections.select(shape, (slice(0, 5), [3, 7]))
+        sel = selections.select(shape, (slice(0, 5), (3, 7)))
         self.assertIsInstance(sel, FancySelection)
         self.assertEqual(sel.select_type, H5S_SEL_FANCY)
         self.assertEqual(sel.nselect, 10)  # 5 rows x 2 columns
@@ -452,9 +414,10 @@ class IntersectPointHyperslabTest(unittest.TestCase):
         pts = make_point_sel(shape, mask)
         hyp = selections.select(shape, slice(2, 8))
         result = selections.intersect(pts, hyp)
-        self.assertIsInstance(result, PointSelection)
+        self.assertIsInstance(result, SimpleSelection)
+        self.assertEqual(result.select_type, H5S_SEL_POINTS)
         self.assertEqual(result.nselect, 2)
-        self.assertEqual(list(result.points.flatten()), [3, 5])
+        self.assertEqual(list(result.slices[0]), [3, 5])
 
     def testHyperslabIntersectPoints1D(self):
         shape = (10,)
@@ -463,9 +426,10 @@ class IntersectPointHyperslabTest(unittest.TestCase):
         pts = make_point_sel(shape, mask)
         hyp = selections.select(shape, slice(2, 8))
         result = selections.intersect(hyp, pts)
-        self.assertIsInstance(result, PointSelection)
+        self.assertIsInstance(result, SimpleSelection)
+        self.assertEqual(result.select_type, H5S_SEL_POINTS)
         self.assertEqual(result.nselect, 2)
-        self.assertEqual(list(result.points.flatten()), [3, 5])
+        self.assertEqual(list(result.slices[0]), [3, 5])
 
     def testAllPointsInsideHyperslab(self):
         shape = (10,)
@@ -483,7 +447,7 @@ class IntersectPointHyperslabTest(unittest.TestCase):
         pts = make_point_sel(shape, mask)
         hyp = selections.select(shape, slice(5, 10))
         result = selections.intersect(pts, hyp)
-        self.assertIsInstance(result, PointSelection)
+        self.assertIsInstance(result, SimpleSelection)
         self.assertEqual(result.nselect, 0)
 
     def testPoints2DIntersectHyperslab(self):
@@ -491,9 +455,10 @@ class IntersectPointHyperslabTest(unittest.TestCase):
         pts = selections.select(shape, [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)])
         hyp = selections.select(shape, (slice(1, 4), slice(1, 4)))
         result = selections.intersect(pts, hyp)
-        self.assertIsInstance(result, PointSelection)
+        self.assertIsInstance(result, SimpleSelection)
+        self.assertEqual(result.select_type, H5S_SEL_POINTS)
         self.assertEqual(result.nselect, 3)
-        pts_list = [tuple(row) for row in result.points]
+        pts_list = list(zip(result.slices[0], result.slices[1]))
         self.assertIn((1, 1), pts_list)
         self.assertIn((2, 2), pts_list)
         self.assertIn((3, 3), pts_list)
@@ -514,7 +479,7 @@ class IntersectPointHyperslabTest(unittest.TestCase):
         hyp = selections.select(shape, slice(0, 10, 2))
         result = selections.intersect(pts, hyp)
         self.assertEqual(result.nselect, 4)
-        self.assertEqual(list(result.points.flatten()), [0, 2, 4, 6])
+        self.assertEqual(list(result.slices[0]), [0, 2, 4, 6])
 
     def testHyperslabFirstArg2D(self):
         # hyperslab as the first argument in 2-D
@@ -522,9 +487,10 @@ class IntersectPointHyperslabTest(unittest.TestCase):
         hyp = selections.select(shape, (slice(2, 6), slice(3, 8)))
         pts = selections.select(shape, [(1, 1), (2, 3), (3, 5), (5, 7), (6, 9)])
         result = selections.intersect(hyp, pts)
-        self.assertIsInstance(result, PointSelection)
+        self.assertIsInstance(result, SimpleSelection)
+        self.assertEqual(result.select_type, H5S_SEL_POINTS)
         self.assertEqual(result.nselect, 3)
-        pts_list = [tuple(row) for row in result.points]
+        pts_list = list(zip(result.slices[0], result.slices[1]))
         self.assertIn((2, 3), pts_list)
         self.assertIn((3, 5), pts_list)
         self.assertIn((5, 7), pts_list)
@@ -537,7 +503,7 @@ class IntersectPointHyperslabTest(unittest.TestCase):
         pts = make_point_sel(shape, mask)
         hyp = selections.select(shape, slice(10, 20))  # hyperslab in [10, 20)
         result = selections.intersect(hyp, pts)
-        self.assertIsInstance(result, PointSelection)
+        self.assertIsInstance(result, SimpleSelection)
         self.assertEqual(result.nselect, 0)
         # commuted
         result2 = selections.intersect(pts, hyp)
@@ -559,9 +525,10 @@ class IntersectPointPointTest(unittest.TestCase):
         s1 = make_point_sel(shape, mask1)
         s2 = make_point_sel(shape, mask2)
         result = selections.intersect(s1, s2)
-        self.assertIsInstance(result, PointSelection)
+        self.assertIsInstance(result, SimpleSelection)
+        self.assertEqual(result.select_type, H5S_SEL_POINTS)
         self.assertEqual(result.nselect, 2)
-        self.assertEqual(list(result.points.flatten()), [1, 3])
+        self.assertEqual(list(result.slices[0]), [1, 3])
 
     def testNoOverlap1D(self):
         shape = (10,)
@@ -571,7 +538,7 @@ class IntersectPointPointTest(unittest.TestCase):
         mask2[[8, 9]] = True
         result = selections.intersect(make_point_sel(shape, mask1),
                                       make_point_sel(shape, mask2))
-        self.assertIsInstance(result, PointSelection)
+        self.assertIsInstance(result, SimpleSelection)
         self.assertEqual(result.nselect, 0)
 
     def testIdentical1D(self):
@@ -582,16 +549,17 @@ class IntersectPointPointTest(unittest.TestCase):
         s2 = make_point_sel(shape, mask)
         result = selections.intersect(s1, s2)
         self.assertEqual(result.nselect, 3)
-        self.assertEqual(list(result.points.flatten()), [2, 5, 8])
+        self.assertEqual(list(result.slices[0]), [2, 5, 8])
 
     def testOverlapping2D(self):
         shape = (6, 6)
         s1 = selections.select(shape, [(0, 0), (1, 1), (2, 2), (3, 3)])
         s2 = selections.select(shape, [(1, 1), (2, 2), (5, 5)])
         result = selections.intersect(s1, s2)
-        self.assertIsInstance(result, PointSelection)
+        self.assertIsInstance(result, SimpleSelection)
+        self.assertEqual(result.select_type, H5S_SEL_POINTS)
         self.assertEqual(result.nselect, 2)
-        pts_list = [tuple(row) for row in result.points]
+        pts_list = list(zip(result.slices[0], result.slices[1]))
         self.assertIn((1, 1), pts_list)
         self.assertIn((2, 2), pts_list)
 
@@ -613,7 +581,7 @@ class IntersectPointPointTest(unittest.TestCase):
         r_fwd = selections.intersect(s1, s2)
         r_rev = selections.intersect(s2, s1)
         self.assertEqual(r_fwd.nselect, r_rev.nselect)
-        self.assertEqual(list(r_fwd.points.flatten()), list(r_rev.points.flatten()))
+        self.assertEqual(list(r_fwd.slices[0]), list(r_rev.slices[0]))
 
 
 class IntersectFancyHyperslabTest(unittest.TestCase):
@@ -759,7 +727,9 @@ class ContainedFancyTest(unittest.TestCase):
         # s1 rows 2-4 and cols [3,7] — both subsets of s2 rows 0-7 and cols [1,3,7,9]
         shape = (10, 10)
         s1 = selections.select(shape, (slice(2, 5), [3, 7]))
+        self.assertEqual(s1.select_type, H5S_SEL_FANCY)
         s2 = selections.select(shape, (slice(0, 8), [1, 3, 7, 9]))
+        self.assertEqual(s2.select_type, H5S_SEL_FANCY)
         self.assertTrue(selections.contained(s1, s2))
 
     def testFancyNotContainedInFancy(self):
@@ -801,6 +771,8 @@ class TranslateTest(unittest.TestCase):
         self.assertEqual(result.count, (2, 2))
 
     def testTranslate2DWithPoints(self):
+        # Points (9,9) is outside s1, so only (2,2) and (3,3) survive.
+        # In s1's local frame (start=(2,2)): (0,0) and (1,1).
         shape = (10, 10)
         s1 = selections.select(shape, (slice(2, 8), slice(2, 8)))
         s2 = selections.select(shape, [(2, 2), (3, 3), (9, 9)])
@@ -808,10 +780,9 @@ class TranslateTest(unittest.TestCase):
         result = selections.translate(s1, s2)
         self.assertEqual(result.select_type, H5S_SEL_POINTS)
         self.assertEqual(result.nselect, 2)
-
-        self.assertEqual(result.points.shape, (2, 2))
-        self.assertEqual(list(result.points[0]), [0, 0])
-        self.assertEqual(list(result.points[1]), [1, 1])
+        pts_list = list(zip(result.slices[0], result.slices[1]))
+        self.assertIn((0, 0), pts_list)
+        self.assertIn((1, 1), pts_list)
 
     def testTranslateNoOverlapRaises(self):
         shape = (10,)

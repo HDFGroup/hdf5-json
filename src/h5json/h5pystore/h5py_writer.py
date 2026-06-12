@@ -387,11 +387,27 @@ class H5pyWriter(H5Writer):
                     slices.append(slice(start, stop, step))
                 slices = tuple(slices)
                 dset[slices] = val
-            elif isinstance(sel, selections.PointSelection):
-                for i in range(len(sel.points)):
-                    point = tuple(sel.points[i])
-                    dset[point] = val[i]
+            elif sel.select_type == selections.H5S_SEL_POINTS:
+                for i, pt in enumerate(selections._iter_points(sel)):
+                    dset[pt] = val[i]
                 self.log.debug(f"h5py_writer dset {dset.name} updated with point selection")
+            elif sel.select_type == selections.H5S_SEL_FANCY:
+                rank = len(sel.shape)
+                slices = sel.slices
+                list_dims = [d for d in range(rank) if isinstance(slices[d], list)]
+                if len(list_dims) > 1:
+                    # Multiple coordinate lists: decompose into n per-pair writes.
+                    list_dims_set = set(list_dims)
+                    n = len(slices[list_dims[0]])
+                    for i in range(n):
+                        idx = tuple(
+                            int(slices[d][i]) if d in list_dims_set else slices[d]
+                            for d in range(rank)
+                        )
+                        dset[idx] = val[i]
+                else:
+                    dset[slices] = val
+                self.log.debug(f"h5py_writer dset {dset.name} updated with fancy selection")
             else:
                 raise TypeError(f"Unexpected selection type: {type(sel)}")
 

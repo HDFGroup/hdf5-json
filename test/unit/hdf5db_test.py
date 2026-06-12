@@ -669,7 +669,7 @@ class Hdf5dbTest(unittest.TestCase):
             for j in range(5):
                 self.assertEqual(val[i, j], i * 10 + j * 2)
 
-        # read with a fancy selection with two coordinates
+        # read with a point selection with two coordinates
         sel = selections.select(shape, ([1, 3, 5, 7], [0, 2, 4, 6]))
         val = db.getDatasetValues(dset_id, sel)
         self.assertTrue(isinstance(val, np.ndarray))
