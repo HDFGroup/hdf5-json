@@ -761,7 +761,6 @@ class Hdf5db:
         rank = len(sel.shape)
         sel_list_dims = [d for d in range(rank) if isinstance(sel.slices[d], list)]
         is_paired_read = (sel.select_type == selections.H5S_SEL_POINTS and len(sel_list_dims) == rank)
-
         for (update_sel, update_val) in updates:
             x_sel = selections.intersect(sel, update_sel)
             if x_sel.nselect == 0:
@@ -797,6 +796,19 @@ class Hdf5db:
                     else:
                         src_pt = tuple(pt[d] - update_sel.start[d] for d in range(rank))
                         arr[tgt_idx] = update_val[src_pt]
+            elif update_sel.select_type == selections.H5S_SEL_POINTS:
+                # Point update: update_val is 1-D indexed by position in update_sel.
+                # Iterate intersected points and copy each value individually.
+                rank = len(sel.shape)
+                upd_pt_to_idx = {
+                    pt: j for j, pt in enumerate(selections._iter_points(update_sel))
+                }
+                for pt in selections._iter_points(x_sel):
+                    src_idx = upd_pt_to_idx.get(pt)
+                    if src_idx is None:
+                        continue
+                    tgt_coords = tuple(pt[d] - sel.start[d] for d in range(rank))
+                    arr[tgt_coords] = update_val[src_idx]
             else:
                 src_sel = selections.translate(update_sel, x_sel)
                 tgt_sel = selections.translate(sel, x_sel)

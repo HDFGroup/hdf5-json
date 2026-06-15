@@ -698,9 +698,17 @@ class Hdf5dbTest(unittest.TestCase):
         # point selection write
         arr = np.zeros((4,), dtype=dtype)
         db.setDatasetValues(dset_id, sel, arr)
+        arr = db.getDatasetValues(dset_id, sel_all)
+        for i in range(nrows):
+            for j in range(ncols):
+                x = arr[i, j]
+                if i == j and i < 4:
+                    # these are the elements we zeroed out with the point write
+                    self.assertEqual(x, 0)
+                else:
+                    self.assertEqual(x, i * 10 + j)
 
         # test select all write
-        sel_all = selections.select(shape, ...)
         arr = np.zeros(shape, dtype=dtype)
         arr[...] = 42
         db.setDatasetValues(dset_id, sel_all, arr)
