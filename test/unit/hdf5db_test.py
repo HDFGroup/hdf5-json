@@ -12,6 +12,7 @@
 import unittest
 import time
 import logging
+import math
 import numpy as np
 from h5json import Hdf5db
 from h5json import selections
@@ -881,6 +882,51 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertEqual(arr.max(), 42)
 
         db.close()
+
+    def testCompoundDataset(self):
+        count = 10
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dtype = np.dtype([('real', np.float32), ('img', np.float32)])
+        dset_id = db.createDataset((count,), dtype=dtype)
+
+        sel_one = selections.select((count,), slice(0, 1))
+        val = db.getDatasetValues(dset_id, sel_one)
+
+        for i in range(count):
+            theta = (4.0 * math.pi) * (float(i) / float(count))
+            val['real'] = math.cos(theta)
+            val['img'] = math.sin(theta)
+            sel_one = selections.select((count,), slice(i, i + 1))
+            db.setDatasetValues(dset_id, sel_one, val)
+
+        sel_one = selections.select((count,), slice(0, 1))
+        val = db.getDatasetValues(dset_id, sel_one)
+        self.assertEqual(val['real'], 1.0)
+
+        # create a selection to fetch just the real components
+        sel_real = selections.select((count,), ..., fields=["real",])
+        val = db.getDatasetValues(dset_id, sel_real)
+
+        self.assertTrue(isinstance(val, np.ndarray))
+        self.assertEqual(len(val.dtype), 0)
+        self.assertEqual(val.dtype, np.float32)
+
+        # zero out the imaginary values
+        sel_img = selections.select((count,), ..., fields=["img", ])
+        db.setDatasetValues(dset_id, sel_img, np.array(0.0, dtype=np.float32))
+
+        # read the entire dataset
+        sel_all = selections.select((count,), ...)
+        val = db.getDatasetValues(dset_id, sel_all)
+        self.assertTrue(isinstance(val, np.ndarray))
+        self.assertEqual(len(val.dtype), 2)
+        for i in range(count):
+            theta = (4.0 * math.pi) * (float(i) / float(count))
+            e = val[i]
+            self.assertEqual(e[0], math.cos(theta))
+            self.assertEqual(e[1], 0.0)
 
     def testResizableDataset(self):
         nrows = 8

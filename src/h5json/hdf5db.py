@@ -670,8 +670,51 @@ class Hdf5db:
         number of elements as the rank of the dataset.
         """
 
-        def init_arr(dtype, cpl):
-            """ create an ndarray with the give shape, dtype and fill_value
+        def _result_dtype(base_dtype, fields):
+            """Return the dtype for the result array given a field selection.
+
+            If fields is None or the dtype is not compound, return base_dtype.
+            If a single field is requested, return that field's scalar dtype.
+            If multiple fields are requested, return a sub-compound dtype with
+            those fields in the same order as in base_dtype.
+            """
+            if fields is None or len(base_dtype) == 0:
+                return base_dtype
+            ordered = [f for f in base_dtype.names if f in fields]
+            if not ordered:
+                raise ValueError(f"None of the requested fields {fields} found in dtype")
+            if len(ordered) == 1:
+                return base_dtype.fields[ordered[0]][0]
+            return np.dtype([(f, base_dtype.fields[f][0]) for f in ordered])
+
+        def _extract_fields(val, fields, rdtype):
+            """Extract the selected fields from a compound ndarray.
+
+            Returns val unchanged when field selection is not active.
+            For a single field returns a plain array; for multiple fields
+            returns a sub-compound array in dataset-dtype order.
+            """
+            if fields is None or len(val.dtype) == 0:
+                return val
+            ordered = [f for f in val.dtype.names if f in fields]
+            if len(ordered) == 1:
+                return val[ordered[0]]
+            result = np.zeros(val.shape, dtype=rdtype)
+            for f in ordered:
+                result[f] = val[f]
+            return result
+
+        def _assign(arr, tgt, val, src, write_fields):
+            """Copy val[src] into arr[tgt], optionally restricted to write_fields."""
+            src_val = val[()] if val.ndim == 0 else val[src]
+            if write_fields:
+                for f in write_fields:
+                    arr[tgt][f] = src_val if len(val.dtype) == 0 else src_val[f]
+            else:
+                arr[tgt] = src_val
+
+        def init_arr(rdtype, cpl):
+            """ create an ndarray with the given shape, dtype and fill_value
                 (if the latter is found in the creation properties list) """
             if isinstance(sel, selections.ScalarSelection):
                 arr_shape = ()
@@ -681,7 +724,7 @@ class Hdf5db:
                 arr_shape = sel.count if isinstance(sel.count, tuple) else (sel.count, )
             else:
                 arr_shape = (sel.nselect,)
-            arr = np.zeros(arr_shape, dtype=dtype)
+            arr = np.zeros(arr_shape, dtype=rdtype)
             if "fillValue" in cpl:
                 fillValue = cpl["fillValue"]
                 # TBD: fix for compound types
@@ -697,6 +740,7 @@ class Hdf5db:
             raise TypeError("Expected Selection class")
 
         dtype = self.getDtype(dset_json)
+        rdtype = _result_dtype(dtype, sel.fields)
 
         if "creationProperties" in dset_json:
             cpl = dset_json["creationProperties"]
@@ -723,12 +767,13 @@ class Hdf5db:
                 # for scalars the update has to be the requested value
                 (update_sel, arr) = updates[-1]
             elif dset_id in self._new_objects:
-                arr = init_arr(dtype, cpl)
+                arr = init_arr(rdtype, cpl)
             else:
                 # fetch from the server
                 arr = self.reader.getDatasetValues(dset_id, sel, dtype=dtype)
                 if arr is None:
                     raise KeyError(f"Data for dataset {dset_id} not returned")
+                arr = _extract_fields(arr, sel.fields, rdtype)
             # done with NULL and SCALAR cases
             return arr
 
@@ -753,9 +798,10 @@ class Hdf5db:
         if fetch:
             # get last saved version of the data from the reader
             arr = self.reader.getDatasetValues(dset_id, sel, dtype=dtype)
+            arr = _extract_fields(arr, sel.fields, rdtype)
         else:
             # initialize an array with fill value if given
-            arr = init_arr(dtype, cpl)
+            arr = init_arr(rdtype, cpl)
 
         # apply any updates that impact this selection
         rank = len(sel.shape)
@@ -765,6 +811,20 @@ class Hdf5db:
             x_sel = selections.intersect(sel, update_sel)
             if x_sel.nselect == 0:
                 continue
+
+            # If the update has a field restriction and the read has a different
+            # (or no) field restriction, check for overlap and skip when empty.
+            if x_sel.fields is not None and len(x_sel.fields) == 0:
+                continue  # no overlapping fields between update and read
+
+            # Extract requested fields from compound update data.
+            eff_val = _extract_fields(update_val, sel.fields, rdtype)
+
+            # Determine which output field(s) to write to when the update is
+            # field-restricted but the read selection covers all (compound) fields.
+            write_fields = None  # None means write the whole element
+            if update_sel.fields is not None and len(rdtype) > 0:
+                write_fields = [f for f in rdtype.names if f in update_sel.fields]
 
             if is_paired_read:
                 # Paired-coordinate read: output is 1-D, one entry per point pair.
@@ -792,12 +852,12 @@ class Hdf5db:
                         src_idx = upd_pt_to_idx.get(pt)
                         if src_idx is None:
                             continue
-                        arr[tgt_idx] = update_val[src_idx]
+                        _assign(arr, tgt_idx, eff_val, src_idx, write_fields)
                     else:
                         src_pt = tuple(pt[d] - update_sel.start[d] for d in range(rank))
-                        arr[tgt_idx] = update_val[src_pt]
+                        _assign(arr, tgt_idx, eff_val, src_pt, write_fields)
             elif update_sel.select_type == selections.H5S_SEL_POINTS:
-                # Point update: update_val is 1-D indexed by position in update_sel.
+                # Point update: eff_val is 1-D indexed by position in update_sel.
                 # Iterate intersected points and copy each value individually.
                 rank = len(sel.shape)
                 upd_pt_to_idx = {
@@ -808,11 +868,11 @@ class Hdf5db:
                     if src_idx is None:
                         continue
                     tgt_coords = tuple(pt[d] - sel.start[d] for d in range(rank))
-                    arr[tgt_coords] = update_val[src_idx]
+                    _assign(arr, tgt_coords, eff_val, src_idx, write_fields)
             else:
                 src_sel = selections.translate(update_sel, x_sel)
                 tgt_sel = selections.translate(sel, x_sel)
-                arr[tgt_sel.slices] = update_val[src_sel.slices]
+                _assign(arr, tgt_sel.slices, eff_val, src_sel.slices, write_fields)
 
         return arr
 
@@ -847,9 +907,21 @@ class Hdf5db:
             raise TypeError("Expected ndarray for data value")
 
         tgt_dt = self.getDtype(dset_json)
+        if sel.fields is not None and len(tgt_dt) > 0:
+            # Field-restricted write: check arr against the selected field dtype.
+            ordered = [f for f in tgt_dt.names if f in sel.fields]
+            if not ordered:
+                raise ValueError(f"None of the requested fields {sel.fields} "
+                                 f"found in dataset dtype")
+            if len(ordered) == 1:
+                expected_dt = tgt_dt.fields[ordered[0]][0]
+            else:
+                expected_dt = np.dtype([(f, tgt_dt.fields[f][0]) for f in ordered])
+        else:
+            expected_dt = tgt_dt
         src_dt = arr.dtype
-        if src_dt != tgt_dt:
-            raise TypeError("arr.dtype doesn't match dataset dtype")
+        if src_dt != expected_dt:
+            raise TypeError(f"arr.dtype {src_dt} doesn't match expected dtype {expected_dt}")
 
         if sel.select_type == selections.H5S_SEL_POINTS:
             if sel.nselect != arr.shape[0]:
@@ -864,18 +936,22 @@ class Hdf5db:
             dims = getShapeDims(shape_json)
             if sel.shape != dims:
                 raise TypeError("Selection shape does not match dataset shape")
-            if len(arr.shape) != len(dims):
-                raise TypeError("Array shape does not match dataset shape")
-            try:
-                sel.broadcast(arr.shape)
-            except TypeError:
-                # selection can't be broadcast to array shape
-                raise
+            # Allow scalar arrays when writing a field-restricted selection
+            # (the scalar will be broadcast to all selected positions).
+            if arr.shape != () or sel.fields is None:
+                if len(arr.shape) != len(dims):
+                    raise TypeError("Array shape does not match dataset shape")
+                try:
+                    sel.broadcast(arr.shape)
+                except TypeError:
+                    raise
         else:
             raise TypeError("Unsupported selection type")
 
-        if sel.select_type == selections.H5S_SEL_ALL or sel.shape == sel.mshape:
-            # for select all, throw out any existing updates since this will overwrite them
+        if (sel.select_type == selections.H5S_SEL_ALL or sel.shape == sel.mshape) \
+                and sel.fields is None:
+            # for full-coverage writes with no field restriction, discard prior
+            # updates since this one completely overwrites the dataset.
             updates.clear()
 
         # make a copy in case the client updates it later

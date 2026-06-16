@@ -37,7 +37,7 @@ H5S_SELECT_NONE = 5
 H5S_SELECT_NOTB = 6
 
 
-def select(obj, args):
+def select(obj, args, fields=None):
     """ High-level routine to generate a selection from arbitrary arguments
     to selection initializer.  The arguments should be the following:
 
@@ -95,7 +95,7 @@ def select(obj, args):
             return arg
 
         elif isinstance(arg, np.ndarray) or isinstance(arg, list):
-            return SimpleSelection(obj_shape, _points_to_paired(obj_shape, arg))
+            return SimpleSelection(obj_shape, _points_to_paired(obj_shape, arg), fields=fields)
         """
         #todo - RegionReference
         elif isinstance(arg, h5r.RegionReference):
@@ -106,7 +106,7 @@ def select(obj, args):
             return Selection(shape, spaceid=sid)
         """
 
-    sel = SimpleSelection(obj_shape, args)
+    sel = SimpleSelection(obj_shape, args, fields=fields)
     return sel
 
 
@@ -298,11 +298,26 @@ def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
     return FancySelection(fancy_sel.shape, new_slices)
 
 
+def _intersect_fields(f1, f2):
+    """Return the fields for an intersection result.
+
+    None means 'all fields'.  The intersection of two field sets is the set of
+    fields that appear in both; intersecting with None (all fields) yields the
+    other operand's fields unchanged.
+    """
+    if f1 is None:
+        return f2
+    if f2 is None:
+        return f1
+    return f1 & f2  # both are sets
+
+
 def intersect(s1, s2):
     """ Return the intersection of two selections.
 
     Supports hyperslab/hyperslab, hyperslab/fancy, and paired-fancy/fancy
-    combinations.
+    combinations.  The fields of the result are the intersection of the fields
+    of the two input selections (None meaning 'all fields').
     """
     if not isinstance(s1, Selection):
         raise TypeError("Expected selection type for first arg")
@@ -314,6 +329,7 @@ def intersect(s1, s2):
     t1 = s1.select_type
     t2 = s2.select_type
     hyperslab_types = (H5S_SEL_HYPERSLABS, H5S_SEL_ALL)
+    result_fields = _intersect_fields(s1.fields, s2.fields)
 
     if t1 in hyperslab_types and t2 in hyperslab_types:
         slices = []
@@ -326,13 +342,19 @@ def intersect(s1, s2):
             if start > stop:
                 stop = start
             slices.append(slice(start, stop, 1))
-        return select(s1.shape, tuple(slices))
+        result = select(s1.shape, tuple(slices))
+        result._fields = result_fields
+        return result
 
     if t1 in (H5S_SEL_FANCY, H5S_SEL_POINTS) and t2 in hyperslab_types:
-        return _intersect_fancy_hyperslab(s1, s2)
+        result = _intersect_fancy_hyperslab(s1, s2)
+        result._fields = result_fields
+        return result
 
     if t1 in hyperslab_types and t2 in (H5S_SEL_FANCY, H5S_SEL_POINTS):
-        return _intersect_fancy_hyperslab(s2, s1)
+        result = _intersect_fancy_hyperslab(s2, s1)
+        result._fields = result_fields
+        return result
 
     if t1 == H5S_SEL_POINTS and t2 == H5S_SEL_POINTS:
         rank = len(s1.shape)
@@ -340,7 +362,9 @@ def intersect(s1, s2):
         s1_all_lists = sum(1 for s in s1.slices if isinstance(s, list)) == rank
         s2_all_lists = sum(1 for s in s2.slices if isinstance(s, list)) == rank
         if s1_all_lists and s2_all_lists:
-            return _intersect_paired_fancy(s1, s2)
+            result = _intersect_paired_fancy(s1, s2)
+            result._fields = result_fields
+            return result
         raise TypeError(f"Unsupported selection types for intersection: {t1}, {t2}")
 
     raise TypeError(f"Unsupported selection types for intersection: {t1}, {t2}")
@@ -426,14 +450,36 @@ def _fancy_contained(s1, s2):
     return all(_dim_contained(s1_dims[d], s2_dims[d]) for d in range(rank))
 
 
+def _fields_contained(f1, f2):
+    """Return True if the fields of s1 (f1) are contained in the fields of s2 (f2).
+
+    None means 'all fields'.  s1 is field-contained in s2 when every field
+    that s2 requests is also present in s1 — i.e. s2.fields ⊆ s1.fields.
+    """
+    if f2 is None:
+        # s2 requests all fields; s1 must also cover all fields
+        return f1 is None
+    if f1 is None:
+        # s1 has all fields, so any subset s2 requests is covered
+        return True
+    return f2 <= f1
+
+
 def contained(s1, s2):
-    """ return True if s1 is contained in s2, otherwise False """
+    """ return True if s1 is contained in s2, otherwise False.
+
+    Takes compound-type fields into account: s1 is contained in s2 only if
+    s2's field set is a subset of s1's field set (None means 'all fields').
+    """
     if not isinstance(s1, Selection):
         raise TypeError("Expected selection type for first arg")
     if not isinstance(s2, Selection):
         raise TypeError("Expected selection type for second arg")
     if s1.shape != s2.shape:
         raise ValueError("selections have incompatible shapes")
+
+    if not _fields_contained(s1.fields, s2.fields):
+        return False
 
     t1 = s1.select_type
     t2 = s2.select_type
@@ -611,12 +657,13 @@ class Selection(object):
                              What args are allowed depends on the
                              particular subclass in use.
 
-        id (read-only) =>      h5py.h5s.SpaceID instance
         shape (read-only) =>   The shape of the dataspace.
         mshape  (read-only) => The shape of the selection region.
                                Not guaranteed to fit within "shape", although
                                the total number of points is less than
                                product(shape).
+        fields (read-only) => fields included in the selection (for compound types)
+                              if None, all fields are included
         nselect (read-only) => Number of selected points.  Always equal to
                                product(mshape).
 
@@ -626,11 +673,15 @@ class Selection(object):
         The base class represents "unshaped" selections (1-D).
     """
 
-    def __init__(self, shape):
+    def __init__(self, shape, fields=None):
         """ Create a selection.   """
 
         shape = tuple(shape)
         self._shape = shape
+        if fields is None:
+            self._fields = None
+        else:
+            self._fields = set(fields)
 
         self._select_type = H5S_SEL_ALL
 
@@ -643,6 +694,11 @@ class Selection(object):
     def shape(self):
         """ Shape of whole dataspace """
         return self._shape
+
+    @property
+    def fields(self):
+        """ Fields of a compound type included in the selection """
+        return self._fields
 
     @property
     def bbox(self):
@@ -770,8 +826,8 @@ class SimpleSelection(Selection):
 
     # --- Initializer ---
 
-    def __init__(self, shape, hyperslab=None):
-        Selection.__init__(self, shape)
+    def __init__(self, shape, hyperslab=None, fields=None):
+        Selection.__init__(self, shape, fields=fields)
         rank = len(self._shape)
 
         if self._shape == ():
@@ -970,10 +1026,16 @@ class SimpleSelection(Selection):
                 yield sel
 
     def __repr__(self):
+        if self.fields:
+            fields = ", fields: " + str(self.fields)
+        else:
+            fields = ""
         if self._select_type in (H5S_SEL_FANCY, H5S_SEL_POINTS):
-            return f"SimpleSelection(shape:{self._shape}, slices: {self._slices})"
+            return f"SimpleSelection(shape:{self._shape}, slices: {self._slices} {fields})"
         s = f"SimpleSelection(shape:{self._shape}, start: {self._sel[0]},"
         s += f" count: {self._sel[1]}, step: {self._sel[2]}"
+        s += fields
+
         return s
 
 

@@ -836,5 +836,95 @@ class TranslateTest(unittest.TestCase):
         self.assertEqual(result.nselect, 9)  # 3 rows x 3 cols
 
 
+class FieldsTest(unittest.TestCase):
+    """Tests for compound-type field handling in intersect() and contained()."""
+
+    def __init__(self, *args, **kwargs):
+        super(FieldsTest, self).__init__(*args, **kwargs)
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.WARNING)
+
+    def testSimple(self):
+        shape = (10,)
+        s1 = selections.select(shape, ..., fields=["abc", ])
+        self.assertEqual(s1.fields, {"abc", })
+
+    # --- intersect ---
+
+    def testIntersectBothNone(self):
+        shape = (10,)
+        s1 = selections.select(shape, slice(0, 5))
+        s2 = selections.select(shape, slice(2, 8))
+        result = selections.intersect(s1, s2)
+        self.assertIsNone(result.fields)
+
+    def testIntersectS1NoneS2Fields(self):
+        # s1 has all fields, s2 restricts to {"abc","xyz"} — result is {"abc","xyz"}
+        shape = (10,)
+        s1 = selections.select(shape, slice(0, 10))
+        s2 = selections.select(shape, slice(0, 10), fields=["abc", "xyz"])
+        result = selections.intersect(s1, s2)
+        self.assertEqual(result.fields, {"abc", "xyz"})
+
+    def testIntersectS2NoneS1Fields(self):
+        # s1 restricts to {"a"}, s2 has all fields — result is {"a"}
+        shape = (10,)
+        s1 = selections.select(shape, slice(0, 10), fields=["a"])
+        s2 = selections.select(shape, slice(0, 10))
+        result = selections.intersect(s1, s2)
+        self.assertEqual(result.fields, {"a"})
+
+    def testIntersectBothFields(self):
+        # intersection of {"x","y","z"} and {"y","z","w"} is {"y","z"}
+        shape = (10,)
+        s1 = selections.select(shape, slice(0, 10), fields=["x", "y", "z"])
+        s2 = selections.select(shape, slice(0, 10), fields=["y", "z", "w"])
+        result = selections.intersect(s1, s2)
+        self.assertEqual(result.fields, {"y", "z"})
+
+    # --- contained ---
+
+    def testContainedBothNone(self):
+        shape = (10,)
+        s1 = selections.select(shape, slice(2, 5))
+        s2 = selections.select(shape, slice(0, 10))
+        self.assertTrue(selections.contained(s1, s2))
+
+    def testContainedS1NoneS2Fields(self):
+        # s2 requests only {"x"}, s1 has all — s1 contains s2's fields
+        shape = (10,)
+        s1 = selections.select(shape, slice(0, 10))
+        s2 = selections.select(shape, slice(0, 10), fields=["x"])
+        self.assertTrue(selections.contained(s1, s2))
+
+    def testContainedS1FieldsS2None(self):
+        # s2 requests all fields, s1 only has {"x"} — not contained
+        shape = (10,)
+        s1 = selections.select(shape, slice(0, 10), fields=["x"])
+        s2 = selections.select(shape, slice(0, 10))
+        self.assertFalse(selections.contained(s1, s2))
+
+    def testContainedS1SupersetS2(self):
+        # s1 has {"x","y"}, s2 requests {"x"} — contained
+        shape = (10,)
+        s1 = selections.select(shape, slice(0, 10), fields=["x", "y"])
+        s2 = selections.select(shape, slice(0, 10), fields=["x"])
+        self.assertTrue(selections.contained(s1, s2))
+
+    def testContainedS1SubsetS2(self):
+        # s1 has {"x"}, s2 requests {"x","y"} — not contained
+        shape = (10,)
+        s1 = selections.select(shape, slice(0, 10), fields=["x"])
+        s2 = selections.select(shape, slice(0, 10), fields=["x", "y"])
+        self.assertFalse(selections.contained(s1, s2))
+
+    def testContainedSpaciallyNotContained(self):
+        # spatial containment fails even though fields match
+        shape = (10,)
+        s1 = selections.select(shape, slice(5, 10), fields=["x"])
+        s2 = selections.select(shape, slice(0, 6), fields=["x"])
+        self.assertFalse(selections.contained(s1, s2))
+
+
 if __name__ == "__main__":
     unittest.main()
