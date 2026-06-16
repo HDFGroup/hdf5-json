@@ -728,6 +728,60 @@ class Hdf5dbTest(unittest.TestCase):
 
         db.close()
 
+    def test3DDataset(self):
+
+        shape = (5, 1000, 1000)
+        dtype = np.int32
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+
+        dset_id = db.createDataset(shape, dtype=dtype)
+        # write some values to the dataset
+        sel = selections.select(shape, (slice(0, 5), 1, 10))
+        data = np.array([95, 96, 97, 98, 99], dtype=dtype)
+        db.setDatasetValues(dset_id, sel, data)
+
+        sel = selections.select(shape, (slice(0, 5), 10, 100))
+        data = np.array([195, 196, 197, 198, 199], dtype=dtype)
+        db.setDatasetValues(dset_id, sel, data)
+
+        sel = selections.select(shape, (slice(0, 5), 100, 500))
+        data = np.array([295, 296, 297, 298, 299], dtype=dtype)
+        db.setDatasetValues(dset_id, sel, data)
+
+        # single coordinate, increasing
+        sel = selections.select(shape, (slice(0, 5), 10, [10, 100, 500]))
+        arr = db.getDatasetValues(dset_id, sel)
+        self.assertEqual(arr.shape, (5, 3))
+        self.assertTrue((arr[:, 0] == [0, 0, 0, 0, 0]).all())
+        self.assertTrue((arr[:, 1] == [195, 196, 197, 198, 199]).all())
+        self.assertTrue((arr[:, 2] == [0, 0, 0, 0, 0]).all())
+
+        # non-increasing indexes
+        sel = selections.select(shape, (slice(0, 5), 10, [100, 10, 500]))
+        arr = db.getDatasetValues(dset_id, sel)
+        self.assertEqual(arr.shape, (5, 3))
+        self.assertTrue((arr[:, 0] == [195, 196, 197, 198, 199]).all())
+        self.assertTrue((arr[:, 1] == [0, 0, 0, 0, 0]).all())
+        self.assertTrue((arr[:, 2] == [0, 0, 0, 0, 0]).all())
+
+        # test multiple coordinates
+        sel = selections.select(shape, (0, [1, 10, 100], [10, 100, 500]))
+        arr = db.getDatasetValues(dset_id, sel)
+        self.assertEqual(arr.shape, (3,))
+        self.assertTrue((arr[:] == [95, 195, 295]).all())
+
+        # test slice plus two coordinates
+        sel = selections.select(shape, (slice(0, 5), [1, 10, 100], [10, 100, 500]))
+        arr = db.getDatasetValues(dset_id, sel)
+        self.assertEqual(arr.shape, (5, 3))
+        self.assertTrue((arr[:, 0] == [95, 96, 97, 98, 99]).all())
+        self.assertTrue((arr[:, 1] == [195, 196, 197, 198, 199]).all())
+        self.assertTrue((arr[:, 2] == [295, 296, 297, 298, 299]).all())
+
+        db.close()
+
     def testStringDataset(self):
         nrows = 6
         ncols = 3

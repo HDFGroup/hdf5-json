@@ -237,12 +237,15 @@ def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
     if len(list_dims) > 1:
         # Paired-coordinate selection: check slice dims first, then filter pairs.
         for dim in range(rank):
-            if isinstance(slices[dim], slice):
-                s = slices[dim]
-                hs, hc, hst = h_start[dim], h_count[dim], h_step[dim]
+            s = slices[dim]
+            hs, hc, hst = h_start[dim], h_count[dim], h_step[dim]
+            if isinstance(s, slice):
                 if s.step > 1 or hst > 1:
                     raise ValueError("stepped slices not currently supported")
                 if min(s.stop, hs + hc) <= max(s.start, hs):
+                    return _empty_paired_sel(fancy_sel.shape)
+            elif isinstance(s, int):
+                if not _pt_in_hyperslab(s, hs, hc, hst):
                     return _empty_paired_sel(fancy_sel.shape)
 
         n_pairs = len(slices[list_dims[0]])
@@ -259,9 +262,11 @@ def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
             s = slices[dim]
             if isinstance(s, list):
                 new_slices.append([s[i] for i in keep])
-            else:  # slice dim: intersect ranges normally
+            elif isinstance(s, slice):
                 hs, hc = h_start[dim], h_count[dim]
                 new_slices.append(slice(max(s.start, hs), min(s.stop, hs + hc), 1))
+            else:  # int: already validated above, keep as-is
+                new_slices.append(s)
         return FancySelection(fancy_sel.shape, new_slices)
 
     # Cartesian-product path: clip each dimension independently.
@@ -601,6 +606,8 @@ def translate(s1, s2):
                     new_slices.append([index_map[x] for x in inter_dim])
                 else:
                     new_slices.append(index_map[inter_dim])
+            else:  # int: scalar-indexed dim, local coordinate is always 0
+                new_slices.append(inter_dim - s1_dim)
         return FancySelection(s1.shape, new_slices)
 
     if s2.select_type in (H5S_SEL_FANCY, H5S_SEL_POINTS):

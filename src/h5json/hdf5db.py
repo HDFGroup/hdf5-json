@@ -872,7 +872,28 @@ class Hdf5db:
             else:
                 src_sel = selections.translate(update_sel, x_sel)
                 tgt_sel = selections.translate(sel, x_sel)
-                _assign(arr, tgt_sel.slices, eff_val, src_sel.slices, write_fields)
+                # arr.shape == sel.mshape, which excludes:
+                #   • integer-indexed (scalar) dims
+                #   • all but the first of paired same-length list dims
+                # Reconstruct the correct index tuple using sel.slices as a
+                # guide for which dims are in mshape.
+                # eff_val retains full dataset rank (reshaped on write), so
+                # src_sel.slices is used as-is.
+                saw_list = False
+                tgt_slices_list = []
+                for sel_dim, loc_dim in zip(sel.slices, tgt_sel.slices):
+                    if isinstance(sel_dim, int):
+                        pass  # scalar dim: excluded from mshape
+                    elif isinstance(sel_dim, list):
+                        if not saw_list:
+                            tgt_slices_list.append(loc_dim)
+                            saw_list = True
+                        # else: paired list dim — shares the mshape entry with
+                        # the first list dim, so skip it
+                    else:  # slice
+                        tgt_slices_list.append(loc_dim)
+                tgt_slices = tuple(tgt_slices_list)
+                _assign(arr, tgt_slices, eff_val, src_sel.slices, write_fields)
 
         return arr
 
@@ -884,12 +905,16 @@ class Hdf5db:
         if not isinstance(sel, selections.Selection):
             raise TypeError("Expected Selection class")
 
+        if not isinstance(arr, np.ndarray):
+            raise TypeError("Expected ndarray for data value")
+
         dset_json = self.getObjectById(dset_id)
         shape_json = dset_json["shape"]
 
         shape_class = getShapeClass(shape_json)
         if shape_class == "H5S_NULL":
             raise ValueError("writing to null space dataset not supported")
+        dims = getShapeDims(shape_json)
 
         updates = self._getDatasetUpdates(dset_id)
 
@@ -902,9 +927,6 @@ class Hdf5db:
 
             if arr.shape != ():
                 raise ValueError("Expected scalar array for scalar dataset")
-
-        if not isinstance(arr, np.ndarray):
-            raise TypeError("Expected ndarray for data value")
 
         tgt_dt = self.getDtype(dset_json)
         if sel.fields is not None and len(tgt_dt) > 0:
@@ -933,18 +955,29 @@ class Hdf5db:
             if sel.shape != getShapeDims(shape_json):
                 raise TypeError("Selection shape does not match dataset shape")
         elif sel.select_type == selections.H5S_SEL_HYPERSLABS:
-            dims = getShapeDims(shape_json)
             if sel.shape != dims:
                 raise TypeError("Selection shape does not match dataset shape")
             # Allow scalar arrays when writing a field-restricted selection
             # (the scalar will be broadcast to all selected positions).
             if arr.shape != () or sel.fields is None:
-                if len(arr.shape) != len(dims):
+                if 0 < arr.ndim < len(dims):
+                    # arr has fewer dims than the dataset rank (e.g. a 1-D array
+                    # written to a slice of a 3-D dataset).  Validate against
+                    # sel.mshape (the effective shape after scalar-indexed axes
+                    # are removed), then reshape to sel.count so the stored array
+                    # has the full dataset rank with size-1 scalar-axis dims.
+                    if arr.shape != sel.mshape:
+                        raise TypeError(
+                            f"Array shape {arr.shape} doesn't match "
+                            f"selection mshape {sel.mshape}")
+                    arr = arr.reshape(sel.count)
+                elif len(arr.shape) != len(dims):
                     raise TypeError("Array shape does not match dataset shape")
-                try:
-                    sel.broadcast(arr.shape)
-                except TypeError:
-                    raise
+                else:
+                    try:
+                        sel.broadcast(arr.shape)
+                    except TypeError:
+                        raise
         else:
             raise TypeError("Unsupported selection type")
 
