@@ -193,6 +193,21 @@ def _empty_paired_sel(shape):
     return SimpleSelection(shape, tuple([] for _ in range(rank)))
 
 
+def from_query_result(shape, indices):
+    """Create a PointSelection from an arrayQuery result.
+
+    shape: full dataset shape tuple
+    indices: ndarray of shape (N,) for 1D or (N, rank) for nD, as returned by arrayQuery
+    """
+    rank = len(shape)
+    if len(indices) == 0:
+        return _empty_paired_sel(shape)
+    if rank == 1:
+        return select(shape, indices.astype(int).tolist())
+    coords = tuple(indices[:, d].astype(int).tolist() for d in range(rank))
+    return select(shape, coords)
+
+
 def _intersect_paired_fancy(s1, s2):
     """Return the intersection of two paired-coordinate FancySelections."""
     if not _bboxes_overlap(s1, s2):

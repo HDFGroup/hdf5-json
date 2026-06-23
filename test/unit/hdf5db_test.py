@@ -1031,6 +1031,125 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertEqual(arr.shape, ())
         self.assertEqual(arr[()], 0xdeadbeef)
 
+    def _make_tabular_arr(self):
+        """Return a 1-D compound ndarray with 12 rows of stock-trade data."""
+        value = [
+            ("EBAY", "20170102", 3023, 3088),  # 0
+            ("AAPL", "20170102", 3054, 2933),  # 1
+            ("AMZN", "20170102", 2973, 3011),  # 2
+            ("EBAY", "20170103", 3042, 3128),  # 3
+            ("AAPL", "20170103", 3182, 3034),  # 4
+            ("AMZN", "20170103", 3021, 2788),  # 5
+            ("EBAY", "20170104", 2798, 2876),  # 6
+            ("AAPL", "20170104", 2834, 2867),  # 7
+            ("AMZN", "20170104", 2891, 2978),  # 8
+            ("EBAY", "20170105", 2973, 2962),  # 9
+            ("AAPL", "20170105", 2934, 3010),  # 10
+            ("AMZN", "20170105", 3018, 3086),  # 11
+        ]
+        dtype = np.dtype([("symbol", "S4"), ("date", "S8"), ("open", "i4"), ("close", "i4")])
+        arr = np.zeros((len(value),), dtype=dtype)
+        for i, row in enumerate(value):
+            for j in range(4):
+                arr[i][j] = row[j]
+        return arr
+
+    def testQueryDataset1D(self):
+        data_arr = self._make_tabular_arr()
+        shape = data_arr.shape
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=data_arr.dtype)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, data_arr)
+
+        # simple equality query
+        query = "symbol == b'AAPL'"
+        result = db.getDatasetValues(dset_id, sel_all, query=query)
+        self.assertIsInstance(result, np.ndarray)
+        self.assertEqual(result.dtype, np.dtype("u8"))
+        self.assertEqual(result.shape, (4,))
+        expected_indexes = {1, 4, 7, 10}
+        for idx in result:
+            self.assertIn(int(idx), expected_indexes)
+
+        # IN query
+        query = "symbol IN (b'AAPL', b'EBAY')"
+        result = db.getDatasetValues(dset_id, sel_all, query=query)
+        self.assertIsInstance(result, np.ndarray)
+        self.assertEqual(len(result), 8)
+        expected_indexes = {0, 1, 3, 4, 6, 7, 9, 10}
+        for idx in result:
+            self.assertIn(int(idx), expected_indexes)
+
+        # AND query across two fields
+        query = "symbol IN (b'AAPL') AND 'date' > 20170102"
+        result = db.getDatasetValues(dset_id, sel_all, query=query)
+        self.assertIsInstance(result, np.ndarray)
+        self.assertEqual(len(result), 3)
+        expected_indexes = {4, 7, 10}
+        for idx in result:
+            self.assertIn(int(idx), expected_indexes)
+
+        # query with no results
+        query = "symbol == b'XYZ'"
+        result = db.getDatasetValues(dset_id, sel_all, query=query)
+        self.assertIsInstance(result, np.ndarray)
+        self.assertEqual(len(result), 0)
+
+        # query with selection (only rows 2-11)
+        sel = selections.select(shape, slice(2, 12))
+        query = "symbol == b'AAPL'"
+        result = db.getDatasetValues(dset_id, sel, query=query)
+        self.assertIsInstance(result, np.ndarray)
+        self.assertEqual(len(result), 3)
+        expected_in_order = (4, 7, 10)
+        for i, idx in enumerate(result):
+            self.assertEqual(int(idx), expected_in_order[i])
+
+        # invalid query should raise ValueError
+        try:
+            db.getDatasetValues(dset_id, sel_all, query="foobar")
+            self.fail("Expected ValueError for invalid query field")
+        except ValueError:
+            pass
+
+        db.close()
+
+    def testQueryDataset2D(self):
+        data_arr = self._make_tabular_arr()
+        nrows = data_arr.shape[0]
+        data_arr = data_arr.reshape((nrows // 2, 2))  # shape (6, 2)
+        shape = data_arr.shape
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=data_arr.dtype)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, data_arr)
+
+        # AAPL appears at (0,1), (2,0), (3,1), (5,0) in the 6×2 layout
+        query = "symbol == b'AAPL'"
+        result = db.getDatasetValues(dset_id, sel_all, query=query)
+        self.assertIsInstance(result, np.ndarray)
+        self.assertEqual(result.shape, (4, 2))
+        expected_indexes = {(0, 1), (2, 0), (3, 1), (5, 0)}
+        for row in result:
+            self.assertIn(tuple(int(x) for x in row), expected_indexes)
+
+        # query with selection (second column only: rows 0-5, col 1)
+        slices = (slice(0, 6, 1), slice(1, 2, 1))
+        sel = selections.select(shape, slices)
+        result = db.getDatasetValues(dset_id, sel, query=query)
+        self.assertIsInstance(result, np.ndarray)
+        self.assertEqual(result.shape, (2, 2))
+        expected_indexes = [(0, 1), (3, 1)]
+        for i, row in enumerate(result):
+            self.assertEqual(tuple(int(x) for x in row), expected_indexes[i])
+
+        db.close()
+
 
 if __name__ == "__main__":
     # setup test files

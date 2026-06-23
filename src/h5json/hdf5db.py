@@ -15,6 +15,7 @@ import logging
 from .hdf5dtype import getTypeItem, createDataType, Reference, special_dtype
 from .hdf5dtype import numpy_integer_types, numpy_float_types
 from .array_util import jsonToArray, bytesArrayToList
+from .query_util import arrayQuery
 from .dset_util import resize_dataset, getDatasetLayoutClass
 from .shape_util import getShapeClass, getShapeDims, getShapeJson
 from .filters import validateFilters
@@ -24,6 +25,38 @@ from .time_util import getNow
 from .apiversion import _apiver
 from .h5reader import H5Reader, H5NullReader
 from .h5writer import H5Writer, H5NullWriter
+
+
+def _query_rel_to_abs(x_sel, rel_indices, rank):
+    """Map arrayQuery relative indices (within a sub-array) to absolute dataset indices.
+
+    x_sel: SimpleSelection whose sub-array was queried
+    rel_indices: arrayQuery result — (N,) for rank=1, (N, rank) for rank>1
+    """
+    slices = x_sel.slices
+    if rank == 1:
+        s = slices[0]
+        if isinstance(s, slice):
+            start = s.start if s.start is not None else 0
+            step = s.step if s.step is not None else 1
+            return (rel_indices * step + start).astype(np.dtype('u8'))
+        if isinstance(s, list):
+            return np.array(s, dtype='u8')[rel_indices.astype(int)]
+        return np.full(len(rel_indices), int(s), dtype='u8')
+    if len(rel_indices) == 0:
+        return rel_indices.astype('u8')
+    abs_result = np.zeros((len(rel_indices), rank), dtype='u8')
+    for d in range(rank):
+        s = slices[d]
+        if isinstance(s, slice):
+            start = s.start if s.start is not None else 0
+            step = s.step if s.step is not None else 1
+            abs_result[:, d] = rel_indices[:, d] * step + start
+        elif isinstance(s, list):
+            abs_result[:, d] = [s[i] for i in rel_indices[:, d].tolist()]
+        else:
+            abs_result[:, d] = int(s)
+    return abs_result
 
 
 def _decode(item, encoding="ascii"):
@@ -663,7 +696,7 @@ class Hdf5db:
 
         self.make_dirty(obj_id)
 
-    def getDatasetValues(self, dset_id, sel):
+    def getDatasetValues(self, dset_id, sel, query=None):
         """
         Get values from dataset identified by obj_id.
         If a slices list or tuple is provided, it should have the same
@@ -763,6 +796,8 @@ class Hdf5db:
                 raise ValueError("Only SELECT_ALL selections are supported for scalar datasets")
             if sel.shape != ():
                 raise ValueError("Selection shape does not match dataset shape")
+            if query:
+                raise ValueError("Query is not supported for scalar datasets")
             if updates:
                 # for scalars the update has to be the requested value
                 (update_sel, arr) = updates[-1]
@@ -780,6 +815,55 @@ class Hdf5db:
         # simple dataset
         arr = None
         fetch = True
+
+        if query:
+            full_shape = sel.shape
+            rank = len(full_shape)
+            result_mask = np.zeros(full_shape, dtype=bool)
+
+            # Delegate query to the reader when it has relevant data
+            query_fetch = not (isinstance(self._reader, H5NullReader) or dset_id in self._new_objects)
+            if query_fetch:
+                for (update_sel, _) in updates:
+                    if selections.contained(sel, update_sel):
+                        query_fetch = False
+                        break
+
+            if query_fetch:
+                reader_result = self.reader.getDatasetValues(dset_id, sel, dtype=dtype, query=query)
+                if reader_result is not None and len(reader_result) > 0:
+                    if rank == 1:
+                        result_mask[reader_result.astype(int)] = True
+                    else:
+                        result_mask[tuple(reader_result[:, d].astype(int) for d in range(rank))] = True
+
+            for (update_sel, update_val) in updates:
+                x_sel = selections.intersect(sel, update_sel)
+                if x_sel.nselect == 0:
+                    continue
+
+                # Invalidate reader results overwritten by this update
+                inter_mask = np.zeros(full_shape, dtype=bool)
+                inter_mask[x_sel.slices] = True
+                result_mask &= ~inter_mask
+
+                # Query the updated values at the intersection
+                local_sel = selections.translate(update_sel, x_sel)
+                x_vals = update_val[local_sel.slices]
+                x_rel = arrayQuery(query, x_vals)
+
+                if len(x_rel) > 0:
+                    abs_result = _query_rel_to_abs(x_sel, x_rel, rank)
+                    if rank == 1:
+                        result_mask[abs_result.astype(int)] = True
+                    else:
+                        result_mask[tuple(abs_result[:, d].astype(int) for d in range(rank))] = True
+
+            indices = np.argwhere(result_mask)
+            if rank == 1:
+                return indices.reshape(-1).astype(np.dtype('u8'))
+            else:
+                return indices.astype(np.dtype('u8'))
 
         # determine if we need to get data from the reader
         if isinstance(self._reader, H5NullReader) or dset_id in self._new_objects:

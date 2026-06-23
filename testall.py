@@ -17,6 +17,7 @@ import h5py
 
 unit_tests = [
     "array_util_test",
+    "array_query_test",
     "dset_util_test",
     "filter_test",
     "objid_test",

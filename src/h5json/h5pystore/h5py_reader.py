@@ -17,6 +17,8 @@ from os import stat as os_stat
 from ..objid import createObjId, getCollectionForId
 from ..hdf5dtype import getTypeItem, isOpaqueDtype
 from ..array_util import bytesArrayToList
+from ..query_util import arrayQuery
+
 from .. import selections
 from .. import filters
 
@@ -533,7 +535,7 @@ class H5pyReader(H5Reader):
 
         return obj_json
 
-    def getDatasetValues(self, dset_id, sel=None, dtype=None):
+    def getDatasetValues(self, dset_id, sel=None, dtype=None, query=None):
         """
         Get values from dataset identified by obj_id.
         If a slices list or tuple is provided, it should have the same
@@ -548,6 +550,65 @@ class H5pyReader(H5Reader):
         if isOpaqueDtype(dset.dtype):
             # TBD: Opaque data not supported yet
             return None
+
+        if query is not None:
+            shape = dset.shape
+            rank = len(shape)
+            query_sel = None if (sel is None or sel.select_type == selections.H5S_SEL_ALL) else sel
+
+            if dset.chunks is None:
+                # Contiguous/compact storage: read entire dataset at once
+                arr = dset[...]
+                arr = self._copy_array(arr, fin=dset.file)
+                return arrayQuery(query, arr, selection=query_sel)
+
+            # Chunked storage: iterate chunks to avoid loading the full dataset
+            result_mask = np.zeros(shape, dtype=bool)
+            sel_mask = None
+            if query_sel is not None:
+                sel_mask = np.zeros(shape, dtype=bool)
+                sel_mask[query_sel.slices] = True
+
+            chunk_shape = dset.chunks
+            chunks_info = []
+            dset.id.chunk_iter(chunks_info.append)
+
+            for c in chunks_info:
+                offset = c.chunk_offset
+                chunk_end = tuple(min(offset[d] + chunk_shape[d], shape[d]) for d in range(rank))
+                chunk_slices = tuple(slice(offset[d], chunk_end[d]) for d in range(rank))
+
+                if sel_mask is not None and not sel_mask[chunk_slices].any():
+                    continue
+
+                chunk_data = dset[chunk_slices]
+                chunk_data = self._copy_array(chunk_data, fin=dset.file)
+                hit_idx = arrayQuery(query, chunk_data)
+                if len(hit_idx) == 0:
+                    continue
+
+                if rank == 1:
+                    abs_idx = (hit_idx + offset[0]).astype(int)
+                    if sel_mask is not None:
+                        abs_idx = abs_idx[sel_mask[abs_idx]]
+                    if len(abs_idx) > 0:
+                        result_mask[abs_idx] = True
+                else:
+                    abs_idx = hit_idx.copy().astype(int)
+                    for d in range(rank):
+                        abs_idx[:, d] += offset[d]
+                    if sel_mask is not None:
+                        valid = sel_mask[tuple(abs_idx[:, d] for d in range(rank))]
+                        abs_idx = abs_idx[valid]
+                    if len(abs_idx) > 0:
+                        result_mask[tuple(abs_idx[:, d] for d in range(rank))] = True
+
+            indices = np.argwhere(result_mask)
+            if rank == 1:
+                return indices.reshape(-1).astype(np.dtype('u8'))
+            else:
+                return indices.astype(np.dtype('u8'))
+
         if sel is None or sel.select_type == selections.H5S_SEL_ALL:
             arr = dset[...]
         elif isinstance(sel, selections.SimpleSelection):

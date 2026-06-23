@@ -181,7 +181,7 @@ class H5JsonReader(H5Reader):
         dtype = createDataType(type_item)
         return dtype
 
-    def getDatasetValues(self, obj_id, sel=None, dtype=None):
+    def getDatasetValues(self, obj_id, sel=None, dtype=None, query=None):
         """
         Get values from dataset identified by obj_id.
         If a slices list or tuple is provided, it should have the same
@@ -208,6 +208,12 @@ class H5JsonReader(H5Reader):
             dims = shape_json["dims"]
 
         arr = jsonToArray(dims, dtype, json_value)
+
+        if query is not None:
+            from ..query_util import arrayQuery
+            query_sel = None if (sel is None or sel.select_type == selections.H5S_SEL_ALL) else sel
+            return arrayQuery(query, arr, selection=query_sel)
+
         if sel is None or sel.select_type == selections.H5S_SEL_ALL:
             pass  # just return the entire array
         elif isinstance(sel, selections.SimpleSelection):
