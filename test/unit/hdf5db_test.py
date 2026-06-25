@@ -407,14 +407,13 @@ class Hdf5dbTest(unittest.TestCase):
         ds1_ref = "datasets/" + dset_id
         value = [ds1_ref,]
         db.createAttribute(root_id, "A1", value, dtype=dt)
-        item = db.getAttribute(root_id, "A1")
         attr = db.getAttribute(root_id, "A1")
         self.assertTrue("shape" in attr)
 
         attr_type = attr["type"]
         self.assertEqual(attr_type["class"], "H5T_REFERENCE")
         self.assertEqual(attr_type["base"], "H5T_STD_REF_OBJ")
-        attr_value = item["value"]
+        attr_value = attr["value"]
         self.assertEqual(len(attr_value), 1)
         self.assertEqual(attr_value[0], ds1_ref)
 
@@ -1054,6 +1053,29 @@ class Hdf5dbTest(unittest.TestCase):
                 arr[i][j] = row[j]
         return arr
 
+    def testQuerySimpleType(self):
+        nrows = 10
+        ncols = 10
+        shape = (nrows, ncols)
+        dtype = np.int32
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+
+        dset_id = db.createDataset(shape, dtype=dtype)
+        arr = np.zeros(shape, dtype=dtype)
+        for i in range(nrows):
+            for j in range(ncols):
+                arr[i, j] = i * j
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, arr)
+
+        query = "_ > 10"
+        arr = db.getDatasetValues(dset_id, sel_all, query=query)
+        # TBD: this is currently returning indices to the dataset which
+        # is not what semantically would be create.
+        self.assertEqual(arr.shape, (56, 2))
+        db.close()
+
     def testQueryDataset1D(self):
         data_arr = self._make_tabular_arr()
         shape = data_arr.shape
@@ -1120,7 +1142,7 @@ class Hdf5dbTest(unittest.TestCase):
     def testQueryDataset2D(self):
         data_arr = self._make_tabular_arr()
         nrows = data_arr.shape[0]
-        data_arr = data_arr.reshape((nrows // 2, 2))  # shape (6, 2)
+        data_arr = data_arr.reshape((nrows // 2, 2))
         shape = data_arr.shape
 
         db = Hdf5db(app_logger=self.log)
@@ -1147,6 +1169,34 @@ class Hdf5dbTest(unittest.TestCase):
         expected_indexes = [(0, 1), (3, 1)]
         for i, row in enumerate(result):
             self.assertEqual(tuple(int(x) for x in row), expected_indexes[i])
+
+        db.close()
+
+    def testCreateReferenceDataset(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        dset_id = db.createDataset(shape=(), dtype=np.int32)
+        db.createHardLink(root_id, "DS1", dset_id)
+
+        dt = special_dtype(ref=Reference)
+
+        # create a ref datsaet
+        shape = (4, )
+        ref_dset_id = db.createDataset(shape=shape, dtype=dt)
+
+        # assign a ref to ds1
+        ref_arr = np.zeros(shape, dtype=dt)
+        ds1_ref = "datasets/" + dset_id
+        ref_arr[0] = ds1_ref
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(ref_dset_id, sel_all, ref_arr)
+        sel = selections.select(shape, (slice(0, 2),))
+        arr = db.getDatasetValues(ref_dset_id, sel)
+        self.assertEqual(arr.shape, (2, ))
+        self.assertEqual(arr.dtype, dt)
+        self.assertEqual(arr[0], ds1_ref.encode())
+        self.assertEqual(arr[1], b'')
 
         db.close()
 
