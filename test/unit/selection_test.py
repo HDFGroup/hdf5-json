@@ -20,7 +20,6 @@ from h5json.selections import (
     H5S_SEL_POINTS,
     H5S_SEL_FANCY,
     SimpleSelection,
-    FancySelection,
     ScalarSelection,
 )
 
@@ -29,7 +28,7 @@ PointSelection = SimpleSelection
 
 
 def make_point_sel(shape, mask):
-    """Build a paired-coordinate FancySelection from a boolean ndarray mask."""
+    """Build a paired-coordinate fancy selection from a boolean ndarray mask."""
     return selections.select(shape, mask)
 
 
@@ -205,7 +204,7 @@ class SimpleSelectionTest(unittest.TestCase):
 
 
 class PointSelectionTest(unittest.TestCase):
-    """Point selections are now paired-coordinate FancySelections."""
+    """Point selection tests."""
 
     def __init__(self, *args, **kwargs):
         super(PointSelectionTest, self).__init__(*args, **kwargs)
@@ -298,21 +297,21 @@ class FancySelectionTest(unittest.TestCase):
     def testCoordList1D(self):
         shape = (10,)
         try:
-            FancySelection(shape, [2, 5, 8])
+            SimpleSelection(shape, [2, 5, 8])
             self.assertTrue(False)
         except TypeError:
-            pass  # FancySelection requires rank 2 or higher
+            pass  # fancy selection requires rank 2 or higher
 
     def testGetQueryParam2D(self):
         shape = (10, 10)
-        sel = FancySelection(shape, [slice(1, 4), slice(2, 6)])
+        sel = SimpleSelection(shape, [slice(1, 4), slice(2, 6)])
         param = sel.getQueryParam()
         self.assertEqual(param, "[1:4,2:6]")
 
     def testFancyCoord(self):
         shape = (10, 10)
         sel = selections.select(shape, (slice(0, 5), (3, 7)))
-        self.assertIsInstance(sel, FancySelection)
+        self.assertIsInstance(sel, SimpleSelection)
         self.assertEqual(sel.select_type, H5S_SEL_FANCY)
         self.assertEqual(sel.nselect, 10)  # 5 rows x 2 columns
         self.assertEqual(sel.mshape, (5, 2))
@@ -597,7 +596,7 @@ class IntersectFancyHyperslabTest(unittest.TestCase):
         fancy = selections.select(shape, (slice(0, 5), [1, 3, 7, 9]))
         hyp = selections.select(shape, (slice(2, 8), slice(2, 8)))
         result = selections.intersect(fancy, hyp)
-        self.assertIsInstance(result, FancySelection)
+        self.assertIsInstance(result, SimpleSelection)
         self.assertEqual(result.select_type, H5S_SEL_FANCY)
         self.assertEqual(result.slices[0], slice(2, 5, 1))
         self.assertEqual(result.slices[1], [3, 7])
@@ -609,7 +608,7 @@ class IntersectFancyHyperslabTest(unittest.TestCase):
         fancy = selections.select(shape, (slice(0, 5), [1, 3, 7, 9]))
         hyp = selections.select(shape, (slice(2, 8), slice(2, 8)))
         result = selections.intersect(hyp, fancy)
-        self.assertIsInstance(result, FancySelection)
+        self.assertIsInstance(result, SimpleSelection)
         self.assertEqual(result.slices[0], slice(2, 5, 1))
         self.assertEqual(result.slices[1], [3, 7])
 
@@ -630,19 +629,19 @@ class IntersectFancyHyperslabTest(unittest.TestCase):
         self.assertEqual(result.nselect, 0)
 
     def testFancyIntersectSelectAll(self):
-        # SelectAll clips nothing; result equals the original FancySelection
+        # SelectAll clips nothing; result equals the original SimpleSelection
         shape = (10, 10)
         fancy = selections.select(shape, (slice(0, 5), [3, 7]))
         s_all = selections.select(shape, ...)
         result = selections.intersect(fancy, s_all)
-        self.assertIsInstance(result, FancySelection)
+        self.assertIsInstance(result, SimpleSelection)
         self.assertEqual(result.select_type, H5S_SEL_FANCY)
         self.assertEqual(result.nselect, fancy.nselect)
         self.assertEqual(result.slices[0], slice(0, 5, 1))
         self.assertEqual(result.slices[1], [3, 7])
 
     def testFancyIntersectFancyRaises(self):
-        # FancySelection/FancySelection not yet supported
+        # fancy selection/fancy selection not yet supported
         shape = (10, 10)
         fancy1 = selections.select(shape, (slice(0, 5), [3, 7]))
         fancy2 = selections.select(shape, (slice(2, 8), [1, 5, 9]))
@@ -798,7 +797,7 @@ class TranslateTest(unittest.TestCase):
         s1 = selections.select(shape, (slice(2, 8), slice(2, 8)))
         s2 = selections.select(shape, (slice(2, 5), [3, 7]))
         result = selections.translate(s1, s2)
-        self.assertIsInstance(result, FancySelection)
+        self.assertIsInstance(result, SimpleSelection)
         self.assertEqual(result.select_type, H5S_SEL_FANCY)
         self.assertEqual(result.slices[0], slice(0, 3, 1))
         self.assertEqual(result.slices[1], [1, 5])
@@ -829,7 +828,7 @@ class TranslateTest(unittest.TestCase):
         s1 = selections.select(shape, (slice(2, 8), [2, 3, 4, 5, 6, 7]))
         s2 = selections.select(shape, (slice(2, 5), slice(3, 6)))
         result = selections.translate(s1, s2)
-        self.assertIsInstance(result, FancySelection)
+        self.assertIsInstance(result, SimpleSelection)
         self.assertEqual(result.select_type, H5S_SEL_FANCY)
         self.assertEqual(result.slices[0], slice(0, 3, 1))
         self.assertEqual(result.slices[1], [1, 2, 3])

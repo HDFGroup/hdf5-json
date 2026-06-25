@@ -165,7 +165,7 @@ def _points_to_paired(shape, points):
 
 
 def _iter_points(sel):
-    """Yield each point in a paired-coordinate FancySelection as a tuple of ints."""
+    """Yield each point in a paired-coordinate fancy selection as a tuple of ints."""
     slices = sel.slices
     rank = len(sel.shape)
     list_dims = [d for d in range(rank) if isinstance(slices[d], list)]
@@ -188,7 +188,7 @@ def _bboxes_overlap(s1, s2):
 
 
 def _empty_paired_sel(shape):
-    """Return an empty paired-coordinate FancySelection for the given shape."""
+    """Return an empty paired-coordinate fancy selection for the given shape."""
     rank = len(shape)
     return SimpleSelection(shape, tuple([] for _ in range(rank)))
 
@@ -209,7 +209,7 @@ def from_query_result(shape, indices):
 
 
 def _intersect_paired_fancy(s1, s2):
-    """Return the intersection of two paired-coordinate FancySelections."""
+    """Return the intersection of two paired-coordinate fancy selections."""
     if not _bboxes_overlap(s1, s2):
         return _empty_paired_sel(s1.shape)
 
@@ -233,13 +233,13 @@ def _pt_in_hyperslab(val, hs, hc, hst):
 
 
 def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
-    """Return the intersection of a FancySelection with a hyperslab selection.
+    """Return the intersection of a fancy selection with a hyperslab selection.
 
     For Cartesian-product selections (at most one list dimension) each
     dimension is clipped independently.  For paired-coordinate selections
     (multiple list dimensions) the coordinate pairs are filtered as a unit so
     the two lists always retain the same length.  Returns an empty
-    paired FancySelection when the intersection is empty.
+    paired fancy selection when the intersection is empty.
     """
     rank = len(fancy_sel.shape)
     h_start = hyper_sel.start
@@ -282,7 +282,7 @@ def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
                 new_slices.append(slice(max(s.start, hs), min(s.stop, hs + hc), 1))
             else:  # int: already validated above, keep as-is
                 new_slices.append(s)
-        return FancySelection(fancy_sel.shape, new_slices)
+        return SimpleSelection(fancy_sel.shape, new_slices)
 
     # Cartesian-product path: clip each dimension independently.
     new_slices = []
@@ -313,9 +313,9 @@ def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
                 return _empty_paired_sel(fancy_sel.shape)
             new_slices.append(s)
         else:
-            raise TypeError(f"Unexpected FancySelection slice type: {type(s)}")
+            raise TypeError(f"Unexpected selection slice type: {type(s)}")
 
-    return FancySelection(fancy_sel.shape, new_slices)
+    return SimpleSelection(fancy_sel.shape, new_slices)
 
 
 def _intersect_fields(f1, f2):
@@ -441,10 +441,10 @@ def _dim_contained(s1_dim, s2_dim):
 def _fancy_contained(s1, s2):
     """Return True if every element selected by s1 is also selected by s2.
 
-    At least one of s1/s2 must be a FancySelection; the other may be a
+    At least one of s1/s2 must be a fancy selection; the other may be a
     SimpleSelection (hyperslab or select-all).
 
-    FancySelections with multiple list dimensions represent paired (non-grid)
+    fancy selections with multiple list dimensions represent paired (non-grid)
     coordinates.  Containment for those is returned False conservatively.
     """
     rank = len(s1.shape)
@@ -462,7 +462,7 @@ def _fancy_contained(s1, s2):
     s1_dims = get_dims(s1)
     s2_dims = get_dims(s2)
 
-    # Paired-coordinate FancySelections (multiple list dims) are not a
+    # Paired-coordinate fancy selections (multiple list dims) are not a
     # Cartesian product — per-dimension checking would be incorrect.
     if sum(1 for d in s1_dims if isinstance(d, list)) > 1:
         return False
@@ -582,7 +582,7 @@ def translate(s1, s2):
             raise TypeError("Expected selection type for second arg")
         hyperslab_types = (H5S_SEL_HYPERSLABS, H5S_SEL_ALL)
         if s2.select_type not in (*hyperslab_types, H5S_SEL_FANCY, H5S_SEL_POINTS):
-            raise TypeError(f"translate with FancySelection s1 does not support s2 type: {s2.select_type}")
+            raise TypeError(f"translate with fancy selection s1 does not support s2 type: {s2.select_type}")
         if s1.shape != s2.shape:
             raise ValueError("selections have incompatible shapes")
 
@@ -594,7 +594,7 @@ def translate(s1, s2):
             if sel_inter.nselect == 0:
                 raise ValueError("translate - selections not overlapping")
             inter_slices = sel_inter.slices
-        else:  # s2 is also FancySelection
+        else:  # s2 is also a fancy selection
             inter_slices = []
             for dim in range(rank):
                 inter_dim = _fancy_dim_intersect(s1.slices[dim], s2.slices[dim])
@@ -623,7 +623,7 @@ def translate(s1, s2):
                     new_slices.append(index_map[inter_dim])
             else:  # int: scalar-indexed dim, local coordinate is always 0
                 new_slices.append(inter_dim - s1_dim)
-        return FancySelection(s1.shape, new_slices)
+        return SimpleSelection(s1.shape, new_slices)
 
     if s2.select_type in (H5S_SEL_FANCY, H5S_SEL_POINTS):
         if not isinstance(s1, Selection):
@@ -648,7 +648,7 @@ def translate(s1, s2):
                 new_slices.append([x - offset for x in s])
             else:  # int
                 new_slices.append(s - offset)
-        return FancySelection(s1.shape, new_slices)
+        return SimpleSelection(s1.shape, new_slices)
 
     _check_bool_args(s1, s2)
     sel_inter = intersect(s1, s2)
@@ -1061,11 +1061,6 @@ class SimpleSelection(Selection):
         return s
 
 
-# Backward-compatible alias
-FancySelection = SimpleSelection
-
-# Point selections are now represented as paired-coordinate FancySelections.
-PointSelection = SimpleSelection
 _empty_point_sel = _empty_paired_sel  # backward-compat alias
 
 
