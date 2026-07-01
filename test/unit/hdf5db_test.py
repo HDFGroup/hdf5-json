@@ -1068,7 +1068,8 @@ class Hdf5dbTest(unittest.TestCase):
                 arr[i, j] = i * j
         sel_all = selections.select(shape, ...)
         db.setDatasetValues(dset_id, sel_all, arr)
-        # tbd: SQL mda?
+        # tbd: compare with SQL mda syntax: https://github.com/misev/asqldb
+        query = "_ > 10"
         arr = db.getDatasetValues(dset_id, sel_all, query=query)
         # TBD: this is currently returning indices to the dataset which
         # is not what semantically would be create.
