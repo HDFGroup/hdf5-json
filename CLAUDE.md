@@ -85,7 +85,7 @@ Tests use `unittest` (not pytest) and are run directly with `python`.
 - When making a change to any of the h5json/src/*_util.py files, update the corresponding unit test (e.g. if modifying src/h5json/array_util.py, the test would be test/unit/array_util_test.py) to validate the change
 - Be cafeful with memory usage - dataset spaces can be arbitrary large.  Avoid reading all the dataset data into memory unless it's known to be relatively small (a few KB)
 - When making changes to hdf5db, first add a test to test/unit/hdf5db_test.py to verify functionality without any storage backend.  Once those tests pass, add tests for the json and h5py storage backends
-- For tests with the storage backends, it's important to close the db and re-open, and then verify that any changes made to the mode were persisted to storage.
+- For tests with the storage backends, it's important to close the db and re-open, and then verify that any changes made to the model were persisted to storage correctly
 - Files (HDF5 or JSON) created by the test cases should be in the test/unit/out directory.  These should always be created by the test case (never re-opened from a previous run)
 - Files in data/hdf5/ and data/json/ should oly be modified if there is a change to the schema
 - DON'T read/write datasets data element by element if it can be avoided.  Rely on Numpy operations as much as possible for performance
