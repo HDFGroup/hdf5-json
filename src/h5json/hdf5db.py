@@ -1047,7 +1047,8 @@ class Hdf5db:
             try:
                 result = self.reader.queryDataset(dset_id, query, sel=sel, limit=limit)
             except NotImplementedError:
-                print("This reader doesn't support queryDataset")
+                # This reader doesn't support queryDataset
+                pass
 
             if result is not None:
                 return result
