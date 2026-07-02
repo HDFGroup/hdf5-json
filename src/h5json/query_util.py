@@ -377,11 +377,7 @@ def arrayQuery(
 
     if limit is not 0, only up to limit indices will be returned
 
-    The return value will be an ndarray.  If data_arr is one dimensionsal, the return value will be
-    an array of shape (count,) where count is the number of matches of the query.  Each element will be
-    an index to the matching element.  If data_arr is multi-dimensional, the array will have shape (count, rank),
-    where count is the number of matching elements and rank is the rank of the data_arr.  In this case, element [i,j]
-    of the returned array will be the nth coordinate of the ith match of the query.
+    The return value will be an ndarray.  The array shape (count, rank) where rank is the number of array dimensions.
 
     Example queries:
         "_ > 1.0" # match any array element with a value greater than 1.0
@@ -417,8 +413,4 @@ def arrayQuery(
     indices = np.argwhere(mask)
     if limit > 0:
         indices = indices[:limit]
-
-    if rank == 1:
-        return indices.reshape(-1).astype(np.dtype('u8'))
-    else:
-        return indices.astype(np.dtype('u8'))
+    return indices

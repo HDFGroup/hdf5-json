@@ -31,20 +31,11 @@ def _query_rel_to_abs(x_sel, rel_indices, rank):
     """Map arrayQuery relative indices (within a sub-array) to absolute dataset indices.
 
     x_sel: SimpleSelection whose sub-array was queried
-    rel_indices: arrayQuery result — (N,) for rank=1, (N, rank) for rank>1
+    rel_indices: arrayQuery result, ndarray of shape (N, rank)
     """
     slices = x_sel.slices
-    if rank == 1:
-        s = slices[0]
-        if isinstance(s, slice):
-            start = s.start if s.start is not None else 0
-            step = s.step if s.step is not None else 1
-            return (rel_indices * step + start).astype(np.dtype('u8'))
-        if isinstance(s, list):
-            return np.array(s, dtype='u8')[rel_indices.astype(int)]
-        return np.full(len(rel_indices), int(s), dtype='u8')
     if len(rel_indices) == 0:
-        return rel_indices.astype('u8')
+        return np.zeros((0, rank), dtype='u8')
     abs_result = np.zeros((len(rel_indices), rank), dtype='u8')
     for d in range(rank):
         s = slices[d]
@@ -696,7 +687,7 @@ class Hdf5db:
 
         self.make_dirty(obj_id)
 
-    def getDatasetValues(self, dset_id, sel, query=None):
+    def getDatasetValues(self, dset_id, sel):
         """
         Get values from dataset identified by obj_id.
         If a slices list or tuple is provided, it should have the same
@@ -796,8 +787,6 @@ class Hdf5db:
                 raise ValueError("Only SELECT_ALL selections are supported for scalar datasets")
             if sel.shape != ():
                 raise ValueError("Selection shape does not match dataset shape")
-            if query:
-                raise ValueError("Query is not supported for scalar datasets")
             if updates:
                 # for scalars the update has to be the requested value
                 (update_sel, arr) = updates[-1]
@@ -815,55 +804,6 @@ class Hdf5db:
         # simple dataset
         arr = None
         fetch = True
-
-        if query:
-            full_shape = sel.shape
-            rank = len(full_shape)
-            result_mask = np.zeros(full_shape, dtype=bool)
-
-            # Delegate query to the reader when it has relevant data
-            query_fetch = not (isinstance(self._reader, H5NullReader) or dset_id in self._new_objects)
-            if query_fetch:
-                for (update_sel, _) in updates:
-                    if selections.contained(sel, update_sel):
-                        query_fetch = False
-                        break
-
-            if query_fetch:
-                reader_result = self.reader.getDatasetValues(dset_id, sel, dtype=dtype, query=query)
-                if reader_result is not None and len(reader_result) > 0:
-                    if rank == 1:
-                        result_mask[reader_result.astype(int)] = True
-                    else:
-                        result_mask[tuple(reader_result[:, d].astype(int) for d in range(rank))] = True
-
-            for (update_sel, update_val) in updates:
-                x_sel = selections.intersect(sel, update_sel)
-                if x_sel.nselect == 0:
-                    continue
-
-                # Invalidate reader results overwritten by this update
-                inter_mask = np.zeros(full_shape, dtype=bool)
-                inter_mask[x_sel.slices] = True
-                result_mask &= ~inter_mask
-
-                # Query the updated values at the intersection
-                local_sel = selections.translate(update_sel, x_sel)
-                x_vals = update_val[local_sel.slices]
-                x_rel = arrayQuery(query, x_vals)
-
-                if len(x_rel) > 0:
-                    abs_result = _query_rel_to_abs(x_sel, x_rel, rank)
-                    if rank == 1:
-                        result_mask[abs_result.astype(int)] = True
-                    else:
-                        result_mask[tuple(abs_result[:, d].astype(int) for d in range(rank))] = True
-
-            indices = np.argwhere(result_mask)
-            if rank == 1:
-                return indices.reshape(-1).astype(np.dtype('u8'))
-            else:
-                return indices.astype(np.dtype('u8'))
 
         # determine if we need to get data from the reader
         if isinstance(self._reader, H5NullReader) or dset_id in self._new_objects:
@@ -980,6 +920,101 @@ class Hdf5db:
                 _assign(arr, tgt_slices, eff_val, src_sel.slices, write_fields)
 
         return arr
+
+    def queryDataset(self, dset_id, query, sel=None, limit=0):
+        """
+        Query the given dataset using the selection and query expression
+        If sel is provided, only the elements in the selection will be queried,
+        otherwise the entire dataset will be queried.
+        If limit is provided, only the first limit number of elements that match the query will be returned.
+
+        Return a numpy array of indices for the elements that match the query
+        """
+
+        def queryReader(dset_id, query, sel=None, limit=0):
+            result = None
+            try:
+                result = self.reader.queryDataset(dset_id, query, sel=sel, limit=limit)
+            except NotImplementedError:
+                print("This reader doesn't support queryDataset")
+
+            if result is not None:
+                return result
+
+            # query the dataset by fetching the data and applying the query locally
+            arr = self.getDatasetValues(dset_id, sel)
+
+            result = arrayQuery(query, arr, limit=limit)
+            result = _query_rel_to_abs(sel, result, len(sel.shape))
+
+            return result
+        #
+        # start of queryDataset
+        #
+        if not isinstance(query, str):
+            raise TypeError("Expected query string")
+
+        if sel is not None and not isinstance(sel, selections.Selection):
+            raise TypeError("Expected Selection class")
+        if not isinstance(limit, int) or limit < 0:
+            raise TypeError("Expected non-negative integer for limit")
+
+        dset_json = self.getObjectById(dset_id)
+        shape_json = dset_json["shape"]
+
+        shape_class = getShapeClass(shape_json)
+        if shape_class == "H5S_NULL":
+            raise ValueError("querying null space dataset not supported")
+        dims = getShapeDims(shape_json)
+        if sel is None:
+            sel = selections.select(dims, ...)
+
+        updates = self._getDatasetUpdates(dset_id)
+
+        if sel.shape != dims:
+            raise TypeError("Selection shape does not match dataset shape")
+
+        full_shape = sel.shape
+        rank = len(full_shape)
+
+        # Delegate query to the reader when it has relevant data
+        query_fetch = not (isinstance(self._reader, H5NullReader) or dset_id in self._new_objects)
+        if query_fetch:
+            for (update_sel, _) in updates:
+                if selections.contained(sel, update_sel):
+                    query_fetch = False
+                    break
+
+        result_mask = np.zeros(full_shape, dtype=bool)
+        if query_fetch:
+            fetched = queryReader(dset_id, query, sel=sel, limit=limit)
+            if len(fetched) > 0:
+                result_mask[tuple(fetched[:, d].astype(int) for d in range(rank))] = True
+
+        for (update_sel, update_val) in updates:
+            x_sel = selections.intersect(sel, update_sel)
+            if x_sel.nselect == 0:
+                continue
+
+            # Invalidate reader results overwritten by this update
+            inter_mask = np.zeros(full_shape, dtype=bool)
+            inter_mask[x_sel.slices] = True
+            result_mask &= ~inter_mask
+
+            # Query the updated values at the intersection
+            local_sel = selections.translate(update_sel, x_sel)
+            x_vals = update_val[local_sel.slices]
+            x_rel = arrayQuery(query, x_vals)
+
+            if len(x_rel) > 0:
+                abs_result = _query_rel_to_abs(x_sel, x_rel, rank)
+                result_mask[tuple(abs_result[:, d].astype(int) for d in range(rank))] = True
+
+        indices = np.argwhere(result_mask)
+        if limit > 0 and len(indices) > limit:
+            indices = indices[:limit]
+
+        return indices
 
     def setDatasetValues(self, dset_id, sel, arr):
         """

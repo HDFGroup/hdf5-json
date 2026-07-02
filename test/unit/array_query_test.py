@@ -69,7 +69,7 @@ class QueryUtilTest(unittest.TestCase):
         query = "_ > 1.0"
         result = arrayQuery(query, data_arr)
         self.assertTrue(isinstance(result, np.ndarray))
-        self.assertEqual(result.dtype, np.dtype("u8"))
+        self.assertEqual(result.dtype, np.dtype("int64"))
         self.assertEqual(len(result.shape), 2)
         self.assertEqual(result.shape[0], len(expected))
         self.assertEqual(result.shape[1], 2)
@@ -83,18 +83,18 @@ class QueryUtilTest(unittest.TestCase):
         query = "symbol == b'AAPL'"
         result = arrayQuery(query, data_arr)
         self.assertTrue(isinstance(result, np.ndarray))
-        self.assertEqual(result.dtype, np.dtype("u8"))
-        self.assertEqual(result.shape, (4,))
+        self.assertEqual(result.dtype, np.dtype("int64"))
+        self.assertEqual(result.shape, (4, 1))
         expected_indexes = (1, 4, 7, 10)  # rows above with AAPL as symbol
         for i in range(4):
             item = result[i]
-            self.assertTrue(item in expected_indexes)
+            self.assertTrue(item[0] in expected_indexes)
 
         # read just one row back
         result = arrayQuery(query, data_arr, limit=1)
         self.assertTrue(isinstance(result, np.ndarray))
         self.assertEqual(len(result), 1)
-        index = result[0]
+        index = result[0][0]
         self.assertEqual(index, 1)
 
         # query with selection, no limit

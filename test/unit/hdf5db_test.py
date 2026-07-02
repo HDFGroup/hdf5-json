@@ -1070,10 +1070,8 @@ class Hdf5dbTest(unittest.TestCase):
         db.setDatasetValues(dset_id, sel_all, arr)
         # tbd: compare with SQL mda syntax: https://github.com/misev/asqldb
         query = "_ > 10"
-        arr = db.getDatasetValues(dset_id, sel_all, query=query)
-        # TBD: this is currently returning indices to the dataset which
-        # is not what semantically would be create.
-        self.assertEqual(arr.shape, (56, 2))
+        indices = db.queryDataset(dset_id, query)
+        self.assertEqual(indices.shape, (56, 2))
         db.close()
 
     def testQueryDataset1D(self):
@@ -1088,51 +1086,53 @@ class Hdf5dbTest(unittest.TestCase):
 
         # simple equality query
         query = "symbol == b'AAPL'"
-        result = db.getDatasetValues(dset_id, sel_all, query=query)
-        self.assertIsInstance(result, np.ndarray)
-        self.assertEqual(result.dtype, np.dtype("u8"))
-        self.assertEqual(result.shape, (4,))
+        indices = db.queryDataset(dset_id, query)
+        self.assertIsInstance(indices, np.ndarray)
+        self.assertEqual(indices.dtype, np.dtype("int64"))
+        self.assertEqual(indices.shape, (4, 1))
         expected_indexes = {1, 4, 7, 10}
-        for idx in result:
-            self.assertIn(int(idx), expected_indexes)
+        for idx in indices:
+            self.assertIn(int(idx[0]), expected_indexes)
 
         # IN query
         query = "symbol IN (b'AAPL', b'EBAY')"
-        result = db.getDatasetValues(dset_id, sel_all, query=query)
-        self.assertIsInstance(result, np.ndarray)
-        self.assertEqual(len(result), 8)
+        indices = db.queryDataset(dset_id, query)
+        self.assertIsInstance(indices, np.ndarray)
+        self.assertEqual(len(indices), 8)
         expected_indexes = {0, 1, 3, 4, 6, 7, 9, 10}
-        for idx in result:
-            self.assertIn(int(idx), expected_indexes)
+        for idx in indices:
+            self.assertIn(int(idx[0]), expected_indexes)
 
         # AND query across two fields
         query = "symbol IN (b'AAPL') AND 'date' > 20170102"
-        result = db.getDatasetValues(dset_id, sel_all, query=query)
-        self.assertIsInstance(result, np.ndarray)
-        self.assertEqual(len(result), 3)
+        indices = db.queryDataset(dset_id, query)
+        self.assertIsInstance(indices, np.ndarray)
+        self.assertEqual(len(indices), 3)
         expected_indexes = {4, 7, 10}
-        for idx in result:
-            self.assertIn(int(idx), expected_indexes)
+        for idx in indices:
+            self.assertIn(int(idx[0]), expected_indexes)
 
         # query with no results
         query = "symbol == b'XYZ'"
-        result = db.getDatasetValues(dset_id, sel_all, query=query)
-        self.assertIsInstance(result, np.ndarray)
-        self.assertEqual(len(result), 0)
+        indices = db.queryDataset(dset_id, query)
+        self.assertIsInstance(indices, np.ndarray)
+        self.assertEqual(indices.dtype, np.dtype("int64"))
+        self.assertEqual(indices.shape, (0, 1))
+        self.assertEqual(len(indices), 0)
 
         # query with selection (only rows 2-11)
         sel = selections.select(shape, slice(2, 12))
         query = "symbol == b'AAPL'"
-        result = db.getDatasetValues(dset_id, sel, query=query)
-        self.assertIsInstance(result, np.ndarray)
-        self.assertEqual(len(result), 3)
+        indices = db.queryDataset(dset_id, query, sel=sel)
+        self.assertIsInstance(indices, np.ndarray)
+        self.assertEqual(indices.shape, (3, 1))
         expected_in_order = (4, 7, 10)
-        for i, idx in enumerate(result):
-            self.assertEqual(int(idx), expected_in_order[i])
+        for i, idx in enumerate(indices):
+            self.assertEqual(int(idx[0]), expected_in_order[i])
 
         # invalid query should raise ValueError
         try:
-            db.getDatasetValues(dset_id, sel_all, query="foobar")
+            db.queryDataset(dset_id, "foobar")
             self.fail("Expected ValueError for invalid query field")
         except ValueError:
             pass
@@ -1153,21 +1153,21 @@ class Hdf5dbTest(unittest.TestCase):
 
         # AAPL appears at (0,1), (2,0), (3,1), (5,0) in the 6×2 layout
         query = "symbol == b'AAPL'"
-        result = db.getDatasetValues(dset_id, sel_all, query=query)
-        self.assertIsInstance(result, np.ndarray)
-        self.assertEqual(result.shape, (4, 2))
+        indices = db.queryDataset(dset_id, query)
+        self.assertIsInstance(indices, np.ndarray)
+        self.assertEqual(indices.shape, (4, 2))
         expected_indexes = {(0, 1), (2, 0), (3, 1), (5, 0)}
-        for row in result:
+        for row in indices:
             self.assertIn(tuple(int(x) for x in row), expected_indexes)
 
         # query with selection (second column only: rows 0-5, col 1)
         slices = (slice(0, 6, 1), slice(1, 2, 1))
         sel = selections.select(shape, slices)
-        result = db.getDatasetValues(dset_id, sel, query=query)
-        self.assertIsInstance(result, np.ndarray)
-        self.assertEqual(result.shape, (2, 2))
+        indices = db.queryDataset(dset_id, query, sel=sel)
+        self.assertIsInstance(indices, np.ndarray)
+        self.assertEqual(indices.shape, (2, 2))
         expected_indexes = [(0, 1), (3, 1)]
-        for i, row in enumerate(result):
+        for i, row in enumerate(indices):
             self.assertEqual(tuple(int(x) for x in row), expected_indexes[i])
 
         db.close()

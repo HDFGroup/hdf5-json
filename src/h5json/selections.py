@@ -197,13 +197,13 @@ def from_query_result(shape, indices):
     """Create a PointSelection from an arrayQuery result.
 
     shape: full dataset shape tuple
-    indices: ndarray of shape (N,) for 1D or (N, rank) for nD, as returned by arrayQuery
+    indices: ndarray of shape (N, rank), as returned by arrayQuery
     """
     rank = len(shape)
     if len(indices) == 0:
         return _empty_paired_sel(shape)
     if rank == 1:
-        return select(shape, indices.astype(int).tolist())
+        return select(shape, indices[:, 0].astype(int).tolist())
     coords = tuple(indices[:, d].astype(int).tolist() for d in range(rank))
     return select(shape, coords)
 

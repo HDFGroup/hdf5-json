@@ -73,13 +73,25 @@ class H5Reader(ABC):
         pass
 
     @abstractmethod
-    def getDatasetValues(self, obj_id, sel=None, dtype=None, query=None):
+    def getDatasetValues(self, obj_id, sel=None, dtype=None):
         """
         Get values from dataset identified by obj_id.
         If a slices list or tuple is provided, it should have the same
         number of elements as the rank of the dataset.
         """
         pass
+
+    def queryDataset(self, obj_id, query, sel=None):
+        """
+        Query the given dataset using the selection and query expression
+
+        Return a numpy array of indices for the elements that match the query.
+        Readers are not required to implement this — by default it raises
+        NotImplementedError, and Hdf5db falls back to querying the dataset values
+        it fetches via getDatasetValues. Override this only if the storage backend
+        has a more efficient way to evaluate the query (e.g. pushing it down to storage).
+        """
+        raise NotImplementedError("queryDataset not implemented for " + type(self).__name__)
 
     @abstractmethod
     def open(self):
