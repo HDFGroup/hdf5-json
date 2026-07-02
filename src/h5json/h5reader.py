@@ -81,7 +81,7 @@ class H5Reader(ABC):
         """
         pass
 
-    def queryDataset(self, obj_id, query, sel=None):
+    def queryDataset(self, obj_id, query, sel=None, limit=0):
         """
         Query the given dataset using the selection and query expression
 

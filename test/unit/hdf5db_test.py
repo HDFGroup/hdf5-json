@@ -16,6 +16,7 @@ import math
 import numpy as np
 from h5json import Hdf5db
 from h5json import selections
+from h5json.hdf5db import ChunkIterator
 from h5json.objid import isRootObjId, isValidUuid, isSchema2Id
 from h5json.hdf5dtype import special_dtype, Reference
 
@@ -1169,6 +1170,115 @@ class Hdf5dbTest(unittest.TestCase):
         expected_indexes = [(0, 1), (3, 1)]
         for i, row in enumerate(indices):
             self.assertEqual(tuple(int(x) for x in row), expected_indexes[i])
+
+        db.close()
+
+    def testChunkIterator1D(self):
+        shape = (10,)
+        dtype = np.int32
+        data = np.arange(10, dtype=dtype)
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": (3,)}}
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=dtype, cpl=cpl)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, data)
+
+        it = db.getChunkIterator(dset_id)
+        self.assertIsInstance(it, ChunkIterator)
+        chunks = list(it)
+        self.assertEqual(len(chunks), 4)  # ceil(10/3)
+        for chunk in chunks:
+            self.assertIsInstance(chunk, np.ndarray)
+        reconstructed = np.concatenate(chunks)
+        np.testing.assert_array_equal(reconstructed, data)
+
+        db.close()
+
+    def testChunkIterator2D(self):
+        shape = (6, 5)
+        dtype = np.int32
+        data = np.arange(30, dtype=dtype).reshape(shape)
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": (4, 3)}}
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=dtype, cpl=cpl)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, data)
+
+        total_elements = 0
+        collected = []
+        for chunk in db.getChunkIterator(dset_id):
+            self.assertIsInstance(chunk, np.ndarray)
+            total_elements += chunk.size
+            collected.append(chunk.reshape(-1))
+        self.assertEqual(total_elements, data.size)
+        # every element should appear exactly once across the chunks
+        np.testing.assert_array_equal(np.sort(np.concatenate(collected)), np.sort(data.reshape(-1)))
+
+        db.close()
+
+    def testChunkIteratorWithSelection(self):
+        shape = (10,)
+        dtype = np.int32
+        data = np.arange(10, dtype=dtype)
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": (3,)}}
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=dtype, cpl=cpl)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, data)
+
+        sel = selections.select(shape, slice(2, 8))
+        reconstructed = np.concatenate(list(db.getChunkIterator(dset_id, sel=sel)))
+        np.testing.assert_array_equal(reconstructed, data[2:8])
+
+        db.close()
+
+    def testChunkIteratorNonChunkedLayout(self):
+        # with no chunked layout, the whole dataset is treated as a single chunk
+        shape = (5, 4)
+        dtype = np.int32
+        data = np.arange(20, dtype=dtype).reshape(shape)
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=dtype)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, data)
+
+        chunks = list(db.getChunkIterator(dset_id))
+        self.assertEqual(len(chunks), 1)
+        np.testing.assert_array_equal(chunks[0], data)
+
+        db.close()
+
+    def testChunkIteratorInvalid(self):
+        shape = (10,)
+        dtype = np.int32
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": (3,)}}
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=dtype, cpl=cpl)
+
+        # scalar datasets aren't supported
+        scalar_dset_id = db.createDataset((), dtype=dtype)
+        with self.assertRaises(ValueError):
+            db.getChunkIterator(scalar_dset_id)
+
+        # fancy/point selections aren't supported
+        fancy_sel = selections.select(shape, [1, 3, 5])
+        with self.assertRaises(ValueError):
+            db.getChunkIterator(dset_id, sel=fancy_sel)
+
+        # selection shape must match the dataset shape
+        mismatched_sel = selections.select((20,), ...)
+        with self.assertRaises(TypeError):
+            db.getChunkIterator(dset_id, sel=mismatched_sel)
 
         db.close()
 

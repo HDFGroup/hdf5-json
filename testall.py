@@ -26,8 +26,7 @@ unit_tests = [
     "hdf5db_test",
     "h5json_reader_test",
     "h5json_writer_test",
-    "h5py_reader_test",
-    "h5py_writer_test",
+    "h5py_test",
 ]
 
 unit_tests = tuple(unit_tests)

@@ -16,7 +16,7 @@ from .hdf5dtype import getTypeItem, createDataType, Reference, special_dtype
 from .hdf5dtype import numpy_integer_types, numpy_float_types
 from .array_util import jsonToArray, bytesArrayToList
 from .query_util import arrayQuery
-from .dset_util import resize_dataset, getDatasetLayoutClass
+from .dset_util import resize_dataset, getDatasetLayoutClass, getChunkDims
 from .shape_util import getShapeClass, getShapeDims, getShapeJson
 from .filters import validateFilters
 from .objid import createObjId, getCollectionForId, isValidUuid, getUuidFromId, getHashTagForId
@@ -82,6 +82,107 @@ def _decode(item, encoding="ascii"):
     else:
         ret_val = item
     return ret_val
+
+
+class ChunkIterator:
+    """
+    Iterate through the chunks of a dataset, yielding the chunk's data as an
+    ndarray on each iteration. This lets a caller read through a large,
+    chunked dataset one chunk at a time without loading the whole dataset
+    into memory.
+
+    Modeled on h5py's chunk iterator (h5py.Dataset.iter_chunks() /
+    h5py._hl.dataset.ChunkIterator), but each chunk's data is fetched via
+    Hdf5db.getDatasetValues() rather than by slicing an h5py.Dataset, so it
+    works uniformly across storage backends and picks up any not-yet-flushed
+    in-memory updates.
+
+    Use Hdf5db.getChunkIterator() rather than constructing this directly.
+    """
+
+    def __init__(self, db, dset_id, sel=None):
+        dset_json = db.getObjectById(dset_id)
+        shape_json = dset_json["shape"]
+        dims = getShapeDims(shape_json)
+        rank = len(dims)
+        if rank == 0:
+            raise ValueError("ChunkIterator can't be used with scalar datasets")
+
+        if sel is None:
+            sel = selections.select(dims, ...)
+        if not isinstance(sel, selections.Selection):
+            raise TypeError("Expected Selection class")
+        if sel.shape != dims:
+            raise TypeError("Selection shape does not match dataset shape")
+        if sel.select_type not in (selections.H5S_SEL_ALL, selections.H5S_SEL_HYPERSLABS):
+            raise ValueError("ChunkIterator only supports hyperslab selections")
+
+        self._db = db
+        self._dset_id = dset_id
+        self._shape = dims
+        self._layout = getChunkDims(dset_json)
+
+        sel_slices = []
+        for s in sel.slices:
+            if s.step not in (None, 1):
+                raise ValueError("ChunkIterator does not support stepped selections")
+            sel_slices.append(slice(s.start, s.stop, 1))
+        self._sel = tuple(sel_slices)
+
+        self._chunk_index = []
+        for dim in range(rank):
+            s = self._sel[dim]
+            if s.start < 0 or s.stop > self._shape[dim] or s.stop <= s.start:
+                raise ValueError("Invalid selection - selection region must be within dataset space")
+            self._chunk_index.append(s.start // self._layout[dim])
+
+        self._current_sel = None
+
+    @property
+    def sel(self):
+        """ Selection (within the full dataset) of the chunk most recently returned by __next__ """
+        return self._current_sel
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        rank = len(self._shape)
+        if self._chunk_index[0] * self._layout[0] >= self._sel[0].stop:
+            # ran past the last chunk, end iteration
+            raise StopIteration()
+
+        slices = []
+        for dim in range(rank):
+            s = self._sel[dim]
+            start = self._chunk_index[dim] * self._layout[dim]
+            stop = (self._chunk_index[dim] + 1) * self._layout[dim]
+            # adjust the start if this is an edge chunk
+            if start < s.start:
+                start = s.start
+            if stop > s.stop:
+                stop = s.stop  # trim to end of the selection
+            slices.append(slice(start, stop, 1))
+        slices = tuple(slices)
+
+        # bump up the last index and carry forward if we run outside the selection
+        dim = rank - 1
+        while dim >= 0:
+            s = self._sel[dim]
+            self._chunk_index[dim] += 1
+
+            chunk_end = self._chunk_index[dim] * self._layout[dim]
+            if chunk_end < s.stop:
+                # we still have room to extend along this dimension
+                break
+
+            if dim > 0:
+                # reset to the start and continue iterating with higher dimension
+                self._chunk_index[dim] = s.start // self._layout[dim]
+            dim -= 1
+
+        self._current_sel = selections.select(self._shape, slices)
+        return self._db.getDatasetValues(self._dset_id, self._current_sel)
 
 
 class Hdf5db:
@@ -921,6 +1022,16 @@ class Hdf5db:
 
         return arr
 
+    def getChunkIterator(self, dset_id, sel=None):
+        """
+        Return a ChunkIterator that reads through the given dataset's values
+        chunk by chunk, without loading the entire dataset into memory.
+        If sel is provided, only chunks intersecting that selection are
+        iterated over (each still trimmed to the selection's bounds),
+        otherwise the entire dataset is iterated over.
+        """
+        return ChunkIterator(self, dset_id, sel=sel)
+
     def queryDataset(self, dset_id, query, sel=None, limit=0):
         """
         Query the given dataset using the selection and query expression
@@ -941,12 +1052,33 @@ class Hdf5db:
             if result is not None:
                 return result
 
-            # query the dataset by fetching the data and applying the query locally
-            arr = self.getDatasetValues(dset_id, sel)
+            rank = len(sel.shape)
+            try:
+                chunk_iter = ChunkIterator(self, dset_id, sel=sel)
+            except ValueError:
+                # ChunkIterator doesn't support this selection (e.g. a fancy/point
+                # selection, or a scalar dataset) - fall back to querying the
+                # entire selection at once
+                arr = self.getDatasetValues(dset_id, sel)
+                result = arrayQuery(query, arr, limit=limit)
+                return _query_rel_to_abs(sel, result, rank)
 
-            result = arrayQuery(query, arr, limit=limit)
-            result = _query_rel_to_abs(sel, result, len(sel.shape))
+            # query the dataset chunk by chunk so the whole selection is never
+            # loaded into memory at once
+            hits = []
+            nhits = 0
+            for chunk_arr in chunk_iter:
+                chunk_rel = arrayQuery(query, chunk_arr)
+                if len(chunk_rel) == 0:
+                    continue
+                hits.append(_query_rel_to_abs(chunk_iter.sel, chunk_rel, rank))
+                nhits += len(chunk_rel)
+                if limit > 0 and nhits >= limit:
+                    break
 
+            result = np.concatenate(hits, axis=0) if hits else np.zeros((0, rank), dtype='u8')
+            if limit > 0 and len(result) > limit:
+                result = result[:limit]
             return result
         #
         # start of queryDataset
