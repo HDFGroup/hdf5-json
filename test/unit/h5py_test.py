@@ -1000,31 +1000,112 @@ class H5pyTest(unittest.TestCase):
 
         # reopen with a real reader - queryDataset must now read the
         # persisted, chunked data from storage
-        db2 = Hdf5db(app_logger=self.log)
-        db2.reader = H5pyReader(filepath, app_logger=self.log)
-        db2.open()
-        dset_id2 = db2.getObjectIdByPath("/trades")
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5pyReader(filepath, app_logger=self.log)
+        db.open()
+        dset_id = db.getObjectIdByPath("/trades")
 
-        indices = db2.queryDataset(dset_id2, query)
+        indices = db.queryDataset(dset_id, query)
         self.assertIsInstance(indices, np.ndarray)
         self.assertEqual(indices.shape, (4, 1))
         for idx in indices:
             self.assertIn(int(idx[0]), expected_indexes)
 
         # limit should stop early while preserving ascending order
-        limited = db2.queryDataset(dset_id2, query, limit=2)
+        limited = db.queryDataset(dset_id, query, limit=2)
         self.assertEqual(limited.shape, (2, 1))
         self.assertEqual([int(x[0]) for x in limited], [1, 4])
 
         # selection restricted to rows 2-11 spans multiple chunks too
         sel = selections.select(shape, slice(2, 12))
-        indices = db2.queryDataset(dset_id2, query, sel=sel)
+        indices = db.queryDataset(dset_id, query, sel=sel)
         self.assertEqual(indices.shape, (3, 1))
         expected_in_order = (4, 7, 10)
         for i, idx in enumerate(indices):
             self.assertEqual(int(idx[0]), expected_in_order[i])
 
-        db2.close()
+        db.close()
+
+    def testGetDatasetValuesByQueryChunked(self):
+        # verifies Hdf5db.getDatasetValues(..., query=...) works correctly both
+        # before a flush (filtering in-memory updates directly) and after
+        # (filtering persisted, chunked data read through H5pyReader via
+        # Hdf5db.getChunkIterator)
+        filepath = "test/unit/out/h5py_test_testGetDatasetValuesByQueryChunked.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+
+        dtype = np.dtype([("symbol", "S4"), ("date", "S8"), ("open", "i4"), ("close", "i4")])
+        rows = [
+            ("EBAY", "20170102", 3023, 3088),
+            ("AAPL", "20170102", 3054, 2933),
+            ("AMZN", "20170102", 2973, 3011),
+            ("EBAY", "20170103", 3042, 3128),
+            ("AAPL", "20170103", 3182, 3034),
+            ("AMZN", "20170103", 3021, 2788),
+            ("EBAY", "20170104", 2798, 2876),
+            ("AAPL", "20170104", 2834, 2867),
+            ("AMZN", "20170104", 2891, 2978),
+            ("EBAY", "20170105", 2973, 2962),
+            ("AAPL", "20170105", 2934, 3010),
+            ("AMZN", "20170105", 3018, 3086),
+        ]
+        shape = (len(rows),)
+        arr = np.zeros(shape, dtype=dtype)
+        for i, row in enumerate(rows):
+            for j in range(4):
+                arr[i][j] = row[j]
+
+        # small chunk size so the AAPL matches (indices 1, 4, 7, 10) each land
+        # in a different chunk once the dataset is read back through the reader
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": (3,)}}
+        query = "symbol == b'AAPL'"
+        expected_indexes = (1, 4, 7, 10)
+
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5pyWriter(filepath, no_data=False)
+        root_id = db.open()
+        dset_id = db.createDataset(shape, dtype=dtype, cpl=cpl)
+        db.createHardLink(root_id, "trades", dset_id)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, arr)
+
+        # query before flush - values only exist as an in-memory update
+        values = db.getDatasetValues(dset_id, sel_all, query=query)
+        self.assertIsInstance(values, np.ndarray)
+        self.assertEqual(values.shape, (4,))
+        for i, val in enumerate(values):
+            self.assertEqual(val, arr[expected_indexes[i]])
+
+        db.close()  # flushes the dataset to storage
+
+        # reopen with a real reader - getDatasetValues must now filter the
+        # persisted, chunked data read from storage rather than in-memory updates
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5pyReader(filepath, app_logger=self.log)
+        db.open()
+        dset_id = db.getObjectIdByPath("/trades")
+
+        values = db.getDatasetValues(dset_id, sel_all, query=query)
+        self.assertIsInstance(values, np.ndarray)
+        self.assertEqual(values.dtype, dtype)
+        self.assertEqual(values.shape, (4,))
+        for i, val in enumerate(values):
+            self.assertEqual(val, arr[expected_indexes[i]])
+
+        # selection restricted to rows 2-11 spans multiple chunks too
+        sel = selections.select(shape, slice(2, 12))
+        values = db.getDatasetValues(dset_id, sel, query=query)
+        self.assertEqual(values.shape, (3,))
+        for i, val in enumerate(values):
+            self.assertEqual(val, arr[expected_indexes[i + 1]])
+
+        # a query with no matches returns an empty, correctly-typed array
+        empty = db.getDatasetValues(dset_id, sel_all, query="symbol == b'XYZ'")
+        self.assertEqual(empty.dtype, dtype)
+        self.assertEqual(empty.shape, (0,))
+
+        db.close()
 
 
 if __name__ == "__main__":

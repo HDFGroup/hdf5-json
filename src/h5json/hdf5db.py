@@ -788,12 +788,18 @@ class Hdf5db:
 
         self.make_dirty(obj_id)
 
-    def getDatasetValues(self, dset_id, sel):
+    def getDatasetValues(self, dset_id, sel, query=None):
         """
         Get values from dataset identified by obj_id.
         If a slices list or tuple is provided, it should have the same
         number of elements as the rank of the dataset.
+        If a query is provided, it should be a string representing a boolean expression,
+        and the return value will be a 1D ndarray of the (full-record) values within sel
+        that satisfy the query, rather than the values of the selection itself.
         """
+
+        if query is not None:
+            return self._getDatasetValuesByQuery(dset_id, sel, query)
 
         def _result_dtype(base_dtype, fields):
             """Return the dtype for the result array given a field selection.
@@ -1021,6 +1027,78 @@ class Hdf5db:
                 _assign(arr, tgt_slices, eff_val, src_sel.slices, write_fields)
 
         return arr
+
+    def _getDatasetValuesByQuery(self, dset_id, sel, query):
+        """
+        Return the dataset values (as a 1D ndarray) within sel that satisfy query.
+
+        Mirrors queryDataset's reader-delegation / chunk-by-chunk strategy, but
+        gathers the matching values themselves rather than their indices. This
+        way a caller that wants values (rather than indices) doesn't have to
+        call queryDataset and then do a separate point-selection read to fetch
+        them - which would require readers that support queries to read from
+        storage twice.
+        """
+        if not isinstance(query, str):
+            raise TypeError("Expected query string")
+        if not isinstance(sel, selections.Selection):
+            raise TypeError("Expected Selection class")
+
+        dset_json = self.getObjectById(dset_id)
+        shape_json = dset_json["shape"]
+        shape_class = getShapeClass(shape_json)
+        if shape_class == "H5S_NULL":
+            raise ValueError("querying null space dataset not supported")
+        dims = getShapeDims(shape_json)
+        if sel.shape != dims:
+            raise TypeError("Selection shape does not match dataset shape")
+
+        rank = len(dims)
+        dtype = self.getDtype(dset_json)
+        updates = self._getDatasetUpdates(dset_id)
+
+        # Delegate query to the reader when it has relevant, not-superseded data
+        query_fetch = not (isinstance(self._reader, H5NullReader) or dset_id in self._new_objects)
+        if query_fetch:
+            for (update_sel, _) in updates:
+                if selections.contained(sel, update_sel):
+                    query_fetch = False
+                    break
+
+        if query_fetch:
+            try:
+                result = self.reader.getDatasetValues(dset_id, sel, dtype=dtype, query=query)
+            except NotImplementedError:
+                result = None
+            if result is not None:
+                return result
+
+        try:
+            chunk_iter = ChunkIterator(self, dset_id, sel=sel)
+        except ValueError:
+            # ChunkIterator doesn't support this selection (e.g. a fancy/point
+            # selection, or a scalar dataset) - fall back to filtering the
+            # whole selection at once
+            arr = self.getDatasetValues(dset_id, sel)
+            rel = arrayQuery(query, arr)
+            if len(rel) == 0:
+                return np.zeros((0,), dtype=arr.dtype)
+            return arr[tuple(rel[:, d] for d in range(arr.ndim))]
+
+        # walk the selection chunk by chunk so the whole selection is never
+        # loaded into memory at once. Each chunk is fetched via the ordinary
+        # (non-query) getDatasetValues, so it already reflects any pending
+        # in-memory updates.
+        hits = []
+        for chunk_arr in chunk_iter:
+            rel = arrayQuery(query, chunk_arr)
+            if len(rel) == 0:
+                continue
+            hits.append(chunk_arr[tuple(rel[:, d] for d in range(rank))])
+
+        if hits:
+            return np.concatenate(hits, axis=0)
+        return np.zeros((0,), dtype=dtype)
 
     def getChunkIterator(self, dset_id, sel=None):
         """

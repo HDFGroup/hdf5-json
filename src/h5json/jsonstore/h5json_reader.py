@@ -207,12 +207,11 @@ class H5JsonReader(H5Reader):
         else:
             dims = shape_json["dims"]
 
-        arr = jsonToArray(dims, dtype, json_value)
-
         if query is not None:
-            from ..query_util import arrayQuery
-            query_sel = None if (sel is None or sel.select_type == selections.H5S_SEL_ALL) else sel
-            return arrayQuery(query, arr, selection=query_sel)
+            # json store doesn't support query
+            raise NotImplementedError("getDatasetValues with query not implemented for H5JsonReader")
+
+        arr = jsonToArray(dims, dtype, json_value)
 
         if sel is None or sel.select_type == selections.H5S_SEL_ALL:
             pass  # just return the entire array

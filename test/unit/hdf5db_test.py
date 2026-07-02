@@ -1282,6 +1282,100 @@ class Hdf5dbTest(unittest.TestCase):
 
         db.close()
 
+    def testGetDatasetValuesByQuery1D(self):
+        data_arr = self._make_tabular_arr()
+        shape = data_arr.shape
+        # small chunk size so matches span multiple chunks
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": (3,)}}
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=data_arr.dtype, cpl=cpl)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, data_arr)
+
+        query = "symbol == b'AAPL'"
+        values = db.getDatasetValues(dset_id, sel_all, query=query)
+        self.assertIsInstance(values, np.ndarray)
+        self.assertEqual(values.dtype, data_arr.dtype)
+        self.assertEqual(values.shape, (4,))
+        expected_indexes = (1, 4, 7, 10)
+        for i, val in enumerate(values):
+            self.assertEqual(val, data_arr[expected_indexes[i]])
+
+        # same result as fetching indices via queryDataset and point-reading them
+        indices = db.queryDataset(dset_id, query)
+        sel_points = selections.select(shape, [int(idx[0]) for idx in indices])
+        expected_values = db.getDatasetValues(dset_id, sel_points)
+        np.testing.assert_array_equal(values, expected_values)
+
+        # query with no results
+        no_match = db.getDatasetValues(dset_id, sel_all, query="symbol == b'XYZ'")
+        self.assertIsInstance(no_match, np.ndarray)
+        self.assertEqual(no_match.dtype, data_arr.dtype)
+        self.assertEqual(no_match.shape, (0,))
+
+        # query with a selection (rows 2-11)
+        sel = selections.select(shape, slice(2, 12))
+        values = db.getDatasetValues(dset_id, sel, query=query)
+        self.assertEqual(values.shape, (3,))
+        expected_in_order = (4, 7, 10)
+        for i, val in enumerate(values):
+            self.assertEqual(val, data_arr[expected_in_order[i]])
+
+        db.close()
+
+    def testGetDatasetValuesByQuery2D(self):
+        nrows = 10
+        ncols = 10
+        shape = (nrows, ncols)
+        dtype = np.int32
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": (4, 3)}}
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=dtype, cpl=cpl)
+        arr = np.zeros(shape, dtype=dtype)
+        for i in range(nrows):
+            for j in range(ncols):
+                arr[i, j] = i * j
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, arr)
+
+        query = "_ > 10"
+        values = db.getDatasetValues(dset_id, sel_all, query=query)
+        self.assertIsInstance(values, np.ndarray)
+        self.assertEqual(values.shape, (56,))
+        for val in values:
+            self.assertTrue(val > 10)
+        # every matching value should appear exactly once
+        expected = sorted(arr[arr > 10].tolist())
+        self.assertEqual(sorted(values.tolist()), expected)
+
+        db.close()
+
+    def testGetDatasetValuesByQueryFancySelection(self):
+        data_arr = self._make_tabular_arr()
+        shape = data_arr.shape
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=data_arr.dtype)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, data_arr)
+
+        # a point/fancy selection isn't chunk-iterable - exercises the
+        # single-fetch fallback path (AAPL is at indices 1, 4, 7 of the six
+        # selected rows 1, 2, 4, 5, 7, 8)
+        point_sel = selections.select(shape, [1, 2, 4, 5, 7, 8])
+        query = "symbol == b'AAPL'"
+        values = db.getDatasetValues(dset_id, point_sel, query=query)
+        self.assertEqual(values.shape, (3,))
+        for val in values:
+            self.assertEqual(val["symbol"], b"AAPL")
+
+        db.close()
+
     def testCreateReferenceDataset(self):
         db = Hdf5db(app_logger=self.log)
         root_id = db.open()
