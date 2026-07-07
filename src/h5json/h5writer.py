@@ -70,6 +70,18 @@ class H5Writer(ABC):
     def no_data(self):
         return self._no_data
 
+    def queryDataset(self, obj_id, query, sel=None, limit=0, update_value=None):
+        """
+        Replace any elements that match the
+
+        Return a numpy array of indices for the elements that match the query.
+        Writers are not required to implement this — by default it raises
+        NotImplementedError, and Hdf5db falls back to querying the dataset values
+        it fetches via getDatasetValues. Override this only if the storage backend
+        has a more efficient way to evaluate the query (e.g. pushing it down to storage).
+        """
+        raise NotImplementedError("queryDataset not implemented for " + type(self).__name__)
+
     @abstractmethod
     def open(self):
         """ open storage handle, return root_id"""

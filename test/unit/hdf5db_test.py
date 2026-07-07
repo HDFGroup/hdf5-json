@@ -709,6 +709,19 @@ class Hdf5dbTest(unittest.TestCase):
                 else:
                     self.assertEqual(x, i * 10 + j)
 
+        # point selection write with broadcasting
+        arr = np.array(42, dtype=dtype)
+        db.setDatasetValues(dset_id, sel, arr)
+        arr = db.getDatasetValues(dset_id, sel_all)
+        for i in range(nrows):
+            for j in range(ncols):
+                x = arr[i, j]
+                if i == j and i < 4:
+                    # these are the elements were set to 42 with the point write
+                    self.assertEqual(x, 42)
+                else:
+                    self.assertEqual(x, i * 10 + j)
+
         # test select all write
         arr = np.zeros(shape, dtype=dtype)
         arr[...] = 42
@@ -1073,6 +1086,18 @@ class Hdf5dbTest(unittest.TestCase):
         query = "_ > 10"
         indices = db.queryDataset(dset_id, query)
         self.assertEqual(indices.shape, (56, 2))
+
+        indices = db.queryDataset(dset_id, query, update_value=0)
+        self.assertEqual(indices.shape, (56, 2))
+
+        indices = db.queryDataset(dset_id, query)
+        self.assertEqual(indices.shape, (0, 2))
+
+        # query update with limit
+        query = "_ == 0"
+        indices = db.queryDataset(dset_id, query, limit=5, update_value=-99)
+        self.assertEqual(indices.shape, (5, 2))
+
         db.close()
 
     def testQueryDataset1D(self):
@@ -1138,6 +1163,16 @@ class Hdf5dbTest(unittest.TestCase):
         except ValueError:
             pass
 
+        # query with update_value
+        indices = db.queryDataset(dset_id, query, update_value={"open": -999, "close": 999})
+        self.assertEqual(indices.shape, (4, 1))
+        sel = selections.select(shape, indices)
+        values = db.getDatasetValues(dset_id, sel)
+        for i in range(len(values)):
+            self.assertEqual(values[i]["open"], -999)
+            self.assertEqual(values[i]["close"], 999)
+            self.assertEqual(values[i]["symbol"], b"AAPL")
+
         db.close()
 
     def testQueryDataset2D(self):
@@ -1170,6 +1205,16 @@ class Hdf5dbTest(unittest.TestCase):
         expected_indexes = [(0, 1), (3, 1)]
         for i, row in enumerate(indices):
             self.assertEqual(tuple(int(x) for x in row), expected_indexes[i])
+
+        # query with update_value
+        indices = db.queryDataset(dset_id, query, update_value={"open": -999, "close": 999})
+        self.assertEqual(indices.shape, (4, 2))
+        sel = selections.select(shape, indices)
+        values = db.getDatasetValues(dset_id, sel)
+        for i in range(len(values)):
+            self.assertEqual(values[i]["open"], -999)
+            self.assertEqual(values[i]["close"], 999)
+            self.assertEqual(values[i]["symbol"], b"AAPL")
 
         db.close()
 

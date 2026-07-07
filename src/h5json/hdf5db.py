@@ -35,8 +35,8 @@ def _query_rel_to_abs(x_sel, rel_indices, rank):
     """
     slices = x_sel.slices
     if len(rel_indices) == 0:
-        return np.zeros((0, rank), dtype='u8')
-    abs_result = np.zeros((len(rel_indices), rank), dtype='u8')
+        return np.zeros((0, rank), dtype='int64')
+    abs_result = np.zeros((len(rel_indices), rank), dtype='int64')
     for d in range(rank):
         s = slices[d]
         if isinstance(s, slice):
@@ -1110,13 +1110,16 @@ class Hdf5db:
         """
         return ChunkIterator(self, dset_id, sel=sel)
 
-    def queryDataset(self, dset_id, query, sel=None, limit=0):
+    def queryDataset(self, dset_id, query, sel=None, limit=0, update_value=None):
         """
         Query the given dataset using the selection and query expression
         If sel is provided, only the elements in the selection will be queried,
         otherwise the entire dataset will be queried.
         If limit is provided, only the first limit number of elements that match the query will be returned.
-
+        If update_value is provied, elements matching the query (up to limit elements if limit is non-zero)
+        will be updated to the given value. For a compound dtype, update_value may be a dict mapping
+        field names to the value to set for that field - only those fields are modified, and the rest
+        of each matching element is left unchanged.
         Return a numpy array of indices for the elements that match the query
         """
 
@@ -1155,10 +1158,75 @@ class Hdf5db:
                 if limit > 0 and nhits >= limit:
                     break
 
-            result = np.concatenate(hits, axis=0) if hits else np.zeros((0, rank), dtype='u8')
+            result = np.concatenate(hits, axis=0) if hits else np.zeros((0, rank), dtype='int64')
             if limit > 0 and len(result) > limit:
                 result = result[:limit]
             return result
+
+        def queryWriter(dset_id, query, sel=None, limit=0, update_value=None):
+            result = None
+            try:
+                result = self.writer.queryDataset(dset_id, query, sel=sel, limit=limit, update_value=update_value)
+            except NotImplementedError:
+                # This reader doesn't support queryDataset
+                pass
+
+            if result is None:
+                rank = len(sel.shape)
+                try:
+                    chunk_iter = ChunkIterator(self, dset_id, sel=sel)
+                except ValueError:
+                    # ChunkIterator doesn't support this selection (e.g. a fancy/point
+                    # selection, or a scalar dataset) - fall back to querying the
+                    # entire selection at once
+                    arr = self.getDatasetValues(dset_id, sel)
+                    result = arrayQuery(query, arr, limit=limit)
+                    result = _query_rel_to_abs(sel, result, rank)
+                else:
+                    # query the dataset chunk by chunk so the whole selection is
+                    # never loaded into memory at once
+                    hits = []
+                    nhits = 0
+                    for chunk_arr in chunk_iter:
+                        chunk_rel = arrayQuery(query, chunk_arr)
+                        if len(chunk_rel) == 0:
+                            continue
+                        hits.append(_query_rel_to_abs(chunk_iter.sel, chunk_rel, rank))
+                        nhits += len(chunk_rel)
+                        if limit > 0 and nhits >= limit:
+                            break
+
+                    result = np.concatenate(hits, axis=0) if hits else np.zeros((0, rank), dtype='int64')
+                    if limit > 0 and len(result) > limit:
+                        result = result[:limit]
+
+            if update_value is not None and len(result) > 0:
+                # update the values at the matching indices
+                dtype = self.getDtype(self.getObjectById(dset_id))
+                if isinstance(update_value, dict):
+                    # a dict maps field names to the value to set for that field -
+                    # only those fields are modified, the rest of each record is
+                    # left as-is
+                    if len(dtype) == 0:
+                        raise TypeError("update_value dict is only supported for compound dtypes")
+                    fields = [f for f in dtype.names if f in update_value]
+                    if not fields:
+                        raise ValueError(
+                            f"None of the requested fields {list(update_value.keys())} found in dtype")
+                    if len(fields) == 1:
+                        value = np.asarray(update_value[fields[0]], dtype=dtype.fields[fields[0]][0])
+                    else:
+                        value_dtype = np.dtype([(f, dtype.fields[f][0]) for f in fields])
+                        value = np.zeros((), dtype=value_dtype)
+                        for f in fields:
+                            value[f] = update_value[f]
+                    update_sel = selections.select(sel.shape, result, fields=fields)
+                else:
+                    value = np.asarray(update_value, dtype=dtype)
+                    update_sel = selections.select(sel.shape, result)
+                self.setDatasetValues(dset_id, update_sel, value)
+            return result
+
         #
         # start of queryDataset
         #
@@ -1179,6 +1247,12 @@ class Hdf5db:
         dims = getShapeDims(shape_json)
         if sel is None:
             sel = selections.select(dims, ...)
+
+        if update_value is not None:
+            # do flush so we can be sure to do an atomic operation if the writer supports it
+            self.flush()
+            results = queryWriter(dset_id, query, sel=sel, limit=limit, update_value=update_value)
+            return results
 
         updates = self._getDatasetUpdates(dset_id)
 
@@ -1213,13 +1287,25 @@ class Hdf5db:
             result_mask &= ~inter_mask
 
             # Query the updated values at the intersection
-            local_sel = selections.translate(update_sel, x_sel)
-            x_vals = update_val[local_sel.slices]
-            x_rel = arrayQuery(query, x_vals)
-
-            if len(x_rel) > 0:
-                abs_result = _query_rel_to_abs(x_sel, x_rel, rank)
-                result_mask[tuple(abs_result[:, d].astype(int) for d in range(rank))] = True
+            if update_sel.select_type == selections.H5S_SEL_POINTS:
+                # update_val is 1-D, indexed by position in update_sel (not
+                # sliceable via translate(), which only handles hyperslabs)
+                x_points = list(selections._iter_points(x_sel))
+                if not x_points:
+                    continue
+                upd_pt_to_idx = {pt: j for j, pt in enumerate(selections._iter_points(update_sel))}
+                x_vals = update_val[[upd_pt_to_idx[pt] for pt in x_points]]
+                x_rel = arrayQuery(query, x_vals)
+                if len(x_rel) > 0:
+                    abs_coords = np.array([x_points[i] for i in x_rel[:, 0]], dtype='u8')
+                    result_mask[tuple(abs_coords[:, d] for d in range(rank))] = True
+            else:
+                local_sel = selections.translate(update_sel, x_sel)
+                x_vals = update_val[local_sel.slices]
+                x_rel = arrayQuery(query, x_vals)
+                if len(x_rel) > 0:
+                    abs_result = _query_rel_to_abs(x_sel, x_rel, rank)
+                    result_mask[tuple(abs_result[:, d].astype(int) for d in range(rank))] = True
 
         indices = np.argwhere(result_mask)
         if limit > 0 and len(indices) > limit:
@@ -1276,7 +1362,11 @@ class Hdf5db:
             raise TypeError(f"arr.dtype {src_dt} doesn't match expected dtype {expected_dt}")
 
         if sel.select_type == selections.H5S_SEL_POINTS:
-            if sel.nselect != arr.shape[0]:
+            if arr.shape == ():
+                # broadcast the scalar to match the number of selected points, so
+                # the stored update value can be indexed like any other point update
+                arr = np.full(sel.mshape, arr[()], dtype=arr.dtype)
+            elif sel.nselect != arr.shape[0]:
                 raise TypeError("Selection shape does not match number of points")
         elif sel.select_type == selections.H5S_SEL_FANCY:
             if arr.shape != sel.mshape:
@@ -1289,7 +1379,7 @@ class Hdf5db:
                 raise TypeError("Selection shape does not match dataset shape")
             # Allow scalar arrays when writing a field-restricted selection
             # (the scalar will be broadcast to all selected positions).
-            if arr.shape != () or sel.fields is None:
+            if arr.shape != ():
                 if 0 < arr.ndim < len(dims):
                     # arr has fewer dims than the dataset rank (e.g. a 1-D array
                     # written to a slice of a 3-D dataset).  Validate against
