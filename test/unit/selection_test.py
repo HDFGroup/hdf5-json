@@ -54,6 +54,12 @@ class SimpleSelectionTest(unittest.TestCase):
         self.assertEqual(bbox[0], (0,))
         self.assertEqual(bbox[1], shape)
 
+        # create the same selection from a string
+        query_string = "[0:10]"
+        sel2 = selections.select(shape, query_string)
+        self.assertEqual(sel, sel2)
+        self.assertEqual(sel.query_string, query_string)
+
     def testSelectAll2D(self):
         shape = (4, 5)
         sel = selections.select(shape, ...)
@@ -67,6 +73,12 @@ class SimpleSelectionTest(unittest.TestCase):
         self.assertEqual(len(bbox), 2)
         self.assertEqual(bbox[0], (0, 0))
         self.assertEqual(bbox[1], shape)
+
+        # create the same selection from a string
+        query_string = "[0:4,0:5]"
+        sel2 = selections.select(shape, query_string)
+        self.assertEqual(sel, sel2)
+        self.assertEqual(sel.query_string, query_string)
 
     def testSlice1D(self):
         shape = (10,)
@@ -84,6 +96,12 @@ class SimpleSelectionTest(unittest.TestCase):
         self.assertEqual(bbox[0], (2,))
         self.assertEqual(bbox[1], (7,))
 
+        # create the same selection from a string
+        query_string = "[2:7]"
+        sel2 = selections.select(shape, query_string)
+        self.assertEqual(sel, sel2)
+        self.assertEqual(sel.query_string, query_string)
+
     def testSliceWithStep(self):
         shape = (10,)
         sel = selections.select(shape, slice(0, 10, 2))
@@ -100,6 +118,12 @@ class SimpleSelectionTest(unittest.TestCase):
         self.assertEqual(bbox[0], (0,))
         self.assertEqual(bbox[1], (9,))
 
+        # create the same selection from a string
+        query_string = "[0:10:2]"
+        sel2 = selections.select(shape, query_string)
+        self.assertEqual(sel, sel2)
+        self.assertEqual(sel.query_string, query_string)
+
     def testSlice2D(self):
         shape = (8, 10)
         sel = selections.select(shape, (slice(1, 4), slice(2, 9)))
@@ -115,6 +139,12 @@ class SimpleSelectionTest(unittest.TestCase):
         self.assertEqual(len(bbox), 2)
         self.assertEqual(bbox[0], (1, 2))
         self.assertEqual(bbox[1], (4, 9))
+
+        # create the same selection from a string
+        query_string = "[1:4,2:9]"
+        sel2 = selections.select(shape, query_string)
+        self.assertEqual(sel, sel2)
+        self.assertEqual(sel.query_string, query_string)
 
     def testBroadcast1D(self):
         shape = (10,)
@@ -177,18 +207,6 @@ class SimpleSelectionTest(unittest.TestCase):
         with self.assertRaises(IndexError):
             selections.select(shape, 15)
 
-    def testGetQueryParam1D(self):
-        shape = (10,)
-        sel = selections.select(shape, slice(2, 8))
-        param = sel.getQueryParam()
-        self.assertEqual(param, "[2:8]")
-
-    def testGetQueryParam2D(self):
-        shape = (8, 10)
-        sel = selections.select(shape, (slice(1, 4), slice(0, 10)))
-        param = sel.getQueryParam()
-        self.assertEqual(param, "[1:4,0:10]")
-
     def testRepr(self):
         shape = (10,)
         sel = selections.select(shape, slice(0, 5))
@@ -201,6 +219,33 @@ class SimpleSelectionTest(unittest.TestCase):
         self.assertIsInstance(sel, ScalarSelection)
         self.assertEqual(sel.select_type, H5S_SEL_ALL)
         self.assertEqual(sel.nselect, 1)
+        self.assertEqual(sel.query_string, None)
+
+    def testScalarSelectionEquality(self):
+        scalar_ds = np.array(42)
+
+        # same construction args are equal
+        sel1 = selections.select(scalar_ds, ...)
+        sel2 = selections.select(scalar_ds, ...)
+        self.assertEqual(sel1, sel2)
+
+        # Ellipsis vs an empty tuple both select the dataspace's only element,
+        # but produce different mshape values (() vs None) - equality should
+        # still hold since that difference isn't meaningful selection state
+        sel3 = selections.select(scalar_ds, ())
+        self.assertEqual(sel1.mshape, ())
+        self.assertIsNone(sel3.mshape)
+        self.assertEqual(sel1, sel3)
+        self.assertEqual(sel3, sel1)
+
+        # not equal to a SimpleSelection, in either comparison order, and no crash
+        simple_sel = selections.select((4, 5), ...)
+        self.assertNotEqual(sel1, simple_sel)
+        self.assertNotEqual(simple_sel, sel1)
+
+        # not equal to an unrelated object, and no crash
+        self.assertNotEqual(sel1, "not a selection")
+        self.assertNotEqual(sel1, None)
 
 
 class PointSelectionTest(unittest.TestCase):
@@ -226,6 +271,12 @@ class PointSelectionTest(unittest.TestCase):
         self.assertEqual(bbox[0], (0,))
         self.assertEqual(bbox[1], (8,))
 
+        # create the same selection from a string
+        query_string = "[[0,3,7]]"
+        sel2 = selections.select(shape, query_string)
+        self.assertEqual(sel, sel2)
+        self.assertEqual(sel.query_string, query_string)
+
     def testBoolMask2D(self):
         shape = (4, 5)
         mask = np.zeros(shape, dtype=bool)
@@ -241,6 +292,12 @@ class PointSelectionTest(unittest.TestCase):
         self.assertEqual(bbox[0], (0, 1))
         self.assertEqual(bbox[1], (3, 4))
 
+        # create the same selection from a string
+        query_string = "[[0,2],[1,3]]"
+        sel2 = selections.select(shape, query_string)
+        self.assertEqual(sel, sel2)
+        self.assertEqual(sel.query_string, query_string)
+
     def testListOfCoords1D(self):
         shape = (10,)
         sel = selections.select(shape, [2, 3, 5, 7])
@@ -252,6 +309,12 @@ class PointSelectionTest(unittest.TestCase):
         bbox = sel.bbox
         self.assertEqual(bbox[0], (2,))
         self.assertEqual(bbox[1], (8,))
+
+        # create the same selection from a string
+        query_string = "[[2,3,5,7]]"
+        sel2 = selections.select(shape, query_string)
+        self.assertEqual(sel, sel2)
+        self.assertEqual(sel.query_string, query_string)
 
     def testListOfCoords2D(self):
         shape = (8, 10)
@@ -265,6 +328,12 @@ class PointSelectionTest(unittest.TestCase):
         self.assertEqual(bbox[0], (0, 0))
         self.assertEqual(bbox[1], (4, 4))
 
+        # create the same selection from a string
+        query_string = "[[0,1,2,3],[0,1,2,3]]"
+        sel2 = selections.select(shape, query_string)
+        self.assertEqual(sel, sel2)
+        self.assertEqual(sel.query_string, query_string)
+
     def testEmptySet(self):
         shape = (10,)
         sel = selections.select(shape, [])
@@ -272,6 +341,12 @@ class PointSelectionTest(unittest.TestCase):
         bbox = sel.bbox
         self.assertIsNone(bbox[0])
         self.assertIsNone(bbox[1])
+
+        # create the same selection from a string
+        query_string = "[[]]"
+        sel2 = selections.select(shape, query_string)
+        self.assertEqual(sel, sel2)
+        self.assertEqual(sel.query_string, query_string)
 
     def testSelectDifferentPoints(self):
         shape = (10,)
@@ -302,12 +377,6 @@ class FancySelectionTest(unittest.TestCase):
         except TypeError:
             pass  # fancy selection requires rank 2 or higher
 
-    def testGetQueryParam2D(self):
-        shape = (10, 10)
-        sel = SimpleSelection(shape, [slice(1, 4), slice(2, 6)])
-        param = sel.getQueryParam()
-        self.assertEqual(param, "[1:4,2:6]")
-
     def testFancyCoord(self):
         shape = (10, 10)
         sel = selections.select(shape, (slice(0, 5), (3, 7)))
@@ -319,8 +388,11 @@ class FancySelectionTest(unittest.TestCase):
         self.assertEqual(len(slices), 2)
         self.assertEqual(slices[0], slice(0, 5, 1))
         self.assertEqual(slices[1], [3, 7])
-        param = sel.getQueryParam()
-        self.assertEqual(param, "[0:5,[3,7]]")
+        # create the same selection from a string
+        query_string = "[0:5,[3,7]]"
+        sel2 = selections.select(shape, query_string)
+        self.assertEqual(sel, sel2)
+        self.assertEqual(sel.query_string, query_string)
 
     def testRepr(self):
         shape = (10, 10)

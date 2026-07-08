@@ -84,6 +84,14 @@ def select(obj, args, fields=None):
     if len(args) == 1:
 
         arg = args[0]
+
+        if isinstance(arg, str):
+            # convert seleection_str to tuple of slices/coordinates
+            if arg == "[...]":
+                args = (...,)
+            else:
+                args = _getSelectionList(obj_shape, arg)
+
         if hasattr(arg, "shape"):
             arg_shape = arg.shape
         else:
@@ -105,7 +113,6 @@ def select(obj, args, fields=None):
 
             return Selection(shape, spaceid=sid)
         """
-
     sel = SimpleSelection(obj_shape, args, fields=fields)
     return sel
 
@@ -126,6 +133,161 @@ def _check_bool_args(s1, s2):
         raise TypeError("Expected hyperslab selection for second arg")
     if s1.shape != s2.shape:
         raise ValueError("selections have incompatible shapes")
+
+
+def _getSelectElements(sel_str):
+    """helper method - return array of queries for each
+    dimension"""
+    if not isinstance(sel_str, str):
+        raise TypeError("expected string arg")
+    if len(sel_str) < 3:
+        raise ValueError("selection string too short")
+    if sel_str[0] != '[' or sel_str[-1] != ']':
+        raise ValueError("unexpected selection string format")
+    sel_str = sel_str[1:-1]  # strip brackets
+
+    query_array = []
+    dim_query = []
+    coord_list = False
+    for ch in sel_str:
+        if ch.isspace():
+            # ignore
+            pass
+        elif ch == ",":
+            if coord_list:
+                dim_query.append(ch)
+            else:
+                if len(dim_query) == 0:
+                    # empty dimension
+                    raise ValueError("invalid query")
+                query_array.append("".join(dim_query))
+                dim_query = []  # reset
+        elif ch == "[":
+            if coord_list:
+                # can't have nested coordinates
+                raise ValueError("invalid query")
+            coord_list = True
+            dim_query.append(ch)
+        elif ch == "]":
+            if not coord_list:
+                # close bracket with no open
+                raise ValueError("invalid query")
+            dim_query.append(ch)
+            coord_list = False
+        elif ch == ":":
+            if coord_list:
+                # range not allowed in coord list
+                raise ValueError("invalid query")
+            dim_query.append(ch)
+        else:
+            dim_query.append(ch)
+    if not dim_query:
+        # empty dimension
+        raise ValueError("invalid query")
+    query_array.append("".join(dim_query))
+
+    return query_array
+
+
+def _getSelectionList(shape, sel_str):
+    """Return tuple of slices and/or coordinate list for the given selection"""
+    select_list = []
+
+    if sel_str is None or len(sel_str) == 0:
+        """Return set of slices covering data space"""
+        slices = []
+        for extent in shape:
+            s = slice(0, extent, 1)
+            slices.append(s)
+        return tuple(slices)
+
+    # convert selection to list by dimension
+    elements = _getSelectElements(sel_str)
+    rank = len(elements)
+    if len(shape) != rank:
+        raise ValueError("invalid rank for selection")
+    for dim in range(rank):
+        extent = shape[dim]
+        element = elements[dim]
+        is_list = isinstance(element, list)
+        is_str = isinstance(element, str)
+        if is_list or (is_str and element.startswith("[")):
+            # list of coordinates
+            if is_str:
+                fields = element[1:-1].split(",")
+            else:
+                fields = element
+            coords = []
+            for field in fields:
+                if isinstance(field, str) and not field:
+                    continue
+                try:
+                    coord = int(field)
+                except ValueError:
+                    raise ValueError(f"Invalid coordinate for dim {dim}")
+                if coord < 0 or coord >= extent:
+                    msg = f"out of range coordinate for dim {dim}, {coord} "
+                    msg += f"not in range: 0-{extent - 1}"
+                    raise ValueError(msg)
+                coords.append(coord)
+            select_list.append(coords)
+        elif element == ":":
+            s = slice(0, extent, 1)
+            select_list.append(s)
+        elif is_str and element.find(":") >= 0:
+            fields = element.split(":")
+            if len(fields) not in (2, 3):
+                raise ValueError(f"Invalid selection format for dim {dim}")
+            if len(fields[0]) == 0:
+                start = 0
+            else:
+                try:
+                    start = int(fields[0])
+                except ValueError:
+                    raise ValueError(f"Invalid selection - start value for dim {dim}")
+                if start < 0 or start >= extent:
+                    msg = f"Invalid selection - start value out of range for dim {dim}"
+                    raise ValueError(msg)
+            if len(fields[1]) == 0:
+                stop = extent
+            else:
+                try:
+                    stop = int(fields[1])
+                except ValueError:
+                    raise ValueError(f"Invalid selection - stop value for dim {dim}")
+                if stop < 0 or stop > extent or stop <= start:
+                    msg = f"Invalid selection - stop value out of range for dim {dim}"
+                    raise ValueError(msg)
+            if len(fields) == 3:
+                # get step value
+                if len(fields[2]) == 0:
+                    step = 1
+                else:
+                    try:
+                        step = int(fields[2])
+                    except ValueError:
+                        msg = f"Invalid selection - step value for dim {dim}"
+                        raise ValueError(msg)
+                    if step <= 0:
+                        msg = f"Invalid selection - step value out of range for dim {dim}"
+                        raise ValueError(msg)
+            else:
+                step = 1
+            s = slice(start, stop, step)
+            select_list.append(s)
+        else:
+            # expect single coordinate value
+            try:
+                index = int(element)
+            except ValueError:
+                raise ValueError(f"Invalid selection - index value for dim {dim}")
+            if index < 0 or index >= extent:
+                msg = f"Invalid selection - index value out of range for dim {dim}"
+                raise ValueError(msg)
+            s = slice(index, index + 1, 1)
+            select_list.append(s)
+    # end dimension loop
+    return tuple(select_list)
 
 
 def _points_to_paired(shape, points):
@@ -794,6 +956,17 @@ class Selection(object):
     def __getitem__(self, args):
         raise NotImplementedError("This class does not support indexing")
 
+    def __eq__(self, other):
+        if not isinstance(other, Selection):
+            return NotImplemented
+        return all((
+            type(self) is type(other),
+            self.shape == other.shape,
+            self.select_type == other.select_type,
+            self.fields == other.fields,
+            self.mshape == other.mshape,
+        ))
+
     def __repr__(self):
         return f"Selection(shape:{self._shape})"
 
@@ -964,8 +1137,9 @@ class SimpleSelection(Selection):
             npoints *= m
         return npoints
 
-    def getQueryParam(self):
-        """ Get select param for use with HDF Rest API"""
+    @property
+    def query_string(self):
+        """ The value of the 'select' query parameter for this selection, for use with the HDF REST API """
         rank = len(self._shape)
         if rank == 0:
             return None
@@ -1046,6 +1220,16 @@ class SimpleSelection(Selection):
                 offset = tuple(offset)
                 sel = [tuple([sum(x) for x in zip(offset, start)]), tshape, step, scalar]
                 yield sel
+
+    def __eq__(self, other):
+        if not isinstance(other, SimpleSelection):
+            return NotImplemented
+        return all((
+            self.shape == other.shape,
+            self.select_type == other.select_type,
+            self.fields == other.fields,
+            self.slices == other.slices,
+        ))
 
     def __repr__(self):
         if self.fields:
@@ -1271,3 +1455,19 @@ class ScalarSelection(Selection):
             self._select_type = H5S_SEL_ALL
         else:
             raise ValueError("Illegal slicing argument for scalar dataspace")
+
+    def __eq__(self, other):
+        if not isinstance(other, ScalarSelection):
+            return NotImplemented
+        # mshape is not compared here: () vs (Ellipsis,) construction args produce
+        # different mshape (None vs ()) despite selecting the same scalar element,
+        # and select_type is H5S_SEL_ALL in both cases anyway.
+        return all((
+            self.shape == other.shape,
+            self.select_type == other.select_type,
+            self.fields == other.fields,
+        ))
+
+    @property
+    def query_string(self):
+        return None
