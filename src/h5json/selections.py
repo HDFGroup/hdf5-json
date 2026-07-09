@@ -65,8 +65,6 @@ def select(obj, args, fields=None):
     Indices, slices, ellipses, lists or boolean index arrays
         Returns a SimpleSelection instance with H5S_SEL_FANCY.
     """
-    if not isinstance(args, tuple):
-        args = (args,)
 
     if hasattr(obj, "shape"):
         obj_shape = obj.shape
@@ -74,6 +72,11 @@ def select(obj, args, fields=None):
         obj_shape = obj
     else:
         raise TypeError("Object must be a dataset or a shape tuple")
+
+    if isinstance(args, dict):
+        args = _handle_dict_selection(obj_shape, args)
+    elif not isinstance(args, tuple):
+        args = (args,)
 
     if len(obj_shape) == 0:
         # scalar object
@@ -827,6 +830,57 @@ def translate(s1, s2):
     else:
         raise TypeError("translate - unsupported selection type for s2")
     return select(s1.shape, tuple(args))
+
+
+def _handle_dict_selection(shape, arg):
+    """ Handle a dictionary-based selection, where the keys are dimension indices and
+    the values are slices or lists of coordinates. Returns a tuple of slices/lists for
+    each dimension, filling in full slices for unspecified dimensions.
+    """
+    rank = len(shape)
+    slices = []
+    if "start" not in arg:
+        start = (0,) * rank
+    else:
+        start = arg["start"]
+    if "stop" not in arg:
+        stop = shape
+    else:
+        stop = arg["stop"]
+    if "step" not in arg:
+        step = (1,) * rank
+    else:
+        step = arg["step"]
+
+    if isinstance(start, int):
+        start = (start,) * rank  # broadcast to all dimensions
+    elif isinstance(start, (list, tuple)):
+        if len(start) != rank:
+            raise ValueError("Start list length does not match dataset rank")
+    else:
+        raise TypeError("Start value must be an int or a list/tuple of ints")
+
+    if isinstance(stop, int):
+        stop = (stop,) * rank  # broadcast to all dimensions
+    elif isinstance(stop, (list, tuple)):
+        if len(stop) != rank:
+            raise ValueError("Stop list length does not match dataset rank")
+    else:
+        raise TypeError("Stop value must be an int or a list/tuple of ints")
+
+    if isinstance(step, int):
+        step = (step,) * rank  # broadcast to all dimensions
+    elif isinstance(step, (list, tuple)):
+        if len(step) != rank:
+            raise ValueError("Step list length does not match dataset rank")
+    else:
+        raise TypeError("Step value must be an int or a list/tuple of ints")
+
+    for idx in range(rank):
+        s = slice(start[idx], stop[idx], step[idx])
+        slices.append(s)
+
+    return slices
 
 
 class Selection(object):

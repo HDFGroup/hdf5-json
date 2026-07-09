@@ -60,6 +60,10 @@ class SimpleSelectionTest(unittest.TestCase):
         self.assertEqual(sel, sel2)
         self.assertEqual(sel.query_string, query_string)
 
+        # create the same selection from a dict
+        sel3 = selections.select(shape, {})
+        self.assertEqual(sel, sel3)
+
     def testSelectAll2D(self):
         shape = (4, 5)
         sel = selections.select(shape, ...)
@@ -79,6 +83,10 @@ class SimpleSelectionTest(unittest.TestCase):
         sel2 = selections.select(shape, query_string)
         self.assertEqual(sel, sel2)
         self.assertEqual(sel.query_string, query_string)
+
+        # create the same selection from a dict
+        sel3 = selections.select(shape, {})
+        self.assertEqual(sel, sel3)
 
     def testSlice1D(self):
         shape = (10,)
@@ -102,6 +110,10 @@ class SimpleSelectionTest(unittest.TestCase):
         self.assertEqual(sel, sel2)
         self.assertEqual(sel.query_string, query_string)
 
+        # create the same selection from a dict
+        sel3 = selections.select(shape, {"start": 2, "stop": 7})
+        self.assertEqual(sel, sel3)
+
     def testSliceWithStep(self):
         shape = (10,)
         sel = selections.select(shape, slice(0, 10, 2))
@@ -124,6 +136,10 @@ class SimpleSelectionTest(unittest.TestCase):
         self.assertEqual(sel, sel2)
         self.assertEqual(sel.query_string, query_string)
 
+        # create the same selection from a dict
+        sel3 = selections.select(shape, {"start": 0, "stop": 10, "step": 2})
+        self.assertEqual(sel, sel3)
+
     def testSlice2D(self):
         shape = (8, 10)
         sel = selections.select(shape, (slice(1, 4), slice(2, 9)))
@@ -145,6 +161,10 @@ class SimpleSelectionTest(unittest.TestCase):
         sel2 = selections.select(shape, query_string)
         self.assertEqual(sel, sel2)
         self.assertEqual(sel.query_string, query_string)
+
+        # create the same selection from a dict
+        sel3 = selections.select(shape, {"start": [1, 2], "stop": [4, 9]})
+        self.assertEqual(sel, sel3)
 
     def testBroadcast1D(self):
         shape = (10,)
@@ -388,6 +408,7 @@ class FancySelectionTest(unittest.TestCase):
         self.assertEqual(len(slices), 2)
         self.assertEqual(slices[0], slice(0, 5, 1))
         self.assertEqual(slices[1], [3, 7])
+
         # create the same selection from a string
         query_string = "[0:5,[3,7]]"
         sel2 = selections.select(shape, query_string)
