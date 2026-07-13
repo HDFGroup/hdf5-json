@@ -214,10 +214,8 @@ def isExtensible(obj_json):
     rank = len(dims)
     if len(maxdims) != rank:
         raise ValueError("rank of maxdims does not match dataset")
-    for n in range(rank):
-        if maxdims[n] in (0, "H5S_UNLIMITED") or maxdims[n] > dims[n]:
-            return True
-    return False
+
+    return True
 
 
 def getMaxDims(obj_json):
