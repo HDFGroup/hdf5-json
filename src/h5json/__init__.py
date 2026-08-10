@@ -17,6 +17,9 @@ This is the h5json package, a mapping between HDF5 objects and JSON
 
 from __future__ import absolute_import
 
+from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+from importlib.metadata import version as _pkg_version
+
 from .hdf5dtype import getTypeItem
 from .hdf5dtype import getTypeResponse
 from .hdf5dtype import getItemSize
@@ -30,3 +33,9 @@ from .objid import getObjId
 from .objid import isSchema2Id
 from .objid import isRootObjId
 from .hdf5db import Hdf5db
+
+try:
+    __version__ = _pkg_version("h5json")
+except _PackageNotFoundError:
+    # running from a source tree that has not been installed
+    __version__ = "0.0.0.dev0"
