@@ -1082,8 +1082,8 @@ class Hdf5dbTest(unittest.TestCase):
                 arr[i, j] = i * j
         sel_all = selections.select(shape, ...)
         db.setDatasetValues(dset_id, sel_all, arr)
-        # tbd: compare with SQL mda syntax: https://github.com/misev/asqldb
-        query = "_ > 10"
+        # query syntax follows https://hdfgroup.github.io/h5col/queries/syntax.html
+        query = "field('_') > 10"
         indices = db.queryDataset(dset_id, query)
         self.assertEqual(indices.shape, (56, 2))
 
@@ -1094,7 +1094,7 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertEqual(indices.shape, (0, 2))
 
         # query update with limit
-        query = "_ == 0"
+        query = "field('_') == 0"
         indices = db.queryDataset(dset_id, query, limit=5, update_value=-99)
         self.assertEqual(indices.shape, (5, 2))
 
@@ -1111,7 +1111,7 @@ class Hdf5dbTest(unittest.TestCase):
         db.setDatasetValues(dset_id, sel_all, data_arr)
 
         # simple equality query
-        query = "symbol == b'AAPL'"
+        query = "field('symbol') == b'AAPL'"
         indices = db.queryDataset(dset_id, query)
         self.assertIsInstance(indices, np.ndarray)
         self.assertEqual(indices.dtype, np.dtype("int64"))
@@ -1120,8 +1120,8 @@ class Hdf5dbTest(unittest.TestCase):
         for idx in indices:
             self.assertIn(int(idx[0]), expected_indexes)
 
-        # IN query
-        query = "symbol IN (b'AAPL', b'EBAY')"
+        # isin query
+        query = "field('symbol').isin(b'AAPL', b'EBAY')"
         indices = db.queryDataset(dset_id, query)
         self.assertIsInstance(indices, np.ndarray)
         self.assertEqual(len(indices), 8)
@@ -1129,8 +1129,8 @@ class Hdf5dbTest(unittest.TestCase):
         for idx in indices:
             self.assertIn(int(idx[0]), expected_indexes)
 
-        # AND query across two fields
-        query = "symbol IN (b'AAPL') AND 'date' > 20170102"
+        # AND ('&') query across two fields
+        query = "(field('symbol').isin(b'AAPL')) & (field('date') > 20170102)"
         indices = db.queryDataset(dset_id, query)
         self.assertIsInstance(indices, np.ndarray)
         self.assertEqual(len(indices), 3)
@@ -1139,7 +1139,7 @@ class Hdf5dbTest(unittest.TestCase):
             self.assertIn(int(idx[0]), expected_indexes)
 
         # query with no results
-        query = "symbol == b'XYZ'"
+        query = "field('symbol') == b'XYZ'"
         indices = db.queryDataset(dset_id, query)
         self.assertIsInstance(indices, np.ndarray)
         self.assertEqual(indices.dtype, np.dtype("int64"))
@@ -1148,7 +1148,7 @@ class Hdf5dbTest(unittest.TestCase):
 
         # query with selection (only rows 2-11)
         sel = selections.select(shape, slice(2, 12))
-        query = "symbol == b'AAPL'"
+        query = "field('symbol') == b'AAPL'"
         indices = db.queryDataset(dset_id, query, sel=sel)
         self.assertIsInstance(indices, np.ndarray)
         self.assertEqual(indices.shape, (3, 1))
@@ -1188,7 +1188,7 @@ class Hdf5dbTest(unittest.TestCase):
         db.setDatasetValues(dset_id, sel_all, data_arr)
 
         # AAPL appears at (0,1), (2,0), (3,1), (5,0) in the 6×2 layout
-        query = "symbol == b'AAPL'"
+        query = "field('symbol') == b'AAPL'"
         indices = db.queryDataset(dset_id, query)
         self.assertIsInstance(indices, np.ndarray)
         self.assertEqual(indices.shape, (4, 2))
@@ -1339,7 +1339,7 @@ class Hdf5dbTest(unittest.TestCase):
         sel_all = selections.select(shape, ...)
         db.setDatasetValues(dset_id, sel_all, data_arr)
 
-        query = "symbol == b'AAPL'"
+        query = "field('symbol') == b'AAPL'"
         values = db.getDatasetValues(dset_id, sel_all, query=query)
         self.assertIsInstance(values, np.ndarray)
         self.assertEqual(values.dtype, data_arr.dtype)
@@ -1355,7 +1355,7 @@ class Hdf5dbTest(unittest.TestCase):
         np.testing.assert_array_equal(values, expected_values)
 
         # query with no results
-        no_match = db.getDatasetValues(dset_id, sel_all, query="symbol == b'XYZ'")
+        no_match = db.getDatasetValues(dset_id, sel_all, query="field('symbol') == b'XYZ'")
         self.assertIsInstance(no_match, np.ndarray)
         self.assertEqual(no_match.dtype, data_arr.dtype)
         self.assertEqual(no_match.shape, (0,))
@@ -1387,7 +1387,7 @@ class Hdf5dbTest(unittest.TestCase):
         sel_all = selections.select(shape, ...)
         db.setDatasetValues(dset_id, sel_all, arr)
 
-        query = "_ > 10"
+        query = "field('_') > 10"
         values = db.getDatasetValues(dset_id, sel_all, query=query)
         self.assertIsInstance(values, np.ndarray)
         self.assertEqual(values.shape, (56,))
@@ -1413,7 +1413,7 @@ class Hdf5dbTest(unittest.TestCase):
         # single-fetch fallback path (AAPL is at indices 1, 4, 7 of the six
         # selected rows 1, 2, 4, 5, 7, 8)
         point_sel = selections.select(shape, [1, 2, 4, 5, 7, 8])
-        query = "symbol == b'AAPL'"
+        query = "field('symbol') == b'AAPL'"
         values = db.getDatasetValues(dset_id, point_sel, query=query)
         self.assertEqual(values.shape, (3,))
         for val in values:

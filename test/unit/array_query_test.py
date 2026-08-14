@@ -66,7 +66,7 @@ class QueryUtilTest(unittest.TestCase):
                 if z > 1.0:
                     expected.append((i, j))
 
-        query = "_ > 1.0"
+        query = "field('_') > 1.0"
         result = arrayQuery(query, data_arr)
         self.assertTrue(isinstance(result, np.ndarray))
         self.assertEqual(result.dtype, np.dtype("int64"))
@@ -80,7 +80,7 @@ class QueryUtilTest(unittest.TestCase):
     def testArrayQuery1D(self):
 
         data_arr = _get_test_tabular_data()
-        query = "symbol == b'AAPL'"
+        query = "field('symbol') == b'AAPL'"
         result = arrayQuery(query, data_arr)
         self.assertTrue(isinstance(result, np.ndarray))
         self.assertEqual(result.dtype, np.dtype("int64"))
@@ -117,13 +117,13 @@ class QueryUtilTest(unittest.TestCase):
             self.assertEqual(index, expected_indexes[i])
 
         # query for row that doesn't exist
-        query = "symbol == b'XYZ'"
+        query = "field('symbol') == b'XYZ'"
         result = arrayQuery(query, data_arr)
         self.assertTrue(isinstance(result, np.ndarray))
         self.assertEqual(len(result), 0)
 
-        # query with IN
-        query = "open IN (2798, 2934, 1234)"
+        # query with isin
+        query = "field('open').isin(2798, 2934, 1234)"
         result = arrayQuery(query, data_arr)
         expected_indexes = (6, 10)
         for i in range(2):
@@ -131,7 +131,7 @@ class QueryUtilTest(unittest.TestCase):
             self.assertTrue(index in expected_indexes)
 
         # query with where
-        query = "symbol IN (b'AAPL', b'EBAY')"
+        query = "field('symbol').isin(b'AAPL', b'EBAY')"
         result = arrayQuery(query, data_arr)
         expected_indexes = (0, 1, 3, 4, 6, 7, 9, 10)
 
@@ -142,7 +142,7 @@ class QueryUtilTest(unittest.TestCase):
             self.assertTrue(index in expected_indexes)
 
         # boolean query
-        query = "symbol IN (b'AAPL') AND 'date' > 20170102"
+        query = "(field('symbol').isin(b'AAPL')) & (field('date') > 20170102)"
         result = arrayQuery(query, data_arr)
         self.assertTrue(isinstance(result, np.ndarray))
         expected_indexes = (4, 7, 10)
@@ -151,8 +151,17 @@ class QueryUtilTest(unittest.TestCase):
             index = result[i]
             self.assertTrue(index in expected_indexes)
 
+        # query with not (~) and isin
+        query = "~(field('symbol').isin(b'AAPL', b'EBAY'))"
+        result = arrayQuery(query, data_arr)
+        expected_indexes = (2, 5, 8, 11)
+        self.assertEqual(len(result), len(expected_indexes))
+        for i in range(len(result)):
+            index = result[i]
+            self.assertTrue(index in expected_indexes)
+
         # try bad Limit
-        query = "symbol == b'AAPL'"
+        query = "field('symbol') == b'AAPL'"
         try:
             arrayQuery(query, data_arr, limit="foobar")
             self.assertTrue(False)
@@ -168,7 +177,7 @@ class QueryUtilTest(unittest.TestCase):
             pass  # expected
 
         # try missing paren
-        query = "(open > 5"
+        query = "(field('open') > 5"
         try:
             arrayQuery(query, data_arr)
             self.assertTrue(False)
@@ -176,13 +185,212 @@ class QueryUtilTest(unittest.TestCase):
             pass  # expected
 
         # try invalid character
-        query = "open @ 5"
+        query = "field('open') @ 5"
 
         try:
             arrayQuery(query, data_arr)
             self.assertTrue(False)
         except ValueError:
             pass  # expected
+
+    def testArrayQueryEqAlias(self):
+        data_arr = _get_test_tabular_data()
+        query = "field('symbol') = b'AAPL'"
+        result = arrayQuery(query, data_arr)
+        expected_indexes = (1, 4, 7, 10)
+        self.assertEqual(len(result), len(expected_indexes))
+        for i in range(len(result)):
+            index = result[i]
+            self.assertTrue(index in expected_indexes)
+
+    def testArrayQueryIsNullIsValid(self):
+        data_arr = np.array([1.0, float("nan"), 3.0, float("nan"), 5.0])
+
+        result = arrayQuery("field('_').is_null()", data_arr)
+        expected_indexes = (1, 3)
+        self.assertEqual(len(result), len(expected_indexes))
+        for i in range(len(result)):
+            index = result[i][0]
+            self.assertTrue(index in expected_indexes)
+
+        result = arrayQuery("field('_').is_valid()", data_arr)
+        expected_indexes = (0, 2, 4)
+        self.assertEqual(len(result), len(expected_indexes))
+        for i in range(len(result)):
+            index = result[i][0]
+            self.assertTrue(index in expected_indexes)
+
+    def testArrayQueryBareFieldName(self):
+        # field("name") and a bare name/'name' are equivalent
+        data_arr = _get_test_tabular_data()
+
+        query = "symbol == b'AAPL'"
+        result = arrayQuery(query, data_arr)
+        expected_indexes = (1, 4, 7, 10)
+        self.assertEqual(len(result), len(expected_indexes))
+        for i in range(len(result)):
+            index = result[i][0]
+            self.assertTrue(index in expected_indexes)
+
+        query = "symbol.isin(b'AAPL', b'EBAY')"
+        result = arrayQuery(query, data_arr)
+        expected_indexes = (0, 1, 3, 4, 6, 7, 9, 10)
+        self.assertEqual(len(result), len(expected_indexes))
+        for i in range(len(result)):
+            index = result[i][0]
+            self.assertTrue(index in expected_indexes)
+
+        # bare and field(...) forms can be freely mixed in the same query
+        query = "(symbol.isin(b'AAPL')) & (field('date') > 20170102)"
+        result = arrayQuery(query, data_arr)
+        expected_indexes = (4, 7, 10)
+        self.assertEqual(len(result), len(expected_indexes))
+        for i in range(len(result)):
+            index = result[i][0]
+            self.assertTrue(index in expected_indexes)
+
+        # bare '_' works the same as field('_') for non-compound dtypes
+        data_arr_2 = np.array([1.0, 2.5, 3.0, -1.0])
+        np.testing.assert_array_equal(
+            arrayQuery("_ > 1.0", data_arr_2),
+            arrayQuery("field('_') > 1.0", data_arr_2),
+        )
+
+    def testArrayQueryWordOperatorSynonyms(self):
+        # 'AND'/'OR'/'NOT'/'IN' (case-insensitive) are accepted as word synonyms
+        # for '&'/'|'/'~'/'.isin(...)' and can be freely mixed with symbol forms
+        data_arr = _get_test_tabular_data()
+
+        # IN as a synonym for .isin(...)
+        query = "symbol IN (b'AAPL', b'EBAY')"
+        result = arrayQuery(query, data_arr)
+        expected_indexes = (0, 1, 3, 4, 6, 7, 9, 10)
+        self.assertEqual(len(result), len(expected_indexes))
+        for i in range(len(result)):
+            index = result[i][0]
+            self.assertTrue(index in expected_indexes)
+
+        # NOT IN
+        query = "symbol NOT IN (b'AAPL', b'EBAY')"
+        result = arrayQuery(query, data_arr)
+        expected_indexes = (2, 5, 8, 11)
+        self.assertEqual(len(result), len(expected_indexes))
+        for i in range(len(result)):
+            index = result[i][0]
+            self.assertTrue(index in expected_indexes)
+
+        # AND
+        query = "(symbol IN (b'AAPL')) AND (date > 20170102)"
+        result = arrayQuery(query, data_arr)
+        expected_indexes = (4, 7, 10)
+        self.assertEqual(len(result), len(expected_indexes))
+        for i in range(len(result)):
+            index = result[i][0]
+            self.assertTrue(index in expected_indexes)
+
+        # OR
+        query = "(symbol == b'EBAY') OR (symbol == b'AMZN')"
+        result = arrayQuery(query, data_arr)
+        expected_indexes = (0, 2, 3, 5, 6, 8, 9, 11)
+        self.assertEqual(len(result), len(expected_indexes))
+        for i in range(len(result)):
+            index = result[i][0]
+            self.assertTrue(index in expected_indexes)
+
+        # NOT
+        query = "NOT (symbol == b'AAPL')"
+        result = arrayQuery(query, data_arr)
+        expected_indexes = (0, 2, 3, 5, 6, 8, 9, 11)
+        self.assertEqual(len(result), len(expected_indexes))
+        for i in range(len(result)):
+            index = result[i][0]
+            self.assertTrue(index in expected_indexes)
+
+        # word and symbol forms are equivalent, case-insensitive, and can be mixed
+        np.testing.assert_array_equal(
+            arrayQuery("(symbol IN (b'AAPL')) AND (date > 20170102)", data_arr),
+            arrayQuery("(symbol.isin(b'AAPL')) & (date > 20170102)", data_arr),
+        )
+        np.testing.assert_array_equal(
+            arrayQuery("symbol IN (b'AAPL') and date > 20170102", data_arr),
+            arrayQuery("(symbol IN (b'AAPL')) AND (date > 20170102)", data_arr),
+        )
+
+    def testArrayQueryBareValue(self):
+        # a bare, unquoted word is treated as a string literal, equivalent to
+        # a quoted string or bytes literal - lets fixed-string comparisons skip
+        # the b'...'/'...' quoting
+        data_arr = _get_test_tabular_data()
+
+        query = "symbol == AAPL"
+        result = arrayQuery(query, data_arr)
+        expected_indexes = (1, 4, 7, 10)
+        self.assertEqual(len(result), len(expected_indexes))
+        for i in range(len(result)):
+            index = result[i][0]
+            self.assertTrue(index in expected_indexes)
+
+        # bare value works with isin(...) and the IN/NOT IN word synonyms too
+        query = "symbol.isin(AAPL, EBAY)"
+        result = arrayQuery(query, data_arr)
+        expected_indexes = (0, 1, 3, 4, 6, 7, 9, 10)
+        self.assertEqual(len(result), len(expected_indexes))
+        for i in range(len(result)):
+            index = result[i][0]
+            self.assertTrue(index in expected_indexes)
+
+        query = "symbol IN (AAPL, EBAY)"
+        result = arrayQuery(query, data_arr)
+        self.assertEqual(len(result), len(expected_indexes))
+        for i in range(len(result)):
+            index = result[i][0]
+            self.assertTrue(index in expected_indexes)
+
+        query = "symbol NOT IN (AAPL, EBAY)"
+        result = arrayQuery(query, data_arr)
+        expected_indexes = (2, 5, 8, 11)
+        self.assertEqual(len(result), len(expected_indexes))
+        for i in range(len(result)):
+            index = result[i][0]
+            self.assertTrue(index in expected_indexes)
+
+        # bare and quoted/byte-literal values are equivalent
+        np.testing.assert_array_equal(
+            arrayQuery("symbol == AAPL", data_arr),
+            arrayQuery("symbol == b'AAPL'", data_arr),
+        )
+        np.testing.assert_array_equal(
+            arrayQuery("symbol.isin(AAPL, EBAY)", data_arr),
+            arrayQuery("symbol.isin(b'AAPL', b'EBAY')", data_arr),
+        )
+
+        # also works for unicode (U-kind) fixed-string dtypes
+        dtype_u = np.dtype([("symbol", "U10")])
+        data_arr_u = np.array([("AAPL",), ("EBAY",)], dtype=dtype_u)
+        result = arrayQuery("symbol == AAPL", data_arr_u)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0][0], 0)
+
+    def testArrayQueryFieldCallForCollidingName(self):
+        # a field literally named 'field', 'true', 'false', 'and', 'or', 'not' or 'in'
+        # can't be written as a bare token (it would tokenize as a keyword) -
+        # field(...) is required to disambiguate
+        dtype = np.dtype([("field", "i4"), ("true", "i4"), ("and", "i4"), ("in", "i4")])
+        data_arr = np.array([(1, 2, 5, 7), (3, 4, 6, 8)], dtype=dtype)
+
+        result = arrayQuery("field('field') > 1", data_arr)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0][0], 1)
+
+        result = arrayQuery("(field('and') > 5) & (field('in') > 7)", data_arr)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0][0], 1)
+
+        try:
+            arrayQuery("field > 1", data_arr)
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected - 'field' bare is parsed as the field(...) keyword
 
     def testArrayQuery2D(self):
 
@@ -191,7 +399,7 @@ class QueryUtilTest(unittest.TestCase):
         num_rows = data_arr.shape[0]
         data_arr = data_arr.reshape((int(num_rows / 2), 2))
 
-        query = "symbol == b'AAPL'"
+        query = "field('symbol') == b'AAPL'"
         result = arrayQuery(query, data_arr)
         self.assertTrue(isinstance(result, np.ndarray))
         self.assertEqual(len(result.dtype), 0)

@@ -18,15 +18,18 @@ import numpy as np
 # Tokenizer
 # ---------------------------------------------------------------------------
 
-_KEYWORDS = frozenset({'AND', 'OR', 'NOT', 'XOR', 'IN'})
+_KEYWORDS = frozenset({'FIELD', 'TRUE', 'FALSE', 'AND', 'OR', 'NOT', 'IN'})
 
 
 def _tokenize(query):
     """Tokenize a query string into a list of (type, value) tuples.
 
-    Token types: IDENT, NUMBER, BYTES, STR,
-                 EQ NE LT GT LE GE, LPAREN RPAREN COMMA,
-                 AND OR NOT XOR IN, EOF.
+    Token types: FIELD, IDENT, NUMBER, BYTES, STR, BOOL,
+                 EQ NE LT GT LE GE, LPAREN RPAREN COMMA DOT,
+                 AMP PIPE TILDE, AND OR NOT IN, EOF.
+
+    'AND'/'OR'/'NOT'/'IN' are accepted as case-insensitive word synonyms for
+    '&'/'|'/'~'/'.isin(...)' respectively — either spelling may be used.
 
     Raises ValueError on any character that is not part of the grammar.
     """
@@ -72,7 +75,16 @@ def _tokenize(query):
                 j += 1
             word = query[i:j]
             upper = word.upper()
-            tokens.append((upper if upper in _KEYWORDS else 'IDENT', word if upper not in _KEYWORDS else None))
+            if upper == 'TRUE':
+                tokens.append(('BOOL', True))
+            elif upper == 'FALSE':
+                tokens.append(('BOOL', False))
+            elif upper == 'FIELD':
+                tokens.append(('FIELD', None))
+            elif upper in ('AND', 'OR', 'NOT', 'IN'):
+                tokens.append((upper, None))
+            else:
+                tokens.append(('IDENT', word))
             i = j
             continue
 
@@ -111,12 +123,32 @@ def _tokenize(query):
             continue
 
         # Single-character operators and punctuation
+        if c == '=':
+            tokens.append(('EQ', None))
+            i += 1
+            continue
         if c == '<':
             tokens.append(('LT', None))
             i += 1
             continue
         if c == '>':
             tokens.append(('GT', None))
+            i += 1
+            continue
+        if c == '&':
+            tokens.append(('AMP', None))
+            i += 1
+            continue
+        if c == '|':
+            tokens.append(('PIPE', None))
+            i += 1
+            continue
+        if c == '~':
+            tokens.append(('TILDE', None))
+            i += 1
+            continue
+        if c == '.':
+            tokens.append(('DOT', None))
             i += 1
             continue
         if c == '(':
@@ -142,15 +174,37 @@ def _tokenize(query):
 # Parser  (recursive descent)
 # ---------------------------------------------------------------------------
 # AST nodes are plain tuples:
-#   ('CMP',    field, op, value)       op in EQ NE LT GT LE GE
-#   ('IN',     field, values)
-#   ('NOT_IN', field, values)
-#   ('AND',    left, right)
-#   ('OR',     left, right)
-#   ('XOR',    left, right)
-#   ('NOT',    sub)
+#   ('CMP',      field, op, value)     op in EQ NE LT GT LE GE
+#   ('IN',       field, values)
+#   ('NOT_IN',   field, values)
+#   ('IS_NULL',  field)
+#   ('IS_VALID', field)
+#   ('AND',      left, right)
+#   ('OR',       left, right)
+#   ('NOT',      sub)
 #
 # field is None for the '_' wildcard (non-compound dtypes), otherwise a str.
+#
+# Grammar (h5col-compatible, with AND/OR/NOT/IN accepted as word synonyms):
+#   expr        := or_expr
+#   or_expr     := and_expr ( ('|' | OR) and_expr )*
+#   and_expr    := not_expr ( ('&' | AND) not_expr )*
+#   not_expr    := ('~' | NOT) not_expr | primary
+#   primary     := '(' expr ')' | predicate
+#   predicate   := field_name ( cmp_op value
+#                             | '.' 'isin' '(' value (',' value)* ')'
+#                             | IN '(' value (',' value)* ')'
+#                             | NOT IN '(' value (',' value)* ')'
+#                             | '.' 'is_null' '(' ')'
+#                             | '.' 'is_valid' '(' ')' )
+#   field_name  := FIELD '(' (STR | IDENT) ')' | STR | IDENT
+#   cmp_op      := '==' | '=' | '!=' | '<' | '<=' | '>' | '>='
+#   value       := NUMBER | STR | BYTES | BOOL | IDENT   (bare IDENT == quoted STR)
+#
+# field("name") and a bare name/'name' are equivalent; field(...) is only
+# needed to quote a name that would otherwise be unparsable as a bare token
+# (e.g. it collides with 'field'/'true'/'false'/'and'/'or'/'not'/'in', or
+# contains punctuation).
 
 class _Parser:
     def __init__(self, tokens, dtype):
@@ -175,28 +229,21 @@ class _Parser:
         return expr
 
     def _parse_or(self):
-        left = self._parse_xor()
-        while self._peek()[0] == 'OR':
-            self._consume()
-            left = ('OR', left, self._parse_xor())
-        return left
-
-    def _parse_xor(self):
         left = self._parse_and()
-        while self._peek()[0] == 'XOR':
+        while self._peek()[0] in ('PIPE', 'OR'):
             self._consume()
-            left = ('XOR', left, self._parse_and())
+            left = ('OR', left, self._parse_and())
         return left
 
     def _parse_and(self):
         left = self._parse_not()
-        while self._peek()[0] == 'AND':
+        while self._peek()[0] in ('AMP', 'AND'):
             self._consume()
             left = ('AND', left, self._parse_not())
         return left
 
     def _parse_not(self):
-        if self._peek()[0] == 'NOT':
+        if self._peek()[0] in ('TILDE', 'NOT'):
             self._consume()
             return ('NOT', self._parse_not())
         return self._parse_primary()
@@ -212,68 +259,114 @@ class _Parser:
             self._consume()
             return expr
 
-        # Field name: bare identifier or single-quoted name like 'date'
-        if tok[0] in ('IDENT', 'STR'):
-            field = tok[1]
+        return self._parse_predicate()
+
+    def _parse_field(self):
+        tok = self._peek()
+
+        if tok[0] == 'FIELD':
             self._consume()
+            self._consume('LPAREN')
+            name_tok = self._peek()
+            if name_tok[0] not in ('STR', 'IDENT'):
+                raise ValueError(f"Expected a field name inside field(...), got {name_tok[0]!r}")
+            self._consume()
+            name = name_tok[1]
+            if self._peek()[0] != 'RPAREN':
+                raise ValueError("Expected ')' to close field(...)")
+            self._consume()
+        elif tok[0] in ('STR', 'IDENT'):
+            self._consume()
+            name = tok[1]
+        else:
+            raise ValueError(
+                f"Unexpected token {tok!r} — expected a field name or field(...)"
+            )
 
-            if self._field_names is None:
-                # Non-compound dtype: only '_' is allowed
-                if field != '_':
-                    raise ValueError(
-                        f"Field {field!r} is not valid for non-compound dtype; use '_'"
-                    )
-                field = None  # None means "use the array element itself"
-            else:
-                if field not in self._field_names:
-                    raise ValueError(
-                        f"Field {field!r} not found in dtype "
-                        f"(available: {sorted(self._field_names)})"
-                    )
-
-            next_type = self._peek()[0]
-
-            # FIELD NOT IN (...)
-            if next_type == 'NOT':
-                self._consume()
-                if self._peek()[0] != 'IN':
-                    raise ValueError("Expected 'IN' after 'NOT'")
-                self._consume()
-                return ('NOT_IN', field, self._parse_value_list())
-
-            # FIELD IN (...)
-            if next_type == 'IN':
-                self._consume()
-                return ('IN', field, self._parse_value_list())
-
-            # FIELD op VALUE
-            if next_type not in ('EQ', 'NE', 'LT', 'GT', 'LE', 'GE'):
+        if self._field_names is None:
+            # Non-compound dtype: only '_' is allowed
+            if name != '_':
                 raise ValueError(
-                    f"Expected a comparison operator after field, got {next_type!r}"
+                    f"Field {name!r} is not valid for non-compound dtype; use '_' or field('_')"
                 )
+            return None  # None means "use the array element itself"
+
+        if name not in self._field_names:
+            raise ValueError(
+                f"Field {name!r} not found in dtype (available: {sorted(self._field_names)})"
+            )
+        return name
+
+    def _parse_predicate(self):
+        field = self._parse_field()
+
+        # Method call:  field(...).isin(...)  /  .is_null()  /  .is_valid()
+        if self._peek()[0] == 'DOT':
             self._consume()
-            return ('CMP', field, next_type, self._parse_value())
+            method_tok = self._consume('IDENT')
+            method = method_tok[1].lower()
 
-        raise ValueError(
-            f"Unexpected token {tok!r} — expected a field name or '('"
-        )
+            if method == 'isin':
+                return ('IN', field, self._parse_paren_value_list())
 
-    def _parse_value_list(self):
-        if self._peek()[0] != 'LPAREN':
-            raise ValueError("Expected '(' to open IN value list")
+            if method == 'is_null':
+                self._consume('LPAREN')
+                if self._peek()[0] != 'RPAREN':
+                    raise ValueError("is_null() takes no arguments")
+                self._consume()
+                return ('IS_NULL', field)
+
+            if method == 'is_valid':
+                self._consume('LPAREN')
+                if self._peek()[0] != 'RPAREN':
+                    raise ValueError("is_valid() takes no arguments")
+                self._consume()
+                return ('IS_VALID', field)
+
+            raise ValueError(f"Unknown method {method_tok[1]!r} — expected 'isin', 'is_null' or 'is_valid'")
+
+        # field IN (...)  /  field NOT IN (...)   (word synonyms for .isin(...))
+        if self._peek()[0] == 'IN':
+            self._consume()
+            return ('IN', field, self._parse_paren_value_list())
+
+        if self._peek()[0] == 'NOT':
+            self._consume()
+            if self._peek()[0] != 'IN':
+                raise ValueError("Expected 'IN' after 'NOT'")
+            self._consume()
+            return ('NOT_IN', field, self._parse_paren_value_list())
+
+        # field(...) op value
+        next_type = self._peek()[0]
+        if next_type not in ('EQ', 'NE', 'LT', 'GT', 'LE', 'GE'):
+            raise ValueError(
+                f"Expected a comparison operator or '.' after field(...), got {next_type!r}"
+            )
         self._consume()
+        return ('CMP', field, next_type, self._parse_value())
+
+    def _parse_paren_value_list(self):
+        self._consume('LPAREN')
         values = [self._parse_value()]
         while self._peek()[0] == 'COMMA':
             self._consume()
             values.append(self._parse_value())
         if self._peek()[0] != 'RPAREN':
-            raise ValueError("Expected ')' to close IN value list")
+            raise ValueError("Expected ')' to close value list")
         self._consume()
         return tuple(values)
 
     def _parse_value(self):
         tok = self._peek()
-        if tok[0] in ('NUMBER', 'BYTES', 'STR'):
+        if tok[0] in ('NUMBER', 'BYTES', 'STR', 'BOOL'):
+            self._consume()
+            return tok[1]
+        if tok[0] == 'IDENT':
+            # a bare, unquoted word is treated as a string literal, same as 'word' —
+            # lets fixed-string comparisons skip the b'...'/'...' quoting, e.g.
+            # symbol == AAPL. Values that collide with a keyword (true/false/field/
+            # and/or/not/in) still need quotes to be used as a literal string.
             self._consume()
             return tok[1]
         raise ValueError(f"Expected a literal value, got {tok[0]!r}")
@@ -291,16 +384,34 @@ def _coerce_value(value, field_arr):
     """
     kind = field_arr.dtype.kind
     if kind == 'S':  # fixed-width byte string
+        if isinstance(value, bool):
+            return value
         if isinstance(value, (int, float)):
             return str(int(value)).encode('ascii')
         if isinstance(value, str):
             return value.encode('ascii')
     elif kind == 'U':  # fixed-width unicode string
+        if isinstance(value, bool):
+            return value
         if isinstance(value, (int, float)):
             return str(int(value))
         if isinstance(value, bytes):
             return value.decode('ascii')
     return value
+
+
+def _is_null_mask(field_arr):
+    """Boolean mask that is True where field_arr holds a missing value.
+
+    Fixed-width numeric/string dtypes have no missing-value representation
+    (aside from NaN for floats), so only float and object dtypes can be null.
+    """
+    kind = field_arr.dtype.kind
+    if kind == 'f':
+        return np.isnan(field_arr)
+    if kind == 'O':
+        return field_arr == None  # noqa: E711 (vectorised elementwise via numpy for object dtype)
+    return np.zeros(field_arr.shape, dtype=bool)
 
 
 def _evaluate(expr, arr):
@@ -325,12 +436,20 @@ def _evaluate(expr, arr):
         mask = np.isin(field_arr, coerced)
         return ~mask if kind == 'NOT_IN' else mask
 
+    if kind == 'IS_NULL':
+        _, field = expr
+        field_arr = arr if field is None else arr[field]
+        return _is_null_mask(field_arr)
+
+    if kind == 'IS_VALID':
+        _, field = expr
+        field_arr = arr if field is None else arr[field]
+        return ~_is_null_mask(field_arr)
+
     if kind == 'AND':
         return _evaluate(expr[1], arr) & _evaluate(expr[2], arr)
     if kind == 'OR':
         return _evaluate(expr[1], arr) | _evaluate(expr[2], arr)
-    if kind == 'XOR':
-        return _evaluate(expr[1], arr) ^ _evaluate(expr[2], arr)
     if kind == 'NOT':
         return ~_evaluate(expr[1], arr)
 
@@ -361,17 +480,33 @@ def arrayQuery(
     """
     Return an ndarray of indexes of the given data_arr where the data_arr element satisfy the query condition.
 
-    query: A sql-like query string.  If data_arr type is a simple dtype, the only variable allowed in
-      the query string is '_'.  If data_arr is a compond dtype, a variable can be any sub-type name of the dtype.
-      variables can be compared using the following operators:
-          '==': the value is equal to the array element (or element sub-field)
-          '!=': the value is not equal
-          '<': the value is less than
-          '>': the value is greater than
-          '<=': the value is less than or equal
-          '>=': the value is greater than or equal
-          'IN': the value is in the given set
-          Multiple varibles and/or conditions can be combined using the boolean opeators 'NOT', 'AND', 'OR', 'XOR'
+    query: a query string compatible with the h5col query syntax
+      (https://hdfgroup.github.io/h5col/queries/syntax.html), with 'AND'/'OR'/'NOT'/'IN'
+      also accepted as case-insensitive word synonyms. Fields are referenced with
+      field("name"), or simply the bare name/'name' — for a non-compound dtype, the array
+      element itself is field("_") or just '_'. field(...) is only needed to quote a name
+      that can't be written as a bare token (e.g. it collides with a keyword such as
+      'field'/'true'/'false'/'and'/'or'/'not'/'in', or contains characters outside
+      [A-Za-z0-9_]).
+      Predicates:
+          field("x") == v   (or '=')     : equal to v
+          field("x") != v                 : not equal to v
+          field("x") < v                   : less than v
+          field("x") <= v                  : less than or equal to v
+          field("x") > v                   : greater than v
+          field("x") >= v                  : greater than or equal to v
+          field("x").isin(v1, v2, ...)     : x is one of the given values
+          field("x") IN (v1, v2, ...)      : same as .isin(...)
+          field("x") NOT IN (v1, v2, ...)  : x is none of the given values
+          field("x").is_null()             : x is a missing value
+          field("x").is_valid()            : x is not a missing value
+      Predicates combine with the boolean operators '&'/AND, '|'/OR, '~'/NOT;
+      parenthesize sub-expressions freely, e.g. (a) & (b) or (a) AND (b).
+
+      A value may also be a bare, unquoted word (e.g. AAPL instead of 'AAPL' or
+      b'AAPL') — this is equivalent to a quoted string and is coerced to bytes/str
+      to match the field's dtype same as a quoted literal. A value that collides
+      with a keyword (true/false/field/and/or/not/in) still needs quotes.
 
     if selection is not None, only elements within the given selection are considered
 
@@ -380,12 +515,15 @@ def arrayQuery(
     The return value will be an ndarray.  The array shape (count, rank) where rank is the number of array dimensions.
 
     Example queries:
-        "_ > 1.0" # match any array element with a value greater than 1.0
-        "symbol == b'AAPL'"  # match any array element where the symbol field is b'AAPL' (for ascii numpy string dtypes)
-        "symbol == 'AAPL'"  # match any array element where the symbol field is 'AAPL' (for unicode numpy string dtypes)
-        "symbol IN ('AAPL', 'EBAY')"   # match any array element where the symbol field is 'AAPL' or 'EBAY'
-        "symbol IN ('AAPL', 'EBAY') AND 'date' > 20170102"
-        "symbol NOT IN ('AAPL', 'EBAY') AND 'date' > 20170102"
+        "_ > 1.0"    # bare '_' — match any array element with a value greater than 1.0
+        "field('_') > 1.0"    # equivalent, using field(...)
+        "symbol == b'AAPL'"   # bare field name — match any element where symbol is b'AAPL'
+        "symbol == AAPL"      # same, using a bare (unquoted) value instead of b'AAPL'
+        "field('symbol') == 'AAPL'"    # match any element where symbol is 'AAPL' (unicode dtype)
+        "symbol.isin('AAPL', 'EBAY')"   # match any element where symbol is 'AAPL' or 'EBAY'
+        "symbol IN (AAPL, EBAY)"        # same, using bare values and the 'IN' word synonym
+        "(symbol.isin('AAPL', 'EBAY')) & (field('date') > 20170102)"   # mixing bare/field(...) forms
+        "~(symbol.isin('AAPL', 'EBAY')) & (date > 20170102)"
 
     """
     if not isinstance(data_arr, np.ndarray):

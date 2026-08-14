@@ -17,7 +17,6 @@ from os import stat as os_stat
 from ..objid import createObjId, getCollectionForId
 from ..hdf5dtype import getTypeItem, isOpaqueDtype
 from ..array_util import bytesArrayToList
-from ..query_util import arrayQuery
 
 from .. import selections
 from .. import filters

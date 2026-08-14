@@ -66,7 +66,7 @@ Each app wires a reader to a writer through `Hdf5db`:
 - `hdf5dtype.py` — bidirectional mapping between HDF5/numpy dtypes and h5json type descriptors; exports `getTypeItem`, `createDataType`, `Reference`
 - `selections.py` — HDF5 dataspace selection types (hyperslabs, point selections, fancy indexing); used by both reader backends
 - `array_util.py` — conversion between JSON array representations and numpy arrays
-- `query_util.py` — expression parser and evaluator for dataset value queries (used by `Hdf5db.getDatasetValuesByUuid`)
+- `query_util.py` — expression parser and evaluator for dataset value queries (used by `Hdf5db.getDatasetValues` and `Hdf5db.queryDataset`)
 - `filters.py` — HDF5 compression filter handling
 - `objid.py` — UUID generation and classification for HDF5 object IDs (Schema 1 vs Schema 2)
 - `shape_util.py`, `dset_util.py` — helpers for dataspace and dataset operations
