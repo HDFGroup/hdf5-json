@@ -164,6 +164,95 @@ class H5pyTest(unittest.TestCase):
 
         db.close()
 
+    def testReadOpaqueDataset(self):
+        # reads a real HDF5 file whose opaque data has an actual HDF5 "tag"
+        # attached ("Character array") - h5py's high-level API can't read
+        # this at all (raises OSError: no appropriate function for
+        # conversion path) unless the memory type's tag is set to match, so
+        # this also exercises H5pyReader._readOpaqueDataset()'s low-level
+        # tag-matched read.
+        filepath = "data/hdf5/opaque_dset.h5"
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5pyReader(filepath, app_logger=self.log)
+        db.open()
+
+        ds1_id = db.getObjectIdByPath("/DS1")
+        sel_all = selections.select((4,), ...)
+        arr = db.getDatasetValues(ds1_id, sel_all)
+        self.assertEqual(arr.dtype, np.dtype("V7"))
+        self.assertEqual(
+            [v.tobytes() for v in arr],
+            [b"OPAQUE0", b"OPAQUE1", b"OPAQUE2", b"OPAQUE3"],
+        )
+
+        # a partial (hyperslab) selection - exercises the numpy-indexing
+        # path taken after the full tag-matched read
+        sel = selections.select((4,), slice(1, 3))
+        arr2 = db.getDatasetValues(ds1_id, sel)
+        self.assertEqual([v.tobytes() for v in arr2], [b"OPAQUE1", b"OPAQUE2"])
+
+        db.close()
+
+    def testReadOpaqueAttribute(self):
+        # reads a real HDF5 file whose opaque attribute has an actual HDF5
+        # "tag" attached - see testReadOpaqueDataset()
+        filepath = "data/hdf5/opaque_attr.h5"
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5pyReader(filepath, app_logger=self.log)
+        db.open()
+
+        ds1_id = db.getObjectIdByPath("/DS1")
+        attr = db.getAttribute(ds1_id, "A1")
+        self.assertEqual(attr["type"], {"class": "H5T_OPAQUE", "size": 7})
+        self.assertEqual(attr["encoding"], "base64")
+
+        value = db.getAttributeValue(ds1_id, "A1")
+        self.assertEqual(value.dtype, np.dtype("V7"))
+        self.assertEqual(
+            [v.tobytes() for v in value],
+            [b"OPAQUE0", b"OPAQUE1", b"OPAQUE2", b"OPAQUE3"],
+        )
+
+        db.close()
+
+    def testWriteReadOpaqueRoundTrip(self):
+        filepath = "test/unit/out/h5py_test_testWriteReadOpaqueRoundTrip.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+
+        wdb = Hdf5db(app_logger=self.log)
+        wdb.writer = H5pyWriter(filepath, no_data=False)
+        root_id = wdb.open()
+
+        dt = np.dtype("V2")
+        shape = (4,)
+        dset_id = wdb.createDataset(shape=shape, dtype=dt)
+        wdb.createHardLink(root_id, "DS1", dset_id)
+        arr = np.zeros(shape, dtype=dt)
+        arr[3] = b'\xfe\xff'
+        sel_all = selections.select(shape, ...)
+        wdb.setDatasetValues(dset_id, sel_all, arr)
+
+        attr_val = np.zeros((), dtype=dt)
+        attr_val[()] = b'\xfe\xff'
+        wdb.createAttribute(root_id, "A1", attr_val, dtype=dt)
+        wdb.close()
+
+        rdb = Hdf5db(app_logger=self.log)
+        rdb.reader = H5pyReader(filepath, app_logger=self.log)
+        root_id2 = rdb.open()
+        ds1_id = rdb.getObjectIdByPath("/DS1")
+
+        result = rdb.getDatasetValues(ds1_id, sel_all)
+        self.assertEqual(result.dtype, dt)
+        self.assertEqual([v.tobytes() for v in result], [b'\x00\x00'] * 3 + [b'\xfe\xff'])
+
+        attr_value = rdb.getAttributeValue(root_id2, "A1")
+        self.assertEqual(attr_value.dtype, dt)
+        self.assertEqual(attr_value.tobytes(), b'\xfe\xff')
+
+        rdb.close()
+
     def testReadRegionReferenceAttribute(self):
         # reads a real HDF5 file with region-reference attributes.  h5py can
         # resolve which dataset a region reference points to, but there's no

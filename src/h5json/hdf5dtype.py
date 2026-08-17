@@ -550,10 +550,12 @@ def getTypeItem(dt, metadata=None):
         else:
             raise TypeError("unknown object type")
     elif dt.kind == "V":
-        # void type
+        # void type - the only state h5json tracks for opaque data is its
+        # size; "tag" is an optional, arbitrary HDF5 description string with
+        # no numpy-dtype equivalent, so it's omitted rather than emitted
+        # empty (an empty "tag" violates the schema's minLength: 1).
         type_info["class"] = "H5T_OPAQUE"
         type_info["size"] = dt.itemsize
-        type_info["tag"] = ""  # todo - determine tag
     elif dt.base.kind == "S":
         # check for object reference
         ref_check = check_dtype(ref=dt.base)

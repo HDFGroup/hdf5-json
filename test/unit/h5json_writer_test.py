@@ -282,6 +282,49 @@ class H5JsonWriterTest(unittest.TestCase):
         self.assertEqual(item_shape["class"], "H5S_SCALAR")
         db.close()
 
+    def testCreateOpaqueAttribute(self):
+        # matches the format used in data/json/opaque_attr.json:
+        # {"value": "<base64>", "encoding": "base64"}
+        filepath = "test/unit/out/h5json_writer_testCreateOpaqueAttribute.json"
+
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        dt = np.dtype("V2")
+        value = np.zeros((), dtype=dt)
+        value[()] = b'\xfe\xff'
+        db.createAttribute(root_id, "A1", value, dtype=dt)
+
+        attr = db.getAttribute(root_id, "A1")
+        self.assertEqual(attr["type"], {"class": "H5T_OPAQUE", "size": 2})
+        self.assertEqual(attr["value"], "/v8=")
+        self.assertEqual(attr["encoding"], "base64")
+        db.close()
+
+    def testCreateOpaqueDataset(self):
+        # matches the format used in data/json/opaque_dset.json
+        filepath = "test/unit/out/h5json_writer_testCreateOpaqueDataset.json"
+
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        dt = np.dtype("V2")
+        shape = (4,)
+        dset_id = db.createDataset(shape=shape, dtype=dt)
+        db.createHardLink(root_id, "DS1", dset_id)
+        arr = np.zeros(shape, dtype=dt)
+        arr[3] = b'\xfe\xff'
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, arr)
+
+        dumped = db.writer.dumpDataset(dset_id)
+        self.assertEqual(dumped["type"], {"class": "H5T_OPAQUE", "size": 2})
+        self.assertEqual(dumped["value"], ["", "", "", "/v8="])
+        self.assertEqual(dumped["encoding"], "base64")
+        db.close()
+
     def testCreateRegionReferenceAttribute(self):
         # matches the format used in data/json/regionref_attr.json:
         # {"id": <bare uuid>, "select_type": ..., "selection": [...]}

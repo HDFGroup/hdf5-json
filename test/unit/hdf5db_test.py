@@ -1494,6 +1494,52 @@ class Hdf5dbTest(unittest.TestCase):
 
         db.close()
 
+    def testCreateOpaqueDataset(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        dt = np.dtype("V2")
+        shape = (4,)
+        dset_id = db.createDataset(shape=shape, dtype=dt)
+        db.createHardLink(root_id, "DS1", dset_id)
+
+        arr = np.zeros(shape, dtype=dt)
+        arr[3] = b'\xfe\xff'
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, arr)
+
+        result = db.getDatasetValues(dset_id, sel_all)
+        self.assertEqual(result.dtype, dt)
+        self.assertEqual([v.tobytes() for v in result], [b'\x00\x00'] * 3 + [b'\xfe\xff'])
+
+        dset_json = db.getObjectById(dset_id)
+        self.assertEqual(dset_json["type"], {"class": "H5T_OPAQUE", "size": 2})
+
+        db.close()
+
+    def testCreateOpaqueAttribute(self):
+        # matches the format used in data/json/opaque_attr.json:
+        # {"value": "<base64>", "encoding": "base64"}
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        dt = np.dtype("V2")
+        value = np.zeros((), dtype=dt)
+        value[()] = b'\xfe\xff'
+        db.createAttribute(root_id, "A1", value, dtype=dt)
+
+        attr = db.getAttribute(root_id, "A1")
+        self.assertEqual(attr["type"], {"class": "H5T_OPAQUE", "size": 2})
+        self.assertEqual(attr["shape"], {"class": "H5S_SCALAR"})
+        self.assertEqual(attr["value"], "/v8=")
+        self.assertEqual(attr["encoding"], "base64")
+
+        attr_value = db.getAttributeValue(root_id, "A1")
+        self.assertEqual(attr_value.dtype, dt)
+        self.assertEqual(attr_value.tobytes(), b'\xfe\xff')
+
+        db.close()
+
 
 if __name__ == "__main__":
     # setup test files

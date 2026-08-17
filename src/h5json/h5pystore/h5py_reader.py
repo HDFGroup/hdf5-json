@@ -10,12 +10,13 @@
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
 import h5py
+from h5py import h5t
 import numpy as np
 import logging
 from os import stat as os_stat
 
 from ..objid import createObjId, getCollectionForId
-from ..hdf5dtype import getTypeItem, isOpaqueDtype, RegionReference
+from ..hdf5dtype import getTypeItem, RegionReference, isOpaqueDtype
 from ..array_util import bytesArrayToList
 
 from .. import selections
@@ -221,6 +222,20 @@ class H5pyReader(H5Reader):
         else:
             return None
 
+    def _readOpaqueAttribute(self, attrObj):
+        """ Read the full opaque attribute via the low-level API using a
+        memory type tagged to match the file type - see
+        _readOpaqueDataset() for why this is needed. """
+        file_tid = attrObj.get_type()
+        itemsize = file_tid.get_size()
+        mem_tid = h5t.create(h5t.OPAQUE, itemsize)
+        tag = file_tid.get_tag()
+        if tag:
+            mem_tid.set_tag(tag)
+        buf = np.zeros(attrObj.shape, dtype=f"V{itemsize}")
+        attrObj.read(buf, mtype=mem_tid)
+        return buf
+
     def getAttribute(self, obj_id, name, include_data=True):
         """ Return JSON for the given attribute """
 
@@ -262,19 +277,23 @@ class H5pyReader(H5Reader):
             else:
                 shape_item["class"] = "H5S_SCALAR"
 
+        is_opaque = isinstance(type_item, dict) and type_item["class"] == "H5T_OPAQUE"
+
         item["shape"] = shape_item
         if shape_item["class"] == "H5S_NULL":
-            include_data = False
-        elif isinstance(type_item, dict) and type_item["class"] == "H5T_OPAQUE":
-            # TBD - don't include data for OPAQUE until JSON serialization
-            # issues are addressed
             include_data = False
         else:
             pass  # use include_data parameter
 
         if include_data:
             try:
-                data = obj.attrs[name]
+                if is_opaque:
+                    # h5py's high-level attrs[] requires the memory type's
+                    # tag to match the file type's (real HDF5 opaque data
+                    # usually has one) - read via the low-level API instead
+                    data = self._readOpaqueAttribute(attrObj)
+                else:
+                    data = obj.attrs[name]
                 # convert from h5py to h5json
                 data = self._copy_array(data, fin=obj.file)
             except TypeError:
@@ -283,6 +302,8 @@ class H5pyReader(H5Reader):
         if include_data and data is not None:
             value = bytesArrayToList(data)
             item["value"] = value
+            if is_opaque:
+                item["encoding"] = "base64"
         else:
             pass  # no data
         stats = self.getStats()
@@ -361,7 +382,7 @@ class H5pyReader(H5Reader):
 
         return item
 
-    def _getHDF5DatasetCreationProperties(self, dset, type_class):
+    def _getHDF5DatasetCreationProperties(self, dset):
         """ Get dataset creation properties maintained by HDF5 library """
 
         #
@@ -394,12 +415,8 @@ class H5pyReader(H5Reader):
         else:
             self.log.warning(f"unknown fill time value: {nFillTime}")
 
-        if type_class == "H5T_OPAQUE":
-            # TBD: store opaque fill value as a hex string
-            self.log.warning("Opaque fill value not supported")
-        else:
-            if plist.fill_value_defined() == h5py.h5d.FILL_VALUE_USER_DEFINED:
-                creationProps["fillValue"] = bytesArrayToList(dset.fillvalue)
+        if plist.fill_value_defined() == h5py.h5d.FILL_VALUE_USER_DEFINED:
+            creationProps["fillValue"] = bytesArrayToList(dset.fillvalue)
 
         # layout
         nLayout = plist.get_layout()
@@ -494,7 +511,7 @@ class H5pyReader(H5Reader):
                 shape_item["maxdims"] = maxshape
         item["shape"] = shape_item
 
-        item["cpl"] = self._getHDF5DatasetCreationProperties(dset, type_item["class"])
+        item["cpl"] = self._getHDF5DatasetCreationProperties(dset)
 
         return item
 
@@ -554,6 +571,24 @@ class H5pyReader(H5Reader):
 
         return obj_json
 
+    def _readOpaqueDataset(self, dset):
+        """ Read the full opaque dataset via the low-level API using a
+        memory type tagged to match the file type.  Real HDF5 opaque data
+        usually carries a "tag" (an arbitrary description string); h5py's
+        high-level indexing requires the memory type's tag to match, and
+        reading via a plain untagged buffer raises "no appropriate function
+        for conversion path". """
+        file_tid = dset.id.get_type()
+        itemsize = file_tid.get_size()
+        mem_tid = h5t.create(h5t.OPAQUE, itemsize)
+        tag = file_tid.get_tag()
+        if tag:
+            mem_tid.set_tag(tag)
+        buf = np.zeros(dset.shape, dtype=f"V{itemsize}")
+        space = dset.id.get_space()
+        dset.id.read(space, space, buf, mtype=mem_tid)
+        return buf
+
     def getDatasetValues(self, dset_id, sel, dtype=None, query=None):
         """
         Get values from dataset identified by obj_id.
@@ -566,15 +601,22 @@ class H5pyReader(H5Reader):
         if dset.shape is None:
             # TBD: return something like h5py.Empty in this case?
             return None
-        if isOpaqueDtype(dset.dtype):
-            # TBD: Opaque data not supported yet
-            return None
 
         if query is not None:
             # h5py doesn't support query
             raise NotImplementedError("queryDataset not implemented for H5pyReader")
 
-        if sel is None or sel.select_type == selections.H5S_SEL_ALL:
+        if isOpaqueDtype(dset.dtype):
+            # read the whole (tag-matched) dataset, then apply the selection
+            # with plain numpy indexing - which, unlike h5py's own dataspace
+            # selection, has no trouble with a paired-coordinate (multiple
+            # list dims) selection.
+            arr = self._readOpaqueDataset(dset)
+            if sel is not None and sel.select_type != selections.H5S_SEL_ALL:
+                if not isinstance(sel, selections.SimpleSelection):
+                    raise NotImplementedError("selection type not supported")
+                arr = arr[sel.slices]
+        elif sel is None or sel.select_type == selections.H5S_SEL_ALL:
             arr = dset[...]
         elif isinstance(sel, selections.SimpleSelection):
             rank = len(sel.shape)

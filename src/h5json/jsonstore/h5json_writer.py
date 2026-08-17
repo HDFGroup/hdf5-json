@@ -97,6 +97,8 @@ class H5JsonWriter(H5Writer):
         else:
             # dump values unless header -D was passed
             response["value"] = item["value"]
+            if "encoding" in item:
+                response["encoding"] = item["encoding"]
         return response
 
     def dumpAttributes(self, obj_id):
@@ -218,6 +220,8 @@ class H5JsonWriter(H5Writer):
                 sel_all = selections.select(dims, ...)
                 arr = self.db.getDatasetValues(obj_id, sel_all)
                 response["value"] = bytesArrayToList(arr)  # dump values unless header flag was passed
+                if type_item.get("class") == "H5T_OPAQUE":
+                    response["encoding"] = "base64"
         return response
 
     def dumpDatasets(self):

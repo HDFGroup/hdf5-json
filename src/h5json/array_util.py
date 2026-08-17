@@ -15,7 +15,7 @@ import base64
 import binascii
 import numpy as np
 
-from .hdf5dtype import isVlen, is_float16_dtype, guess_dtype, vlenBaseType, RegionReference
+from .hdf5dtype import isVlen, is_float16_dtype, guess_dtype, vlenBaseType, RegionReference, isOpaqueDtype
 
 MAX_VLEN_ELEMENT = 1_000_000  # restrict largest vlen element to one million
 
@@ -80,6 +80,53 @@ def _regionRefJsonToArray(data_shape, data_dtype, data_json):
     return arr
 
 
+def _opaqueElementToJson(raw):
+    """ Convert one opaque (numpy void) element to its h5json JSON
+    representation: a base64-encoded string, or "" for an all-zero element
+    (matches data/json/opaque_dset.json / opaque_attr.json). Opaque data is
+    an arbitrary binary blob with no canonical text representation, so
+    (unlike fixed/vlen strings) it's never decoded as UTF-8 text. """
+    raw_bytes = raw.tobytes()
+    if not any(raw_bytes):
+        return ""
+    return base64.b64encode(raw_bytes).decode("ascii")
+
+
+def _opaqueArrayToList(data):
+    """ Recursively convert an ndarray of opaque (numpy void) elements to
+    nested lists of base64-encoded strings/"". A numpy void scalar (a fully
+    indexed element, or a 0-d array) has ndim == 0 same as a 0-d ndarray, so
+    that's used as the leaf check rather than isinstance(data, np.ndarray). """
+    if data.ndim == 0:
+        return _opaqueElementToJson(data)
+    return [_opaqueArrayToList(data[i]) for i in range(data.shape[0])]
+
+
+def _opaqueJsonToArray(data_shape, data_dtype, data_json):
+    """ Inverse of _opaqueArrayToList(): convert nested JSON base64 strings
+    (or "" for an all-zero element) into an ndarray of opaque (numpy void)
+    elements. Assigning a shorter-than-itemsize bytes value (including b""
+    for "") zero-pads the remainder, so "" naturally reconstructs as
+    all-zero without special-casing it. """
+    shape = tuple(data_shape)
+    arr = np.zeros(shape, dtype=data_dtype)
+
+    def fill(data, index):
+        # a leaf is always a (possibly empty) base64 string; only
+        # lists/tuples represent additional array dimensions - checking the
+        # value's type, rather than comparing index depth to len(shape),
+        # keeps this correct even for a scalar value passed in unwrapped
+        # against a shape of (1,) (the convention used for H5S_SCALAR attrs).
+        if isinstance(data, str):
+            arr[index] = base64.b64decode(data) if data else b""
+        else:
+            for i, item in enumerate(data):
+                fill(item, index + (i,))
+
+    fill(data_json, ())
+    return arr
+
+
 def bytesArrayToList(data):
     """
     Convert list that may contain bytes type elements to list of string elements
@@ -89,6 +136,9 @@ def bytesArrayToList(data):
     if isinstance(data, (np.ndarray, np.generic)) and data.dtype.metadata and \
             data.dtype.metadata.get("ref") is RegionReference:
         return _regionRefArrayToList(data)
+
+    if isinstance(data, (np.ndarray, np.generic)) and isOpaqueDtype(data.dtype):
+        return _opaqueArrayToList(data)
 
     if type(data) in (bytes, str):
         is_list = False
@@ -223,6 +273,9 @@ def jsonToArray(data_shape, data_dtype, data_json):
     if data_dtype is not None and getattr(data_dtype, "metadata", None) and \
             data_dtype.metadata.get("ref") is RegionReference:
         return _regionRefJsonToArray(data_shape, data_dtype, data_json)
+
+    if data_dtype is not None and isOpaqueDtype(np.dtype(data_dtype)):
+        return _opaqueJsonToArray(data_shape, data_dtype, data_json)
 
     npoints = getNumElements(data_shape)
     np_shape_rank = len(data_shape)

@@ -177,6 +177,57 @@ class ArrayUtilTest(unittest.TestCase):
         as_list = bytesArrayToList(arr)
         self.assertEqual(as_list, [fancy_json])
 
+    def testByteArrayToListOpaque(self):
+        # matches the format used in data/json/opaque_dset.json /
+        # opaque_attr.json: base64-encoded strings, with an all-zero
+        # element compacted to ""
+        dt = np.dtype("V2")
+
+        arr = np.zeros((4,), dtype=dt)
+        arr[3] = b'\xfe\xff'
+        result = bytesArrayToList(arr)
+        json.dumps(result)  # must be JSON-serializable
+        self.assertEqual(result, ["", "", "", "/v8="])
+
+        # scalar (0-d)
+        arr0 = np.zeros((), dtype=dt)
+        arr0[()] = b'\xfe\xff'
+        self.assertEqual(bytesArrayToList(arr0), "/v8=")
+
+        # all-zero scalar -> ""
+        arr0z = np.zeros((), dtype=dt)
+        self.assertEqual(bytesArrayToList(arr0z), "")
+
+        # 2-D array
+        arr2 = np.zeros((2, 1), dtype=dt)
+        arr2[1, 0] = b'\xfe\xff'
+        self.assertEqual(bytesArrayToList(arr2), [[""], ["/v8="]])
+
+    def testJsonToArrayOpaque(self):
+        # inverse of testByteArrayToListOpaque()
+        dt = np.dtype("V2")
+
+        arr = jsonToArray((4,), dt, ["", "", "", "/v8="])
+        self.assertEqual(arr.shape, (4,))
+        self.assertEqual(arr.dtype, dt)
+        self.assertEqual([v.tobytes() for v in arr], [b'\x00\x00'] * 3 + [b'\xfe\xff'])
+
+        # scalar (0-d)
+        arr0 = jsonToArray((), dt, "/v8=")
+        self.assertEqual(arr0.shape, ())
+        self.assertEqual(arr0[()].tobytes(), b'\xfe\xff')
+
+        # scalar attribute case: hsds represents an H5S_SCALAR shape as
+        # np_dims=[1] with a bare (unwrapped) string value
+        arr1 = jsonToArray((1,), dt, "/v8=")
+        self.assertEqual(arr1.shape, (1,))
+        self.assertEqual(arr1[0].tobytes(), b'\xfe\xff')
+
+        # round trip through bytesArrayToList() and back
+        as_list = bytesArrayToList(arr)
+        arr_rt = jsonToArray((4,), dt, as_list)
+        self.assertEqual([v.tobytes() for v in arr_rt], [v.tobytes() for v in arr])
+
     def testToTuple(self):
         data0d = 42  # scalar
         data1d1 = [1]  # one dimensional, one element list

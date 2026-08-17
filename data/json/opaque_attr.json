@@ -1,56 +1,62 @@
 {
-    "apiVersion": "1.0.0", 
+    "apiVersion": "1.1.1",
     "datasets": {
-        "a261f4d9-83f8-11e5-b283-3c15c2da029e": {
+        "83fefa97-82b10ff9-5f45-da0a54-668d61": {
             "alias": [
                 "/DS1"
-            ], 
+            ],
             "attributes": [
                 {
-                    "name": "A1", 
+                    "encoding": "base64",
+                    "name": "A1",
                     "shape": {
-                        "class": "H5S_SIMPLE", 
+                        "class": "H5S_SIMPLE",
                         "dims": [
                             4
                         ]
-                    }, 
+                    },
                     "type": {
-                        "class": "H5T_OPAQUE", 
+                        "class": "H5T_OPAQUE",
                         "size": 7
-                    }
+                    },
+                    "value": [
+                        "T1BBUVVFMA==",
+                        "T1BBUVVFMQ==",
+                        "T1BBUVVFMg==",
+                        "T1BBUVVFMw=="
+                    ]
                 }
-            ], 
+            ],
             "creationProperties": {
-                "allocTime": "H5D_ALLOC_TIME_LATE", 
-                "fillTime": "H5D_FILL_TIME_IFSET", 
+                "allocTime": "H5D_ALLOC_TIME_LATE",
+                "fillTime": "H5D_FILL_TIME_IFSET",
                 "layout": {
                     "class": "H5D_CONTIGUOUS"
                 }
-            }, 
+            },
             "shape": {
                 "class": "H5S_NULL"
-            }, 
+            },
             "type": {
-                "base": "H5T_STD_I32LE", 
+                "base": "H5T_STD_I32LE",
                 "class": "H5T_INTEGER"
-            }, 
-            "value": null
+            }
         }
-    }, 
+    },
     "groups": {
-        "a260f382-83f8-11e5-ab37-3c15c2da029e": {
+        "83fefa97-82b10ff9-0b76-721f0a-398771": {
             "alias": [
                 "/"
-            ], 
+            ],
             "links": [
                 {
-                    "class": "H5L_TYPE_HARD", 
-                    "collection": "datasets", 
-                    "id": "a261f4d9-83f8-11e5-b283-3c15c2da029e", 
+                    "class": "H5L_TYPE_HARD",
+                    "collection": "datasets",
+                    "id": "83fefa97-82b10ff9-5f45-da0a54-668d61",
                     "title": "DS1"
                 }
             ]
         }
-    }, 
-    "root": "a260f382-83f8-11e5-ab37-3c15c2da029e"
+    },
+    "root": "83fefa97-82b10ff9-0b76-721f0a-398771"
 }

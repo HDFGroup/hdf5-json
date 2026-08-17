@@ -12,7 +12,7 @@
 
 import numpy as np
 import logging
-from .hdf5dtype import getTypeItem, createDataType, Reference, special_dtype
+from .hdf5dtype import getTypeItem, createDataType, Reference, special_dtype, isOpaqueDtype
 from .hdf5dtype import numpy_integer_types, numpy_float_types
 from .array_util import jsonToArray, bytesArrayToList
 from .query_util import arrayQuery
@@ -769,6 +769,8 @@ class Hdf5db:
         attr_json = {"shape": shape_json, "type": type_json}
         if shape != "H5S_NULL":
             attr_json["value"] = value_json
+            if isOpaqueDtype(dtype):
+                attr_json["encoding"] = "base64"
         attr_json["created"] = getNow()
 
         # slot into the obj_json["attrs"]

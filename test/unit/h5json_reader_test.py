@@ -95,6 +95,51 @@ class H5pyReaderTest(unittest.TestCase):
 
         db.close()
 
+    def testOpaqueAttribute(self):
+        # reads the actual fixture file the opaque JSON format was designed
+        # around
+        filepath = "data/json/opaque_attr.json"
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.open()
+
+        ds1_id = db.getObjectIdByPath("/DS1")
+        attr = db.getAttribute(ds1_id, "A1")
+        self.assertEqual(attr["type"], {"class": "H5T_OPAQUE", "size": 7})
+        value = attr["value"]
+        self.assertEqual(len(value), 4)
+        self.assertEqual(value[0], 'T1BBUVVFMA==')
+        self.assertEqual(value[1], 'T1BBUVVFMQ==')
+        self.assertEqual(value[2], 'T1BBUVVFMg==')
+        self.assertEqual(value[3], 'T1BBUVVFMw==')
+        self.assertEqual(attr["encoding"], "base64")
+
+        value = db.getAttributeValue(ds1_id, "A1")
+        self.assertEqual(value.dtype, np.dtype("V7"))
+        self.assertEqual(value.tobytes(), b'OPAQUE0OPAQUE1OPAQUE2OPAQUE3')
+
+        db.close()
+
+    def testOpaqueDataset(self):
+        # reads the actual fixture file the opaque JSON format was designed
+        # around
+        filepath = "data/json/opaque_dset.json"
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.open()
+
+        ds1_id = db.getObjectIdByPath("/DS1")
+        sel_all = selections.select((4,), ...)
+        arr = db.getDatasetValues(ds1_id, sel_all)
+        self.assertEqual(arr.dtype, np.dtype("V7"))
+        self.assertEqual(arr.shape, (4,))
+        self.assertEqual(
+            [v.tobytes() for v in arr],
+            [b"OPAQUE0", b"OPAQUE1", b"OPAQUE2", b"OPAQUE3"],
+        )
+
+        db.close()
+
     def testRegionReferenceAttribute(self):
         # reads the actual fixture file the region reference JSON format was
         # designed around

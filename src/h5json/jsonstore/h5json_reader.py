@@ -88,7 +88,7 @@ class H5JsonReader(H5Reader):
         resp = {}
         # selectively copy from the db dict
         for k in json_obj:
-            for k in ("shape", "type", "cpl", "dcpl"):
+            for k in ("shape", "type", "cpl", "dcpl", "encoding"):
                 if k in json_obj:
                     resp[k] = json_obj[k]
         if include_attrs and "attributes" in json_obj:
@@ -108,6 +108,8 @@ class H5JsonReader(H5Reader):
                 attr["shape"] = item["shape"]
                 if "value" in item:
                     attr["value"] = item["value"]
+                    if "encoding" in item:
+                        attr["encoding"] = item["encoding"]
                 attrs[name] = attr
             resp["attributes"] = attrs
 
