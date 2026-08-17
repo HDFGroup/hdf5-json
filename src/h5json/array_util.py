@@ -20,6 +20,17 @@ from .hdf5dtype import isVlen, is_float16_dtype, guess_dtype, vlenBaseType, Regi
 MAX_VLEN_ELEMENT = 1_000_000  # restrict largest vlen element to one million
 
 
+def _isVlenLike(dt):
+    """ True for vlen types, and for RegionReference-tagged object dtypes.
+    RegionReference elements are also variable-length raw bytes (produced by
+    RegionReference.tobytes()/frombytes()), just tagged with 'ref' metadata
+    instead of 'vlen', so they serialize the same length-prefixed way. """
+    if isVlen(dt):
+        return True
+    base = dt.base
+    return bool(base.metadata) and base.metadata.get("ref") is RegionReference
+
+
 def _regionRefElementToJson(raw):
     """ Convert one RegionReference dataset/attribute element (as produced by
     RegionReference.tobytes(), or a RegionReference instance itself) to its
@@ -283,11 +294,11 @@ def getElementSize(e, dt):
             field_dt = dt[name]
             field_val = e[name]
             count += getElementSize(field_val, field_dt)
-    elif not dt.base.metadata or "vlen" not in dt.base.metadata:
+    elif not _isVlenLike(dt):
         count = dt.itemsize  # fixed size element
     else:
         # variable length element
-        vlen = dt.base.metadata["vlen"]
+        vlen = dt.base.metadata.get("vlen", bytes)
         if isinstance(e, int):
             if e == 0:
                 count = 4  # non-initialized element
@@ -324,7 +335,7 @@ def getByteArraySize(arr):
     """
     Get number of bytes needed to store given numpy array as a bytestream
     """
-    if not isVlen(arr.dtype):
+    if not _isVlenLike(arr.dtype):
         return arr.itemsize * math.prod(arr.shape)
     nElements = math.prod(arr.shape)
     # reshape to 1d for easier iteration
@@ -360,7 +371,7 @@ def copyElement(e, dt, buffer, offset):
             field_dt = dt[name]
             field_val = e[name]
             offset = copyElement(field_val, field_dt, buffer, offset)
-    elif not dt.base.metadata or "vlen" not in dt.base.metadata:
+    elif not _isVlenLike(dt):
         # print(f"no vlen: {e} type: {type(e)} e.dtype: {e.dtype} itemsize: {dt.itemsize}")
         e_buf = np.asarray(e, dtype=dt).tobytes()
         if len(e_buf) < dt.itemsize:
@@ -373,7 +384,7 @@ def copyElement(e, dt, buffer, offset):
         offset = copyBuffer(e_buf, buffer, offset)
     else:
         # variable length element
-        vlen = dt.base.metadata["vlen"]
+        vlen = dt.base.metadata.get("vlen", bytes)
         if isinstance(e, int):
             if e == 0:
                 # write 4-byte integer 0 to buffer
@@ -470,7 +481,7 @@ def readElement(buffer, offset, arr, index, dt):
         for name in dt.names:
             field_dt = dt[name]
             offset = readElement(buffer, offset, e, name, field_dt)
-    elif not dt.base.metadata or "vlen" not in dt.base.metadata:
+    elif not _isVlenLike(dt):
         count = dt.itemsize
         n = offset
         m = offset + count
@@ -485,7 +496,7 @@ def readElement(buffer, offset, arr, index, dt):
             raise
     else:
         # variable length element
-        vlenBaseType = dt.base.metadata["vlen"]
+        vlenBaseType = dt.base.metadata.get("vlen", bytes)
         e = arr[index]
 
         if isinstance(e, np.ndarray):
@@ -561,7 +572,7 @@ def arrayToBytes(arr, encoding=None):
     Return byte representation of numpy array
     """
 
-    if isVlen(arr.dtype):
+    if _isVlenLike(arr.dtype):
         nSize = getByteArraySize(arr)
         buffer = bytearray(nSize)
         offset = 0
@@ -617,7 +628,7 @@ def bytesToArray(data, dt, shape, encoding=None):
         # decode the data
         # will raise ValueError if non-decodable
         data = decodeData(data)
-    if not isVlen(dt):
+    if not _isVlenLike(dt):
         # regular numpy from string
         arr = np.frombuffer(data, dtype=dt)
     else:

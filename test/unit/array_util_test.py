@@ -138,6 +138,16 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertEqual(arr0.shape, ())
         self.assertEqual(RegionReference.frombytes(arr0[()]).to_json(), points_json)
 
+        # scalar attribute case: hsds represents an H5S_SCALAR shape as
+        # np_dims=[1] (rather than ()) without wrapping the JSON value in a
+        # matching 1-element list - a bare dict (or None) must still be
+        # treated as the single leaf value, not iterated over as if it were
+        # a list of per-element values (regression test for a bug where
+        # enumerate() over the dict's keys was passed to RegionReference.from_json())
+        arr1 = jsonToArray((1,), dt, points_json)
+        self.assertEqual(arr1.shape, (1,))
+        self.assertEqual(RegionReference.frombytes(arr1[0]).to_json(), points_json)
+
         # round trip through bytesArrayToList() and back
         as_list = bytesArrayToList(arr)
         arr_rt = jsonToArray((3,), dt, as_list)
@@ -688,6 +698,49 @@ class ArrayUtilTest(unittest.TestCase):
             self.assertTrue(False)  # expected type error
         except TypeError:
             pass  # expected, object arrays not supported for arrayToBytes
+
+        # RegionReference: also an object ("O") dtype, but tagged with 'ref'
+        # metadata instead of 'vlen' - unlike the plain object array above,
+        # this must succeed: each element is variable-length raw bytes
+        # (RegionReference.tobytes()) and should serialize the same
+        # length-prefixed way vlen bytes/str elements do.
+        root_id = createObjId("groups")
+        dset_id = createObjId("datasets", root_id=root_id)
+        dt = special_dtype(ref=RegionReference)
+
+        pts_sel = selections.select((3, 16), ([0, 2], [1, 11]))
+        ref_pts = RegionReference(dset_id, pts_sel)
+        hs_sel = selections.select((3, 16), (slice(0, 2), slice(0, 4)))
+        ref_hs = RegionReference(dset_id, hs_sel)
+
+        arr = np.zeros((3,), dtype=dt)
+        arr[0] = ref_pts.tobytes()
+        arr[1] = ref_hs.tobytes()
+        arr[2] = 0  # uninitialized/never-written element (as np.zeros leaves it)
+
+        count = getByteArraySize(arr)
+        buffer = arrayToBytes(arr)
+        self.assertEqual(len(buffer), count)
+
+        # convert back to array
+        arr_copy = bytesToArray(buffer, dt, (3,))
+        self.assertEqual(arr_copy[0], ref_pts.tobytes())
+        self.assertEqual(arr_copy[1], ref_hs.tobytes())
+        # the uninitialized element round-trips to an empty (null) ref
+        self.assertEqual(arr_copy[2], b'')
+
+        as_list = bytesArrayToList(arr_copy)
+        self.assertEqual(as_list[0]["id"], getUuidFromId(dset_id))
+        self.assertEqual(as_list[0]["select_type"], "H5S_SEL_POINTS")
+        self.assertEqual(as_list[1]["select_type"], "H5S_SEL_HYPERSLABS")
+        self.assertIsNone(as_list[2])
+
+        # an explicit null ref (b'') also round-trips correctly
+        arr_null = np.zeros((1,), dtype=dt)
+        arr_null[0] = b''
+        buffer_null = arrayToBytes(arr_null)
+        arr_null_copy = bytesToArray(buffer_null, dt, (1,))
+        self.assertEqual(arr_null_copy[0], b'')
 
         # VLEN of strings
         dt = special_dtype(vlen=str)
