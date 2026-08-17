@@ -54,7 +54,12 @@ def _regionRefJsonToArray(data_shape, data_dtype, data_json):
     arr = np.empty(shape, dtype=data_dtype)
 
     def fill(data, index):
-        if len(index) == len(shape):
+        # a leaf is always None or a dict (the region ref JSON representation);
+        # only lists/tuples represent additional array dimensions. Checking the
+        # value's type - rather than comparing index depth to len(shape) - keeps
+        # this correct even for a scalar value passed in unwrapped against a
+        # shape of (1,) (the convention callers use for H5S_SCALAR attributes).
+        if data is None or isinstance(data, dict):
             arr[index] = b'' if data is None else RegionReference.from_json(data).tobytes()
         else:
             for i, item in enumerate(data):
