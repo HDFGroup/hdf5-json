@@ -15,7 +15,7 @@ import logging
 from os import stat as os_stat
 
 from ..objid import createObjId, getCollectionForId
-from ..hdf5dtype import getTypeItem, isOpaqueDtype
+from ..hdf5dtype import getTypeItem, isOpaqueDtype, RegionReference
 from ..array_util import bytesArrayToList
 
 from .. import selections
@@ -72,9 +72,29 @@ class H5pyReader(H5Reader):
                         out = f"{collection}/{obj_id}"
 
             elif is_regionreference(ref):
-                self.log.warning("region reference not supported")
-                # TBD: just return a null region reference till we have support
-                out = ""
+                # We can resolve which dataset a region reference points to
+                # (same as for a plain object reference, below), but not
+                # what it actually selects within that dataset - so bind the
+                # RegionReference to its target dataset only, with no
+                # selection.
+                out = b''  # null - matches the established "unset" convention
+
+                if val:
+                    try:
+                        fin_obj = fin[val]
+                    except AttributeError as ae:
+                        msg = f"Unable able to get obj for ref value: {ae}"
+                        self.log.error(msg)
+                        raise ValueError(msg)
+
+                    addr = h5py.h5o.get_info(fin_obj.id).addr
+                    if addr not in self._addr_map:
+                        msg = f"No object found for ref object: {fin_obj.name}"
+                        self.log.warning(msg)
+                    else:
+                        obj_id = self._addr_map[addr]
+                        region_ref = RegionReference("datasets/" + obj_id)
+                        out = region_ref.tobytes()
             else:
                 raise TypeError(f"Unexpected ref type: {type(ref)}")
         elif src_dt.metadata and "vlen" in src_dt.metadata:

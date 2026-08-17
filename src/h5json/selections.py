@@ -17,6 +17,10 @@
 
 from __future__ import absolute_import
 
+import itertools
+import json
+import struct
+
 import numpy as np
 
 
@@ -35,6 +39,44 @@ H5S_SELECT_PREPEND = 3
 H5S_SELECT_OR = 4
 H5S_SELECT_NONE = 5
 H5S_SELECT_NOTB = 6
+
+
+# --- Binary (tobytes/frombytes) serialization format ---
+#
+# A compact, fixed-width binary layout - as opposed to to_dict()/JSON, which
+# spells out coordinate lists as decimal text.  Point/fancy selections with
+# large coordinate lists are stored as raw little-endian integer arrays (via
+# numpy), avoiding per-value text formatting/parsing.
+#
+# All numeric payload values (shape extents, slice start/stop/step, scalar
+# indices, and point-list coordinates) are bounded by the dataspace's
+# extents, so a single unsigned integer width - chosen from the largest
+# extent in the shape - is used for all of them: 16-bit when every extent is
+# under 64K, 32-bit when under 4G, and 64-bit otherwise.
+_SEL_MAGIC = b"HSEL"
+_SEL_VERSION = 1
+_SEL_CLASS_CODES = {"SimpleSelection": 0}
+_SEL_DIM_SLICE = 0
+_SEL_DIM_LIST = 1
+_SEL_DIM_INT = 2
+
+# width_code -> (byte width, struct format char, numpy dtype)
+_SEL_WIDTH_INFO = {
+    0: (2, "H", np.dtype("<u2")),
+    1: (4, "I", np.dtype("<u4")),
+    2: (8, "Q", np.dtype("<u8")),
+}
+
+
+def _select_width_code(shape):
+    """ Smallest unsigned int width (see _SEL_WIDTH_INFO) that can hold every extent in shape. """
+    max_extent = max(shape) if shape else 0
+    if max_extent < (1 << 16):
+        return 0
+    elif max_extent < (1 << 32):
+        return 1
+    else:
+        return 2
 
 
 def select(obj, args, fields=None):
@@ -79,9 +121,9 @@ def select(obj, args, fields=None):
         args = (args,)
 
     if len(obj_shape) == 0:
-        # scalar object
-        sel = ScalarSelection(obj_shape, args)
-        return sel
+        # scalar object - handled by SimpleSelection like any other shape;
+        # it has exactly one point, so any valid args (Ellipsis, ()) select it.
+        return SimpleSelection(obj_shape, args, fields=fields)
 
     # "Special" indexing objects
     if len(args) == 1:
@@ -883,6 +925,82 @@ def _handle_dict_selection(shape, arg):
     return slices
 
 
+def from_dict(d):
+    """ Reconstruct a Selection instance from a dict produced by Selection.to_dict(). """
+    shape = tuple(d["shape"])
+    fields = d.get("fields")
+    cls_name = d.get("class", "SimpleSelection")
+
+    if cls_name != "SimpleSelection":
+        raise ValueError(f"Unsupported selection class: {cls_name}")
+
+    if d.get("select_type") == H5S_SEL_ALL:
+        return SimpleSelection(shape, None, fields=fields)
+
+    args = []
+    for item in d["slices"]:
+        item_type = item["type"]
+        if item_type == "slice":
+            args.append(slice(item["start"], item["stop"], item["step"]))
+        elif item_type == "list":
+            args.append(list(item["values"]))
+        elif item_type == "int":
+            args.append(item["value"])
+        else:
+            raise ValueError(f"Unsupported slice element type: {item_type}")
+    return SimpleSelection(shape, tuple(args), fields=fields)
+
+
+def from_region_json(d):
+    """ Reconstruct a Selection from the {"select_type": ..., "selection": [...]}
+    representation used for HDF5 region references in the h5json format (the
+    mirror of SimpleSelection.to_region_json()) - see
+    data/json/regionref_dset.json for an example.
+
+    This representation doesn't carry the referenced dataset's shape, so a
+    minimal shape that just contains the given selection is used - the
+    resulting sel.shape will not necessarily equal the true referenced
+    dataset's shape.
+
+    A single hyperslab block reconstructs as H5S_SEL_HYPERSLABS.  Multiple
+    disjoint blocks (as a real HDF5 region reference can have, e.g. for a
+    blocked/strided hyperslab - this project's Selection model has no
+    equivalent for that) are expanded into an equivalent paired-coordinate
+    point selection covering the exact same cells; this can be memory
+    intensive for selections with very large blocks.
+    """
+    select_type = d.get("select_type")
+    selection = d.get("selection")
+    if not selection:
+        raise ValueError("Empty region reference selection")
+
+    if select_type == "H5S_SEL_POINTS":
+        rank = len(selection[0])
+        shape = tuple(max(int(pt[dim]) for pt in selection) + 1 for dim in range(rank))
+        coords = tuple([int(pt[dim]) for pt in selection] for dim in range(rank))
+        return select(shape, coords)
+
+    if select_type == "H5S_SEL_HYPERSLABS":
+        rank = len(selection[0][0])
+        if len(selection) == 1:
+            start, end = selection[0]
+            shape = tuple(int(e) + 1 for e in end)
+            args = tuple(slice(int(s), int(e) + 1, 1) for s, e in zip(start, end))
+            return select(shape, args)
+
+        # multiple disjoint blocks - no single-hyperslab equivalent in this
+        # model, so expand to the exact set of covered points instead
+        points = []
+        for start, end in selection:
+            ranges = [range(int(s), int(e) + 1) for s, e in zip(start, end)]
+            points.extend(itertools.product(*ranges))
+        shape = tuple(max(pt[dim] for pt in points) + 1 for dim in range(rank))
+        coords = tuple([pt[dim] for pt in points] for dim in range(rank))
+        return select(shape, coords)
+
+    raise NotImplementedError(f"Region reference JSON import not supported for select_type {select_type}")
+
+
 class Selection(object):
 
     """
@@ -1024,6 +1142,89 @@ class Selection(object):
     def __repr__(self):
         return f"Selection(shape:{self._shape})"
 
+    def to_dict(self):
+        """ Return a JSON-serializable dict representation of this selection. """
+        d = {
+            "class": type(self).__name__,
+            "shape": list(self._shape),
+            "select_type": self._select_type,
+        }
+        if self._fields is not None:
+            d["fields"] = sorted(self._fields)
+        return d
+
+    def _pack_body(self, width_code):
+        """ Subclass hook: return the binary payload specific to this selection type. """
+        return b""
+
+    def tobytes(self):
+        """ Serialize this selection to a compact binary bytearray.
+
+        Unlike to_dict()/JSON, coordinate lists (fancy/point selections) are
+        stored as raw integer arrays rather than decimal text, so this stays
+        cheap for selections with large numbers of points.  The integer
+        width used for shape/index values (16/32/64-bit) is chosen from the
+        selection's own extents - see _select_width_code().
+        """
+        width_code = _select_width_code(self._shape)
+        _, fmt, _ = _SEL_WIDTH_INFO[width_code]
+        buf = bytearray()
+        buf += _SEL_MAGIC
+        buf += struct.pack("<BBBBH", _SEL_VERSION, _SEL_CLASS_CODES[type(self).__name__],
+                           self._select_type, width_code, len(self._shape))
+        if self._shape:
+            buf += struct.pack(f"<{len(self._shape)}{fmt}", *self._shape)
+        if self._fields is None:
+            buf += struct.pack("<B", 0)
+        else:
+            fields_sorted = sorted(self._fields)
+            buf += struct.pack("<BH", 1, len(fields_sorted))
+            for f in fields_sorted:
+                fb = f.encode("utf-8")
+                buf += struct.pack("<H", len(fb))
+                buf += fb
+        buf += self._pack_body(width_code)
+        return buf
+
+    @classmethod
+    def frombytes(cls, data):
+        """ Reconstruct a Selection instance from a bytearray produced by tobytes(). """
+        data = bytes(data)
+        if data[:4] != _SEL_MAGIC:
+            raise ValueError("Invalid selection byte stream")
+        version, class_code, select_type, width_code, rank = struct.unpack_from("<BBBBH", data, 4)
+        offset = 4 + struct.calcsize("<BBBBH")
+        if version != _SEL_VERSION:
+            raise ValueError(f"Unsupported selection serialization version: {version}")
+        if width_code not in _SEL_WIDTH_INFO:
+            raise ValueError(f"Unsupported selection integer width code: {width_code}")
+        _, fmt, _ = _SEL_WIDTH_INFO[width_code]
+
+        if rank:
+            shape = struct.unpack_from(f"<{rank}{fmt}", data, offset)
+            offset += _SEL_WIDTH_INFO[width_code][0] * rank
+        else:
+            shape = ()
+
+        fields_flag = data[offset]
+        offset += 1
+        fields = None
+        if fields_flag:
+            count = struct.unpack_from("<H", data, offset)[0]
+            offset += 2
+            fields = []
+            for _ in range(count):
+                flen = struct.unpack_from("<H", data, offset)[0]
+                offset += 2
+                fields.append(data[offset:offset + flen].decode("utf-8"))
+                offset += flen
+
+        class_name = {v: k for k, v in _SEL_CLASS_CODES.items()}.get(class_code)
+        if class_name is None:
+            raise ValueError(f"Unsupported selection class code: {class_code}")
+        target_cls = globals()[class_name]
+        return target_cls._unpack_body(shape, select_type, fields, width_code, data, offset)
+
 
 class SimpleSelection(Selection):
 
@@ -1034,6 +1235,10 @@ class SimpleSelection(Selection):
     given as a list of coordinates or a boolean index array, the select_type
     is H5S_SEL_FANCY.  The start/count/step properties and broadcast() are
     only valid for hyperslab selections.
+
+    A scalar dataset (shape == ()) is also represented by this class: it
+    has exactly one point, so any valid construction (None, (), (Ellipsis,))
+    selects it and always yields select_type H5S_SEL_ALL.
     """
 
     # --- Properties ---
@@ -1069,7 +1274,7 @@ class SimpleSelection(Selection):
             return tuple(self._slices)
         rank = len(self._shape)
         return tuple(
-            slice(self.start[d], self.start[d] + self.count[d], self.step[d])
+            slice(self.start[d], self.start[d] + self.count[d] * self.step[d], self.step[d])
             for d in range(rank)
         )
 
@@ -1079,18 +1284,11 @@ class SimpleSelection(Selection):
         Selection.__init__(self, shape, fields=fields)
         rank = len(self._shape)
 
-        if self._shape == ():
-            if hyperslab is not None and hyperslab not in (Ellipsis, ()):
-                raise TypeError("Invalid index for scalar dataset (only ..., () allowed)")
-            self._select_type = H5S_SEL_ALL
-            self._mshape = ()
-            return self
-
         if hyperslab is None:
             self._sel = ((0,) * rank, self._shape, (1,) * rank, (False,) * rank)
             self._mshape = self._shape
             self._select_type = H5S_SEL_ALL
-            return self
+            return
 
         def _is_fancy_arg(arg):
             if isinstance(arg, (slice, type(Ellipsis))):
@@ -1166,7 +1364,10 @@ class SimpleSelection(Selection):
             # Hyperslab path: slices and integer indices only.
             self._sel = _handle_simple(self._shape, hyperslab)
             self._mshape = tuple(x for x, y in zip(self._sel[1], self._sel[3]) if not y)
-            self._select_type = H5S_SEL_HYPERSLABS
+            # A scalar (rank-0) dataspace has exactly one point - any valid
+            # selection on it (None, (), (Ellipsis,), ...) selects that point,
+            # so canonicalize to ALL regardless of which form was given.
+            self._select_type = H5S_SEL_ALL if rank == 0 else H5S_SEL_HYPERSLABS
 
     # --- Methods ---
 
@@ -1297,6 +1498,93 @@ class SimpleSelection(Selection):
         s += fields
 
         return s
+
+    def to_dict(self):
+        d = Selection.to_dict(self)
+        if self._select_type != H5S_SEL_ALL:
+            slices_out = []
+            for s in self.slices:
+                if isinstance(s, slice):
+                    s = {"type": "slice", "start": int(s.start), "stop": int(s.stop), "step": int(s.step)}
+                elif isinstance(s, list):
+                    s = {"type": "list", "values": [int(x) for x in s]}
+                else:
+                    s = {"type": "int", "value": int(s)}
+                slices_out.append(s)
+            d["slices"] = slices_out
+        return d
+
+    def to_region_json(self):
+        """ Convert this selection to the {"select_type": ..., "selection": [...]}
+        representation used for HDF5 region references in the h5json format
+        (see data/json/regionref_dset.json for an example).
+
+        Only paired-coordinate point selections (H5S_SEL_POINTS) and
+        unit-step hyperslab selections (H5S_SEL_HYPERSLABS/H5S_SEL_ALL) are
+        supported, since those are the only forms this project's Selection
+        model can represent as points or as a single contiguous block.
+        Mixed slice/coordinate selections (H5S_SEL_FANCY) and stepped
+        hyperslab selections have no equivalent in this format.
+        """
+        if self._select_type == H5S_SEL_POINTS:
+            points = [list(pt) for pt in _iter_points(self)]
+            return {"select_type": "H5S_SEL_POINTS", "selection": points}
+
+        if self._select_type in (H5S_SEL_HYPERSLABS, H5S_SEL_ALL):
+            if any(step != 1 for step in self.step):
+                raise NotImplementedError(
+                    "Region reference JSON export does not support stepped hyperslab selections"
+                )
+            start = list(self.start)
+            end = [s + c - 1 for s, c in zip(self.start, self.count)]
+            return {"select_type": "H5S_SEL_HYPERSLABS", "selection": [[start, end]]}
+
+        raise NotImplementedError(
+            f"Region reference JSON export not supported for select_type {self._select_type}"
+        )
+
+    def _pack_body(self, width_code):
+        if self._select_type == H5S_SEL_ALL:
+            return b""
+        width, fmt, np_dtype = _SEL_WIDTH_INFO[width_code]
+        buf = bytearray()
+        for s in self.slices:
+            if isinstance(s, slice):
+                buf += struct.pack(f"<B{fmt}{fmt}{fmt}", _SEL_DIM_SLICE, s.start, s.stop, s.step)
+            elif isinstance(s, list):
+                arr = np.asarray(s, dtype=np_dtype)
+                buf += struct.pack("<BI", _SEL_DIM_LIST, arr.size)
+                buf += arr.tobytes()
+            else:
+                buf += struct.pack(f"<B{fmt}", _SEL_DIM_INT, int(s))
+        return buf
+
+    @classmethod
+    def _unpack_body(cls, shape, select_type, fields, width_code, data, offset):
+        if select_type == H5S_SEL_ALL:
+            return cls(shape, None, fields=fields)
+        width, fmt, np_dtype = _SEL_WIDTH_INFO[width_code]
+        args = []
+        for _ in range(len(shape)):
+            dim_type = data[offset]
+            offset += 1
+            if dim_type == _SEL_DIM_SLICE:
+                start, stop, step = struct.unpack_from(f"<{fmt}{fmt}{fmt}", data, offset)
+                offset += 3 * width
+                args.append(slice(start, stop, step))
+            elif dim_type == _SEL_DIM_LIST:
+                n = struct.unpack_from("<I", data, offset)[0]
+                offset += 4
+                arr = np.frombuffer(data, dtype=np_dtype, count=n, offset=offset)
+                offset += width * n
+                args.append(arr.tolist())
+            elif dim_type == _SEL_DIM_INT:
+                val = struct.unpack_from(f"<{fmt}", data, offset)[0]
+                offset += width
+                args.append(int(val))
+            else:
+                raise ValueError(f"Unsupported dim type: {dim_type}")
+        return cls(shape, tuple(args), fields=fields)
 
 
 _empty_point_sel = _empty_paired_sel  # backward-compat alias
@@ -1484,44 +1772,3 @@ def guess_shape(sid):
         return (N,)
 
     return shape
-
-
-class ScalarSelection(Selection):
-
-    """
-        Implements slicing for scalar datasets.
-    """
-
-    @property
-    def mshape(self):
-        return self._mshape
-
-    def __init__(self, shape, *args, **kwds):
-        Selection.__init__(self, shape)
-        arg = None
-        if len(args) > 0:
-            arg = args[0]
-        if arg == ():
-            self._mshape = None
-            self._select_type = H5S_SEL_ALL
-        elif arg == (Ellipsis,):
-            self._mshape = ()
-            self._select_type = H5S_SEL_ALL
-        else:
-            raise ValueError("Illegal slicing argument for scalar dataspace")
-
-    def __eq__(self, other):
-        if not isinstance(other, ScalarSelection):
-            return NotImplemented
-        # mshape is not compared here: () vs (Ellipsis,) construction args produce
-        # different mshape (None vs ()) despite selecting the same scalar element,
-        # and select_type is H5S_SEL_ALL in both cases anyway.
-        return all((
-            self.shape == other.shape,
-            self.select_type == other.select_type,
-            self.fields == other.fields,
-        ))
-
-    @property
-    def query_string(self):
-        return None

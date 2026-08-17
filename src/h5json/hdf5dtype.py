@@ -10,10 +10,32 @@
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
 
-import weakref
+import struct
+
 import numpy as np
 
-from .objid import getHashTagForId
+from .objid import getHashTagForId, getUuidFromId
+from .selections import Selection, from_region_json, from_dict
+
+
+# --- RegionReference.tobytes()/frombytes() binary format ---
+#
+# magic(4) + version(1) + id_len(2) + id_bytes + sel_len(4) + sel_bytes + trailer(1)
+#
+# The trailer is a fixed non-zero byte.  It guards against a RegionReference
+# ever being embedded in a numpy fixed-length byte-string ("S<n>") dtype
+# value: numpy silently strips *trailing* NUL bytes from "S" dtype values on
+# read, and our own struct-packed fields can legitimately end in NUL (e.g. a
+# zero length or a small integer).  Since only a *trailing* run of NULs is
+# stripped, ending the blob on a guaranteed non-zero byte protects everything
+# before it, including internal NULs and NUL padding from an oversized dtype.
+# special_dtype(ref=RegionReference) itself uses a variable-length ("O")
+# dtype - see below - so this only matters if the serialized bytes are
+# stored somewhere else that uses fixed-width byte strings (e.g. eventually
+# writing an actual HDF5 file).
+_RREF_MAGIC = b"HRRF"
+_RREF_VERSION = 1
+_RREF_TRAILER = b"\xff"
 
 
 numpy_integer_types = (np.int8, np.uint8, np.int16, np.int16, np.int32, np.uint32, np.int64, np.uint64)
@@ -47,7 +69,10 @@ class Reference:
                 parts = bind.split('/')
                 if parts[0] not in ("groups", "datasets", "datatypes"):
                     raise TypeError("Expected id to start with 'groups/', 'datasets/' or 'datatypes/'")
-                bind = parts[1]
+                # NOTE: keep the "<collection>/" prefix intact - getHashTagForId()
+                # needs it to determine the right prefix character for a bare
+                # (schema 1 style) uuid; it already handles stripping the "/"
+                # itself, and an already-prefixed hashtag id passes through as-is.
             self._id = getHashTagForId(bind)
 
     def __repr__(self):
@@ -79,25 +104,164 @@ class Reference:
 
 class RegionReference:
     """
-    Represents an HDF5 region reference
+    Represents an HDF5 region reference: the id of the referenced dataset
+    plus a (binary-serialized) selections.Selection on that dataset.
     """
 
     @property
     def id(self):
-        """Low-level identifier appropriate for this object"""
+        """Low-level identifier of the referenced dataset"""
         return self._id
 
     @property
-    def objref(self):
-        """Weak reference to object"""
-        return self._objref  # return weak ref to ref'd object
+    def selection_bytes(self):
+        """Serialized selection (selections.Selection.tobytes()), or None if unbound"""
+        return self._selection_bytes
 
-    def __init__(self, bind):
-        """Create a new reference by binding to
-        a group/dataset/committed type
+    def __init__(self, bind=None, selection=None):
+        """Create a new region reference, optionally binding immediately -
+        see bind() for the meaning of the arguments.
         """
-        self._id = bind._id
-        self._objref = weakref.ref(bind)
+        self._id = None
+        self._selection_bytes = None
+        if bind is not None or selection is not None:
+            self.bind(bind, selection)
+
+    def bind(self, objid, selection=None):
+        """Bind this region reference to a dataset id and a selection on it.
+
+        objid
+            The id of the referenced dataset: a uuid string/bytes (optionally
+            prefixed with "datasets/", as with Reference), or an object
+            exposing an `_id` attribute (e.g. a dataset object).
+
+        selection
+            A selections.Selection instance, or bytes/bytearray already
+            produced by Selection.tobytes().  May be None, in which case
+            the reference is left without a selection (whole dataset).
+        """
+        if hasattr(objid, "_id"):
+            objid = objid._id
+
+        if not objid:
+            self._id = None
+        else:
+            if isinstance(objid, bytes):
+                objid = objid.decode()
+            if not isinstance(objid, str):
+                raise TypeError("Expected string id")
+
+            if objid.find("/") != -1:
+                parts = objid.split("/")
+                if parts[0] != "datasets":
+                    raise TypeError("Expected id to start with 'datasets/'")
+                # NOTE: keep the "datasets/" prefix intact - getHashTagForId()
+                # needs it to determine the right prefix character for a bare
+                # (schema 1 style) uuid; it already handles stripping the "/"
+                # itself, and an already-prefixed hashtag id passes through as-is.
+            self._id = getHashTagForId(objid)
+
+        if selection is None:
+            self._selection_bytes = None
+        elif isinstance(selection, (bytes, bytearray)):
+            self._selection_bytes = bytes(selection)
+        elif isinstance(selection, Selection):
+            self._selection_bytes = bytes(selection.tobytes())
+        else:
+            raise TypeError("Expected a Selection instance or serialized bytes")
+
+        return self
+
+    def tobytes(self):
+        """ Serialize this region reference (dataset id + selection bytes) to a
+        flat bytes blob, suitable for storage as a raw H5T_REFERENCE dataset
+        or attribute value. """
+        id_bytes = self._id.encode("ascii") if self._id else b""
+        sel_bytes = self._selection_bytes if self._selection_bytes else b""
+        buf = bytearray()
+        buf += _RREF_MAGIC
+        buf += struct.pack("<B", _RREF_VERSION)
+        buf += struct.pack("<H", len(id_bytes))
+        buf += id_bytes
+        buf += struct.pack("<I", len(sel_bytes))
+        buf += sel_bytes
+        buf += _RREF_TRAILER
+        return bytes(buf)
+
+    @classmethod
+    def frombytes(cls, data):
+        """ Reconstruct a RegionReference from a bytes blob produced by tobytes(). """
+        data = bytes(data)
+        if data[:4] != _RREF_MAGIC:
+            raise ValueError("Invalid region reference byte stream")
+        version = struct.unpack_from("<B", data, 4)[0]
+        if version != _RREF_VERSION:
+            raise ValueError(f"Unsupported region reference serialization version: {version}")
+
+        offset = 5
+        id_len = struct.unpack_from("<H", data, offset)[0]
+        offset += 2
+        id_str = data[offset:offset + id_len].decode("ascii")
+        offset += id_len
+
+        sel_len = struct.unpack_from("<I", data, offset)[0]
+        offset += 4
+        sel_bytes = data[offset:offset + sel_len]
+
+        ref = cls()
+        ref._id = id_str if id_str else None
+        ref._selection_bytes = sel_bytes if sel_bytes else None
+        return ref
+
+    def to_json(self):
+        """ Convert this region reference to the h5json JSON representation:
+        {"id": <uuid>, "select_type": ..., "selection": [...]} - see
+        data/json/regionref_dset.json for an example.  If no selection is
+        bound (see bind()) - e.g. a region reference read from an actual
+        HDF5 file, where only the target dataset's identity can be
+        recovered, not its selection - just {"id": <uuid>} is returned.
+
+        Real HDF5 region references only ever select points or hyperslabs
+        (possibly several disjoint blocks), so that's the representation
+        used whenever possible.  H5S_SEL_FANCY (a mixed slice/coordinate
+        selection) and stepped hyperslabs have no equivalent there - it's
+        purely an artifact of this project's own Selection model, not a
+        concept HDF5 dataspaces have - so for those, the fully general
+        Selection.to_dict() representation is embedded instead, under a
+        "selection_dict" key.
+        """
+        if self._id is None:
+            raise ValueError("Cannot convert a null region reference to JSON")
+        d = {"id": getUuidFromId(self._id)}
+        if self._selection_bytes is None:
+            return d
+        sel = Selection.frombytes(self._selection_bytes)
+        try:
+            d.update(sel.to_region_json())
+        except NotImplementedError:
+            d["selection_dict"] = sel.to_dict()
+        return d
+
+    @classmethod
+    def from_json(cls, d):
+        """ Reconstruct a RegionReference from the h5json JSON representation
+        produced by to_json() - {"id": <uuid>, "select_type": ..., "selection": [...]},
+        {"id": <uuid>, "selection_dict": {...}}, or just {"id": <uuid>} for a
+        reference with no selection - or None for a null reference.
+        """
+        if d is None:
+            return cls()
+        if "id" not in d:
+            raise KeyError("expected 'id' key in region reference JSON")
+        if "selection_dict" in d:
+            sel = from_dict(d["selection_dict"])
+        elif "select_type" in d:
+            sel = from_region_json(d)
+        else:
+            sel = None
+        ref = cls()
+        ref.bind("datasets/" + d["id"], sel)
+        return ref
 
     def __repr__(self):
         return "<HDF5 region reference>"
@@ -120,7 +284,10 @@ def special_dtype(**kwds):
 
     ref = Reference | RegionReference
         Create a NumPy representation of an HDF5 object or region reference
-        type."""
+        type.  Reference is a fixed-size ("S48") type, since it only ever
+        holds an object id.  RegionReference is a variable-length ("O")
+        type, since its size depends on the bound selection, not just the
+        referenced dataset - see RegionReference.tobytes()."""
 
     if len(kwds) != 1:
         raise TypeError("Exactly one keyword may be provided")
@@ -151,7 +318,7 @@ def special_dtype(**kwds):
         if val is Reference:
             dt = np.dtype("S48", metadata={"ref": Reference})
         elif val is RegionReference:
-            dt = np.dtype("S48", metadata={"ref": RegionReference})
+            dt = np.dtype("O", metadata={"ref": RegionReference})
         else:
             raise ValueError("Ref class must be Reference or RegionReference")
 
@@ -396,14 +563,19 @@ def getTypeItem(dt, metadata=None):
 
             if ref_check is Reference:
                 type_info["base"] = "H5T_STD_REF_OBJ"  # objref
+                type_info["length"] = dt.itemsize
             elif ref_check is RegionReference:
                 type_info["base"] = "H5T_STD_REF_DSETREG"  # region ref
+                # unlike an object ref, a region ref's size depends on the
+                # bound selection, not just the referenced dataset - it can't
+                # be reported as a fixed value (mirrors vlen strings/types)
+                type_info["length"] = "H5T_VARIABLE"
             else:
                 raise TypeError("unexpected reference type")
         else:
             # Fixed length string type
             type_info["class"] = "H5T_STRING"
-        type_info["length"] = dt.itemsize
+            type_info["length"] = dt.itemsize
         type_info["charSet"] = "H5T_CSET_ASCII"
         type_info["strPad"] = "H5T_STR_NULLPAD"
     elif dt.base.kind == "U":
@@ -598,9 +770,14 @@ def getItemSize(typeItem):
         item_size = getItemSize(typeItem["base"])
 
     elif typeClass == "H5T_REFERENCE":
-        if "length" in typeItem:
+        if typeItem.get("base") == "H5T_STD_REF_DSETREG":
+            # a region ref's size depends on the bound selection, not just
+            # the referenced dataset, so it can't be reported as a fixed
+            # value - same convention as vlen strings/types
+            item_size = "H5T_VARIABLE"
+        elif "length" in typeItem:
             item_size = typeItem["length"]
-        elif "base" in typeItem and typeItem["base"] == "H5T_STD_REF_OBJ":
+        elif typeItem.get("base") == "H5T_STD_REF_OBJ":
             # obj ref values are in the form: "groups/<id>" or
             # "datasets/<id>" or "datatypes/<id>"
             item_size = 48

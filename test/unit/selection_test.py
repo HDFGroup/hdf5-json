@@ -20,7 +20,6 @@ from h5json.selections import (
     H5S_SEL_POINTS,
     H5S_SEL_FANCY,
     SimpleSelection,
-    ScalarSelection,
 )
 
 # Kept as aliases so tests can reference them for clarity.
@@ -233,10 +232,10 @@ class SimpleSelectionTest(unittest.TestCase):
         self.assertIn("SimpleSelection", repr(sel))
 
     def testScalarDataset(self):
-        # select() routes to ScalarSelection when obj has .shape == ()
+        # select() uses SimpleSelection for a scalar object (obj.shape == ()) too
         scalar_ds = np.array(42)
         sel = selections.select(scalar_ds, ...)
-        self.assertIsInstance(sel, ScalarSelection)
+        self.assertIsInstance(sel, SimpleSelection)
         self.assertEqual(sel.select_type, H5S_SEL_ALL)
         self.assertEqual(sel.nselect, 1)
         self.assertEqual(sel.query_string, None)
@@ -250,15 +249,16 @@ class SimpleSelectionTest(unittest.TestCase):
         self.assertEqual(sel1, sel2)
 
         # Ellipsis vs an empty tuple both select the dataspace's only element,
-        # but produce different mshape values (() vs None) - equality should
-        # still hold since that difference isn't meaningful selection state
+        # and are canonicalized to the same representation (select_type ALL,
+        # mshape ())
         sel3 = selections.select(scalar_ds, ())
         self.assertEqual(sel1.mshape, ())
-        self.assertIsNone(sel3.mshape)
+        self.assertEqual(sel3.mshape, ())
         self.assertEqual(sel1, sel3)
         self.assertEqual(sel3, sel1)
 
-        # not equal to a SimpleSelection, in either comparison order, and no crash
+        # not equal to a selection over a different shape, in either comparison
+        # order, and no crash
         simple_sel = selections.select((4, 5), ...)
         self.assertNotEqual(sel1, simple_sel)
         self.assertNotEqual(simple_sel, sel1)
@@ -1016,6 +1016,187 @@ class FieldsTest(unittest.TestCase):
         s1 = selections.select(shape, slice(5, 10), fields=["x"])
         s2 = selections.select(shape, slice(0, 6), fields=["x"])
         self.assertFalse(selections.contained(s1, s2))
+
+
+class SerializationTest(unittest.TestCase):
+    def __init__(self, *args, **kwargs):
+        super(SerializationTest, self).__init__(*args, **kwargs)
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.WARNING)
+
+    def _roundtrip(self, sel):
+        data = sel.tobytes()
+        self.assertIsInstance(data, bytearray)
+        sel2 = selections.Selection.frombytes(data)
+        self.assertEqual(sel, sel2)
+        return sel2
+
+    def testSelectAll(self):
+        sel = selections.select((10, 20), ...)
+        self._roundtrip(sel)
+
+    def testHyperslab1D(self):
+        sel = selections.select((10,), slice(2, 7))
+        self._roundtrip(sel)
+
+    def testHyperslabWithStep(self):
+        sel = selections.select((10, 20), (slice(1, 5, 1), slice(0, 20, 2)))
+        sel2 = self._roundtrip(sel)
+        # verify the round-tripped selection reproduces the same slices used for indexing
+        self.assertEqual(sel.slices, sel2.slices)
+
+    def testHyperslabWithScalarIndex(self):
+        sel = selections.select((10, 20), (3, slice(0, 20, 1)))
+        self._roundtrip(sel)
+
+    def testFancy(self):
+        sel = selections.select((10, 20), (slice(0, 10, 1), [1, 3, 5]))
+        self._roundtrip(sel)
+
+    def testPointsFromBoolMask(self):
+        mask = np.zeros((5, 5), dtype=bool)
+        mask[1, 2] = True
+        mask[3, 4] = True
+        sel = make_point_sel((5, 5), mask)
+        self._roundtrip(sel)
+
+    def testWithFields(self):
+        sel = selections.select((10,), slice(0, 10), fields=["a", "b"])
+        self._roundtrip(sel)
+
+    def testScalarEmpty(self):
+        sel = selections.select((), ())
+        self._roundtrip(sel)
+
+    def testScalarEllipsis(self):
+        sel = selections.select((), ...)
+        self._roundtrip(sel)
+
+    def testLargePointSelection(self):
+        # Verify the binary tobytes()/frombytes() path handles a sizeable
+        # coordinate list correctly (exercises the raw int array encoding).
+        shape = (1_000_000,)
+        coords = list(range(0, 100_000, 2))
+        sel = selections.select(shape, coords)
+        sel2 = self._roundtrip(sel)
+        self.assertEqual(list(sel2.slices[0]), coords)
+
+    def testIntWidthSmallExtentUses16Bit(self):
+        # extent under 64K -> 2-byte ints; 4 bytes per point vs 8 confirms tier
+        sel = selections.select((60000,), list(range(0, 60000, 2)))
+        data = sel.tobytes()
+        n = 30000
+        # header is small and fixed; the point payload dominates at 2 bytes/point
+        self.assertLess(len(data), n * 4)
+        self._roundtrip(sel)
+
+    def testIntWidthMidExtentUses32Bit(self):
+        # extent over 64K but under 4G -> 4-byte ints
+        sel = selections.select((100000,), [1, 3, 99999])
+        self._roundtrip(sel)
+
+    def testIntWidthHugeExtentUses64Bit(self):
+        # extent over 4G -> 8-byte ints
+        sel = selections.select((5_000_000_000,), [1, 3, 4_999_999_999])
+        self._roundtrip(sel)
+
+    def testIntWidthBoundary(self):
+        # exactly 64K requires the wider (32-bit) tier; one under stays 16-bit
+        sel_wide = selections.select((65536,), slice(0, 65536, 1))
+        sel_narrow = selections.select((65535,), slice(0, 65535, 1))
+        self._roundtrip(sel_wide)
+        self._roundtrip(sel_narrow)
+
+
+class RegionJsonTest(unittest.TestCase):
+    """ Tests for SimpleSelection.to_region_json(), which produces the
+    {"select_type": ..., "selection": [...]} representation used for HDF5
+    region references in the h5json format (data/json/regionref_*.json). """
+
+    def __init__(self, *args, **kwargs):
+        super(RegionJsonTest, self).__init__(*args, **kwargs)
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.WARNING)
+
+    def testPointsSelection(self):
+        # matches the points example in data/json/regionref_dset.json
+        sel = selections.select((3, 16), ([0, 2, 1, 2], [1, 11, 0, 4]))
+        d = sel.to_region_json()
+        self.assertEqual(d["select_type"], "H5S_SEL_POINTS")
+        self.assertEqual(d["selection"], [[0, 1], [2, 11], [1, 0], [2, 4]])
+
+    def testHyperslabSelection(self):
+        sel = selections.select((3, 16), (slice(0, 2), slice(0, 4)))
+        d = sel.to_region_json()
+        self.assertEqual(d["select_type"], "H5S_SEL_HYPERSLABS")
+        self.assertEqual(d["selection"], [[[0, 0], [1, 3]]])
+
+    def testSelectAllSelection(self):
+        sel = selections.select((5, 6), ...)
+        d = sel.to_region_json()
+        self.assertEqual(d["select_type"], "H5S_SEL_HYPERSLABS")
+        self.assertEqual(d["selection"], [[[0, 0], [4, 5]]])
+
+    def testSingleIntegerIndex(self):
+        sel = selections.select((10,), 3)
+        d = sel.to_region_json()
+        self.assertEqual(d["select_type"], "H5S_SEL_HYPERSLABS")
+        self.assertEqual(d["selection"], [[[3], [3]]])
+
+    def testSteppedHyperslabRaises(self):
+        sel = selections.select((10,), slice(0, 10, 2))
+        with self.assertRaises(NotImplementedError):
+            sel.to_region_json()
+
+    def testMixedFancySelectionRaises(self):
+        sel = selections.select((10, 20), (slice(0, 10, 1), [1, 3, 5]))
+        with self.assertRaises(NotImplementedError):
+            sel.to_region_json()
+
+    def testFromRegionJsonPoints(self):
+        d = {"select_type": "H5S_SEL_POINTS", "selection": [[0, 1], [2, 11], [1, 0], [2, 4]]}
+        sel = selections.from_region_json(d)
+        self.assertEqual(sel.select_type, selections.H5S_SEL_POINTS)
+        self.assertEqual(sel.to_region_json(), d)
+
+    def testFromRegionJsonHyperslab(self):
+        d = {"select_type": "H5S_SEL_HYPERSLABS", "selection": [[[0, 0], [1, 3]]]}
+        sel = selections.from_region_json(d)
+        self.assertEqual(sel.select_type, selections.H5S_SEL_HYPERSLABS)
+        self.assertEqual(sel.to_region_json(), d)
+
+    def testFromRegionJsonMultiBlockHyperslabExpandsToPoints(self):
+        # a real HDF5 region reference can have multiple disjoint hyperslab
+        # blocks (e.g. data/json/regionref_dset.json's second example); this
+        # project's Selection model can't represent that natively, so it's
+        # expanded into the equivalent set of individual points
+        d = {
+            "select_type": "H5S_SEL_HYPERSLABS",
+            "selection": [
+                [[0, 0], [1, 3]],
+                [[0, 11], [1, 14]],
+                [[2, 0], [3, 3]],
+                [[2, 11], [3, 14]],
+            ],
+        }
+        sel = selections.from_region_json(d)
+        self.assertEqual(sel.select_type, selections.H5S_SEL_POINTS)
+        self.assertEqual(sel.nselect, 32)  # 4 blocks x 8 points each
+        # every point falls within one of the 4 original blocks
+        blocks = d["selection"]
+        for pt in selections._iter_points(sel):
+            self.assertTrue(any(
+                start[0] <= pt[0] <= end[0] and start[1] <= pt[1] <= end[1]
+                for start, end in blocks
+            ))
+
+    def testFromRegionJsonEmptySelectionRaises(self):
+        with self.assertRaises(ValueError):
+            selections.from_region_json({"select_type": "H5S_SEL_POINTS", "selection": []})
+
+    def testFromRegionJsonUnsupportedTypeRaises(self):
+        with self.assertRaises(NotImplementedError):
+            selections.from_region_json({"select_type": "H5S_SEL_ALL", "selection": [[0]]})
 
 
 if __name__ == "__main__":

@@ -15,9 +15,53 @@ import base64
 import binascii
 import numpy as np
 
-from .hdf5dtype import isVlen, is_float16_dtype, guess_dtype, vlenBaseType
+from .hdf5dtype import isVlen, is_float16_dtype, guess_dtype, vlenBaseType, RegionReference
 
 MAX_VLEN_ELEMENT = 1_000_000  # restrict largest vlen element to one million
+
+
+def _regionRefElementToJson(raw):
+    """ Convert one RegionReference dataset/attribute element (as produced by
+    RegionReference.tobytes(), or a RegionReference instance itself) to its
+    h5json JSON representation.  A null/unset reference (empty bytes) is
+    reported as None. """
+    if not raw:
+        return None
+    ref = raw if isinstance(raw, RegionReference) else RegionReference.frombytes(raw)
+    return ref.to_json()
+
+
+def _regionRefArrayToList(data):
+    """ Recursively convert an ndarray of RegionReference elements to nested
+    lists of {"id", "select_type", "selection"} JSON dicts/None.
+
+    Indexing an object-dtype ndarray unwraps to the raw element (not a 0-d
+    ndarray) once the last dimension is reached, so a non-ndarray value at
+    any recursion depth is treated as a leaf.
+    """
+    if not isinstance(data, np.ndarray):
+        return _regionRefElementToJson(data)
+    if data.ndim == 0:
+        return _regionRefElementToJson(data.item())
+    return [_regionRefArrayToList(data[i]) for i in range(data.shape[0])]
+
+
+def _regionRefJsonToArray(data_shape, data_dtype, data_json):
+    """ Inverse of _regionRefArrayToList(): convert nested JSON region-reference
+    dicts (or None for null/unset elements) into an ndarray of
+    RegionReference.tobytes()-encoded bytes elements. """
+    shape = tuple(data_shape)
+    arr = np.empty(shape, dtype=data_dtype)
+
+    def fill(data, index):
+        if len(index) == len(shape):
+            arr[index] = b'' if data is None else RegionReference.from_json(data).tobytes()
+        else:
+            for i, item in enumerate(data):
+                fill(item, index + (i,))
+
+    fill(data_json, ())
+    return arr
 
 
 def bytesArrayToList(data):
@@ -26,6 +70,10 @@ def bytesArrayToList(data):
 
     TBD: Need to deal with non-string byte data (hexencode?)
     """
+    if isinstance(data, (np.ndarray, np.generic)) and data.dtype.metadata and \
+            data.dtype.metadata.get("ref") is RegionReference:
+        return _regionRefArrayToList(data)
+
     if type(data) in (bytes, str):
         is_list = False
     elif isinstance(data, (np.ndarray, np.generic)):
@@ -155,6 +203,10 @@ def jsonToArray(data_shape, data_dtype, data_json):
 
     if data_json is None:
         return np.array(data_shape).astype(data_dtype)
+
+    if data_dtype is not None and getattr(data_dtype, "metadata", None) and \
+            data_dtype.metadata.get("ref") is RegionReference:
+        return _regionRefJsonToArray(data_shape, data_dtype, data_json)
 
     npoints = getNumElements(data_shape)
     np_shape_rank = len(data_shape)

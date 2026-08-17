@@ -93,7 +93,7 @@ test_files_latest = (
     "null_space_dset.json",
     "objref_attr.json",
     "regionref_attr.json",
-    # "regionref_dset.json",
+    "regionref_dset.json",
     "scalar_attr.json",
     # "vlen_attr.json",   #regression
     "vlen_dset.json",
@@ -115,9 +115,7 @@ for out_file in os.listdir(out_dir):
     if split_ext[1] == ".h5":
         os.unlink(os.path.join(out_dir, out_file))
 
-if hdf5_version_tuple[1] > 8 or (
-    hdf5_version_tuple[1] == 8 and hdf5_version_tuple[2] > 14
-):
+if hdf5_version_tuple >= (1, 8, 15):
     # add in additional test files
     print("adding library version dependent files")
     test_files = list(test_files)

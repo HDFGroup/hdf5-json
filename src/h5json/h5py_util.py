@@ -39,7 +39,7 @@ def is_regionreference(val):
 
 
 def has_reference(dtype):
-    """ return True if the dtype (or a sub-type) is a Reference type """
+    """ return True if the dtype (or a sub-type) is a Reference or RegionReference type """
     has_ref = False
     if not isinstance(dtype, np.dtype):
         return False
@@ -51,7 +51,7 @@ def has_reference(dtype):
                 break
     elif dtype.metadata and "ref" in dtype.metadata:
         basedt = dtype.metadata["ref"]
-        has_ref = is_reference(basedt)
+        has_ref = is_reference(basedt) or is_regionreference(basedt)
     elif dtype.metadata and "vlen" in dtype.metadata:
         basedt = dtype.metadata["vlen"]
         has_ref = has_reference(basedt)

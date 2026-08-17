@@ -31,6 +31,9 @@ from h5json.array_util import isVlen
 from h5json.hdf5dtype import special_dtype
 from h5json.hdf5dtype import check_dtype
 from h5json.hdf5dtype import createDataType
+from h5json.hdf5dtype import RegionReference
+from h5json.objid import createObjId, getUuidFromId
+from h5json import selections
 
 
 class ArrayUtilTest(unittest.TestCase):
@@ -53,6 +56,116 @@ class ArrayUtilTest(unittest.TestCase):
             json_data = bytesArrayToList(data)
             # will throw TypeError if not able to convert
             json.dumps(json_data)
+
+    def testByteArrayToListRegionReference(self):
+        # matches the format used in data/json/regionref_dset.json /
+        # regionref_attr.json: {"id": <bare uuid>, "select_type": ..., "selection": [...]}
+        root_id = createObjId("groups")
+        dset_id = createObjId("datasets", root_id=root_id)
+
+        pts_sel = selections.select((3, 16), ([0, 2, 1, 2], [1, 11, 0, 4]))
+        ref_pts = RegionReference(dset_id, pts_sel)
+
+        hs_sel = selections.select((3, 16), (slice(0, 2), slice(0, 4)))
+        ref_hs = RegionReference(dset_id, hs_sel)
+
+        dt = special_dtype(ref=RegionReference)
+
+        # 1-D array of two region refs
+        arr = np.empty((2,), dtype=dt)
+        arr[0] = ref_pts.tobytes()
+        arr[1] = ref_hs.tobytes()
+        result = bytesArrayToList(arr)
+        json.dumps(result)  # must be JSON-serializable
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["id"], getUuidFromId(dset_id))
+        self.assertEqual(result[0]["select_type"], "H5S_SEL_POINTS")
+        self.assertEqual(result[0]["selection"], [[0, 1], [2, 11], [1, 0], [2, 4]])
+        self.assertEqual(result[1]["select_type"], "H5S_SEL_HYPERSLABS")
+        self.assertEqual(result[1]["selection"], [[[0, 0], [1, 3]]])
+
+        # scalar (0-d) region ref array
+        arr0 = np.empty((), dtype=dt)
+        arr0[()] = ref_pts.tobytes()
+        result0 = bytesArrayToList(arr0)
+        self.assertEqual(result0["select_type"], "H5S_SEL_POINTS")
+
+        # 2-D array of region refs
+        arr2 = np.empty((2, 1), dtype=dt)
+        arr2[0, 0] = ref_pts.tobytes()
+        arr2[1, 0] = ref_hs.tobytes()
+        result2 = bytesArrayToList(arr2)
+        json.dumps(result2)
+        self.assertEqual(result2[0][0]["select_type"], "H5S_SEL_POINTS")
+        self.assertEqual(result2[1][0]["select_type"], "H5S_SEL_HYPERSLABS")
+
+        # unset (null) region ref -> None
+        arrn = np.empty((1,), dtype=dt)
+        arrn[0] = b''
+        self.assertEqual(bytesArrayToList(arrn), [None])
+
+    def testJsonToArrayRegionReference(self):
+        # inverse of testByteArrayToListRegionReference() - and matches the
+        # format used in data/json/regionref_dset.json / regionref_attr.json
+        root_id = createObjId("groups")
+        dset_id = createObjId("datasets", root_id=root_id)
+        dt = special_dtype(ref=RegionReference)
+
+        points_json = {
+            "id": getUuidFromId(dset_id),
+            "select_type": "H5S_SEL_POINTS",
+            "selection": [[0, 1], [2, 11], [1, 0], [2, 4]],
+        }
+        hyperslab_json = {
+            "id": getUuidFromId(dset_id),
+            "select_type": "H5S_SEL_HYPERSLABS",
+            "selection": [[[0, 0], [1, 3]]],
+        }
+
+        # 1-D array of two region refs, plus an unset (None) element
+        arr = jsonToArray((3,), dt, [points_json, hyperslab_json, None])
+        self.assertEqual(arr.shape, (3,))
+        self.assertEqual(arr.dtype, dt)
+
+        ref0 = RegionReference.frombytes(arr[0])
+        self.assertEqual(ref0.to_json(), points_json)
+        ref1 = RegionReference.frombytes(arr[1])
+        self.assertEqual(ref1.to_json(), hyperslab_json)
+        self.assertEqual(arr[2], b'')
+
+        # scalar (0-d)
+        arr0 = jsonToArray((), dt, points_json)
+        self.assertEqual(arr0.shape, ())
+        self.assertEqual(RegionReference.frombytes(arr0[()]).to_json(), points_json)
+
+        # round trip through bytesArrayToList() and back
+        as_list = bytesArrayToList(arr)
+        arr_rt = jsonToArray((3,), dt, as_list)
+        self.assertEqual(RegionReference.frombytes(arr_rt[0]).to_json(), points_json)
+        self.assertEqual(RegionReference.frombytes(arr_rt[1]).to_json(), hyperslab_json)
+        self.assertEqual(arr_rt[2], b'')
+
+    def testJsonToArrayRegionReferenceFancySelection(self):
+        # a FANCY selection has no points/hyperslab equivalent, so its JSON
+        # form uses a "selection_dict" key (see RegionReference.to_json())
+        # instead of "select_type"/"selection" - confirm it still round-trips
+        root_id = createObjId("groups")
+        dset_id = createObjId("datasets", root_id=root_id)
+        dt = special_dtype(ref=RegionReference)
+
+        sel = selections.select((6, 10), (slice(0, 4), [1, 3, 7]))
+        ref = RegionReference("datasets/" + dset_id, sel)
+        fancy_json = ref.to_json()
+        self.assertIn("selection_dict", fancy_json)
+
+        arr = jsonToArray((1,), dt, [fancy_json])
+        ref2 = RegionReference.frombytes(arr[0])
+        self.assertEqual(ref2.to_json(), fancy_json)
+        sel2 = selections.Selection.frombytes(ref2.selection_bytes)
+        self.assertEqual(sel2, sel)
+
+        as_list = bytesArrayToList(arr)
+        self.assertEqual(as_list, [fancy_json])
 
     def testToTuple(self):
         data0d = 42  # scalar

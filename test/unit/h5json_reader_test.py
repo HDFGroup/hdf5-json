@@ -14,6 +14,9 @@ import logging
 import numpy as np
 from h5json import Hdf5db
 from h5json.jsonstore.h5json_reader import H5JsonReader
+from h5json.jsonstore.h5json_writer import H5JsonWriter
+from h5json.hdf5dtype import special_dtype, RegionReference
+from h5json.objid import getUuidFromId
 from h5json import selections
 
 
@@ -91,6 +94,84 @@ class H5pyReaderTest(unittest.TestCase):
         self.assertEqual(attr3_value, 42)
 
         db.close()
+
+    def testRegionReferenceAttribute(self):
+        # reads the actual fixture file the region reference JSON format was
+        # designed around
+        filepath = "data/json/regionref_attr.json"
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.open()
+
+        ds1_id = db.getObjectIdByPath("/DS1")
+        ds2_id = db.getObjectIdByPath("/DS2")
+        ds2_uuid = getUuidFromId(ds2_id)
+
+        value = db.getAttributeValue(ds1_id, "A1")
+        self.assertTrue(isinstance(value, np.ndarray))
+        self.assertEqual(value.shape, (2,))
+        self.assertEqual(value.dtype.metadata.get("ref"), RegionReference)
+
+        ref0 = RegionReference.frombytes(value[0])
+        self.assertEqual(ref0.id, "d-" + ds2_uuid)
+        sel0 = selections.Selection.frombytes(ref0.selection_bytes)
+        self.assertEqual(sel0.select_type, selections.H5S_SEL_POINTS)
+        self.assertEqual(
+            ref0.to_json(),
+            {
+                "id": ds2_uuid,
+                "select_type": "H5S_SEL_POINTS",
+                "selection": [[0, 1], [2, 11], [1, 0], [2, 4]],
+            },
+        )
+
+        # second value is a 4-block hyperslab selection in the fixture file -
+        # this model expands multi-block hyperslabs into the equivalent point
+        # selection on read (see selections.from_region_json())
+        ref1 = RegionReference.frombytes(value[1])
+        self.assertEqual(ref1.id, "d-" + ds2_uuid)
+        sel1 = selections.Selection.frombytes(ref1.selection_bytes)
+        self.assertEqual(sel1.select_type, selections.H5S_SEL_POINTS)
+        self.assertEqual(sel1.nselect, 32)  # 4 blocks x 8 points each
+
+        db.close()
+
+    def testRegionReferenceWriteReadRoundTrip(self):
+        write_path = "test/unit/out/h5json_reader_testRegionReferenceRoundTrip.json"
+
+        wdb = Hdf5db(app_logger=self.log)
+        wdb.writer = H5JsonWriter(write_path, app_logger=self.log)
+        root_id = wdb.open()
+
+        target_id = wdb.createDataset(shape=(3, 16), dtype=np.int32)
+        wdb.createHardLink(root_id, "DS1", target_id)
+
+        sel = selections.select((3, 16), (slice(0, 2), slice(0, 4)))
+        ref = RegionReference("datasets/" + target_id, sel)
+
+        dt = special_dtype(ref=RegionReference)
+        ref_dset_id = wdb.createDataset(shape=(1,), dtype=dt)
+        wdb.createHardLink(root_id, "DS2", ref_dset_id)
+        ref_arr = np.empty((1,), dtype=dt)
+        ref_arr[0] = ref.tobytes()
+        sel_all = selections.select((1,), ...)
+        wdb.setDatasetValues(ref_dset_id, sel_all, ref_arr)
+        wdb.close()
+
+        rdb = Hdf5db(app_logger=self.log)
+        rdb.reader = H5JsonReader(write_path, app_logger=self.log)
+        rdb.open()
+        read_target_id = rdb.getObjectIdByPath("/DS1")
+        read_ref_dset_id = rdb.getObjectIdByPath("/DS2")
+        sel_all = selections.select((1,), ...)
+        arr = rdb.getDatasetValues(read_ref_dset_id, sel_all)
+        self.assertEqual(arr.shape, (1,))
+
+        read_ref = RegionReference.frombytes(arr[0])
+        self.assertEqual(read_ref.id, read_target_id)
+        read_sel = selections.Selection.frombytes(read_ref.selection_bytes)
+        self.assertEqual(read_sel.to_region_json(), sel.to_region_json())
+        rdb.close()
 
 
 if __name__ == "__main__":

@@ -9,13 +9,15 @@
 # distribution tree.  If you do not have access to this file, you may        #
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
+import itertools
 import h5py
+from h5py import h5r, h5s
 import numpy as np
 from os import stat as os_stat
 import time
 
 from ..objid import getCollectionForId, isValidUuid, createObjId
-from ..hdf5dtype import createDataType, isVlen, vlenBaseType
+from ..hdf5dtype import createDataType, isVlen, vlenBaseType, RegionReference
 from ..h5py_util import is_reference, is_regionreference, has_reference, convert_dtype
 from ..shape_util import getShapeDims, getShapeClass, isExtensible, getMaxDims
 from ..array_util import jsonToArray
@@ -47,6 +49,72 @@ class H5pyWriter(H5Writer):
             self._init = True
         self._flush_time = 0.0
         self._f = None  # h5py file handle
+
+    def _buildRegionDataspace(self, target_obj, region_ref):
+        """ Build an h5py low-level dataspace (h5py.h5s.SpaceID) with
+        region_ref's selection applied against target_obj, suitable for
+        passing to h5r.create() to make a real HDF5 region reference.
+
+        The low-level H5S selection API is used directly (rather than
+        target_obj.regionref[...]) since h5py's high-level slicing only
+        supports a single fancy-index array per call, and can't express a
+        paired-coordinate point selection (H5S_SEL_POINTS) at all.
+        """
+        sid = target_obj.id.get_space()
+
+        if region_ref.selection_bytes is None:
+            # no selection bound - reference the whole dataset
+            sid.select_all()
+            return sid
+
+        sel = selections.Selection.frombytes(region_ref.selection_bytes)
+        rank = len(sel.shape)
+
+        if rank == 0:
+            sid.select_all()
+            return sid
+
+        def dim_start_count_step(s):
+            if isinstance(s, slice):
+                return s.start, (s.stop - s.start) // s.step, s.step
+            return int(s), 1, 1
+
+        if sel.select_type == selections.H5S_SEL_POINTS:
+            points = list(selections._iter_points(sel))
+            sid.select_elements(points)
+            return sid
+
+        if sel.select_type in (selections.H5S_SEL_HYPERSLABS, selections.H5S_SEL_ALL):
+            starts, counts, steps = zip(*(dim_start_count_step(s) for s in sel.slices))
+            sid.select_hyperslab(starts, counts, stride=steps)
+            return sid
+
+        if sel.select_type == selections.H5S_SEL_FANCY:
+            # a mix of slices/ints and coordinate lists (Cartesian product) -
+            # HDF5 has no single primitive for this, so union one hyperslab
+            # block per combination of list-dim values (matching how HDF5
+            # itself decomposes e.g. dset[[0, 2], 1:4] internally)
+            slices = sel.slices
+            list_dims = [d for d in range(rank) if isinstance(slices[d], list)]
+            value_choices = [slices[d] for d in list_dims]
+            for i, combo in enumerate(itertools.product(*value_choices)):
+                combo_map = dict(zip(list_dims, combo))
+                starts, counts, steps = [], [], []
+                for d in range(rank):
+                    if d in combo_map:
+                        starts.append(int(combo_map[d]))
+                        counts.append(1)
+                        steps.append(1)
+                    else:
+                        start, count, step = dim_start_count_step(slices[d])
+                        starts.append(start)
+                        counts.append(count)
+                        steps.append(step)
+                op = h5s.SELECT_SET if i == 0 else h5s.SELECT_OR
+                sid.select_hyperslab(tuple(starts), tuple(counts), stride=tuple(steps), op=op)
+            return sid
+
+        raise NotImplementedError(f"Cannot create HDF5 region reference for select_type {sel.select_type}")
 
     def _copy_element(self, val, src_dt, tgt_dt, fout=None):
         """ convert the given dataset or attribute element to h5py equivalent """
@@ -90,9 +158,31 @@ class H5pyWriter(H5Writer):
                             self.log.warning(f"referenced object: {h5path} not found")
 
             elif is_regionreference(ref):
-                self.log.warning("region reference not supported")
-                # TBD: just return a null region reference till we have support
+                # initialize out to null region ref
                 out = h5py.RegionReference()
+
+                raw = val.item() if isinstance(val, np.ndarray) else val
+                if raw:
+                    region_ref = raw if isinstance(raw, RegionReference) else RegionReference.frombytes(raw)
+                    if region_ref.id is not None:
+                        obj_id = region_ref.id
+                        if obj_id not in self._id_map:
+                            self.log.warning(f"region ref object {obj_id} not found")
+                        else:
+                            h5path = self._id_map[obj_id]
+                            try:
+                                target_obj = fout[h5path]
+                            except KeyError:
+                                self.log.warning(f"region ref referenced object: {h5path} not found")
+                            else:
+                                if not isinstance(target_obj, h5py.Dataset):
+                                    self.log.warning(f"region ref target {h5path} is not a dataset")
+                                else:
+                                    try:
+                                        sid = self._buildRegionDataspace(target_obj, region_ref)
+                                        out = h5r.create(target_obj.id, b'.', h5r.DATASET_REGION, sid)
+                                    except (NotImplementedError, ValueError) as e:
+                                        self.log.warning(f"unable to create region reference: {e}")
             else:
                 raise TypeError(f"Unexpected ref type: {type(ref)}")
         elif src_dt.metadata and "vlen" in src_dt.metadata:
@@ -181,8 +271,14 @@ class H5pyWriter(H5Writer):
         """ create a dataset object """
 
         dtype = self.db.getDtype(dset_json)
+        # h5py's type layer identity-checks special (ref/vlen) dtype metadata
+        # against its own Reference/RegionReference classes, so the h5json
+        # dtype must be translated before being handed to create_dataset() -
+        # everything else in this method keeps using the untranslated dtype,
+        # since e.g. jsonToArray() needs h5json's own metadata to recognize it.
+        h5py_dtype = convert_dtype(dtype, to_h5py=True)
 
-        kwargs = {"dtype": dtype}
+        kwargs = {"dtype": h5py_dtype}
         shape_class = getShapeClass(dset_json)
         if shape_class == "H5S_NULL":
             # skip the shape keyword to create a null space dataset

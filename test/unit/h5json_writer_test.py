@@ -17,7 +17,8 @@ import numpy as np
 from h5json import Hdf5db
 from h5json.jsonstore.h5json_writer import H5JsonWriter
 
-from h5json.hdf5dtype import special_dtype, Reference
+from h5json.hdf5dtype import special_dtype, Reference, RegionReference
+from h5json.objid import getUuidFromId
 from h5json import selections
 
 
@@ -279,6 +280,73 @@ class H5JsonWriterTest(unittest.TestCase):
 
         item_shape = item["shape"]
         self.assertEqual(item_shape["class"], "H5S_SCALAR")
+        db.close()
+
+    def testCreateRegionReferenceAttribute(self):
+        # matches the format used in data/json/regionref_attr.json:
+        # {"id": <bare uuid>, "select_type": ..., "selection": [...]}
+        filepath = "test/unit/out/h5json_writer_testCreateRegionReferenceAttribute.json"
+
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        target_id = db.createDataset(shape=(3, 16), dtype=np.int32)
+        db.createHardLink(root_id, "DS1", target_id)
+
+        sel = selections.select((3, 16), ([0, 2, 1, 2], [1, 11, 0, 4]))
+        ref = RegionReference("datasets/" + target_id, sel)
+
+        dt = special_dtype(ref=RegionReference)
+        value = np.empty((1,), dtype=dt)
+        value[0] = ref.tobytes()
+
+        db.createAttribute(root_id, "A1", value, dtype=dt)
+        attr = db.getAttribute(root_id, "A1")
+        attr_type = attr["type"]
+        self.assertEqual(attr_type["class"], "H5T_REFERENCE")
+        self.assertEqual(attr_type["base"], "H5T_STD_REF_DSETREG")
+
+        attr_value = attr["value"]
+        self.assertEqual(len(attr_value), 1)
+        self.assertEqual(attr_value[0]["id"], getUuidFromId(target_id))
+        self.assertEqual(attr_value[0]["select_type"], "H5S_SEL_POINTS")
+        self.assertEqual(attr_value[0]["selection"], [[0, 1], [2, 11], [1, 0], [2, 4]])
+        db.close()
+
+    def testCreateRegionReferenceDataset(self):
+        # matches the format used in data/json/regionref_dset.json
+        filepath = "test/unit/out/h5json_writer_testCreateRegionReferenceDataset.json"
+
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        target_id = db.createDataset(shape=(3, 16), dtype=np.int32)
+        db.createHardLink(root_id, "DS1", target_id)
+
+        sel = selections.select((3, 16), (slice(0, 2), slice(0, 4)))
+        ref = RegionReference("datasets/" + target_id, sel)
+
+        dt = special_dtype(ref=RegionReference)
+        ref_dset_id = db.createDataset(shape=(1,), dtype=dt)
+        db.createHardLink(root_id, "DS2", ref_dset_id)
+
+        ref_arr = np.empty((1,), dtype=dt)
+        ref_arr[0] = ref.tobytes()
+        sel_all = selections.select((1,), ...)
+        db.setDatasetValues(ref_dset_id, sel_all, ref_arr)
+
+        dumped = db.writer.dumpDataset(ref_dset_id)
+        dumped_type = dumped["type"]
+        self.assertEqual(dumped_type["class"], "H5T_REFERENCE")
+        self.assertEqual(dumped_type["base"], "H5T_STD_REF_DSETREG")
+
+        value = dumped["value"]
+        self.assertEqual(len(value), 1)
+        self.assertEqual(value[0]["id"], getUuidFromId(target_id))
+        self.assertEqual(value[0]["select_type"], "H5S_SEL_HYPERSLABS")
+        self.assertEqual(value[0]["selection"], [[[0, 0], [1, 3]]])
         db.close()
 
     def testCommittedType(self):

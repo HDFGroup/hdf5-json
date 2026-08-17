@@ -14,12 +14,14 @@ import logging
 import numpy as np
 
 from h5json import hdf5dtype
+from h5json import selections
 from h5json.hdf5dtype import special_dtype
 from h5json.hdf5dtype import check_dtype
 from h5json.hdf5dtype import Reference
 from h5json.hdf5dtype import RegionReference
 from h5json.hdf5dtype import isOpaqueDtype
 from h5json.hdf5dtype import isVlen
+from h5json.objid import createObjId, getUuidFromId
 
 
 class Hdf5dtypeTest(unittest.TestCase):
@@ -171,12 +173,22 @@ class Hdf5dtypeTest(unittest.TestCase):
 
     def testRegionReferenceTypeItem(self):
         dt = special_dtype(ref=RegionReference)
+        # unlike an object ref (a fixed "S48" type), a region ref's size
+        # depends on the bound selection, not just the referenced dataset,
+        # so it's a variable-length ("O") type - same as vlen strings/types
+        self.assertEqual(dt.kind, "O")
         typeItem = hdf5dtype.getTypeItem(dt)
         typeSize = hdf5dtype.getItemSize(typeItem)
-        self.assertEqual(typeSize, 48)
         self.assertEqual(typeItem["class"], "H5T_REFERENCE")
-        # self.assertEqual(typeItem['base'], 'H5T_STD_REF_DSETREG')
-        # self.assertEqual(typeSize, 'H5T_VARIABLE')
+        self.assertEqual(typeItem["base"], "H5T_STD_REF_DSETREG")
+        self.assertEqual(typeSize, "H5T_VARIABLE")
+
+    def testRegionReferenceTypeItemRoundTrip(self):
+        dt = special_dtype(ref=RegionReference)
+        typeItem = hdf5dtype.getTypeItem(dt)
+        dtRoundTrip = hdf5dtype.createDataType(typeItem)
+        self.assertEqual(dtRoundTrip.kind, "O")
+        self.assertTrue(dtRoundTrip.metadata["ref"] is RegionReference)
 
     def testCompoundArrayTypeItem(self):
         dt = np.dtype([("a", "<i1"), ("b", "S1", (10,))])
@@ -882,6 +894,267 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertTrue("VALUE2" in dt.fields.keys())
         self.assertTrue("VALUE3" in dt.fields.keys())
         self.assertEqual(typeSize, hdf5dtype.getDtypeItemSize(dt))
+
+
+class ReferenceTest(unittest.TestCase):
+    def __init__(self, *args, **kwargs):
+        super(ReferenceTest, self).__init__(*args, **kwargs)
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.INFO)
+
+    def testBindSchema2Id(self):
+        root_id = createObjId("groups")
+        dset_id = createObjId("datasets", root_id=root_id)
+        ref = Reference("datasets/" + dset_id)
+        self.assertEqual(ref.id, dset_id)
+
+    def testBindSchema1Uuid(self):
+        # a plain (schema 1 style, no "d-" prefix) uuid, as used in
+        # data/json/regionref_dset.json / regionref_attr.json
+        ref = Reference("datasets/a296b77d-83f8-11e5-815f-3c15c2da029e")
+        self.assertEqual(ref.id, "d-a296b77d-83f8-11e5-815f-3c15c2da029e")
+
+    def testBindAlreadyHashTagId(self):
+        # a bare hashtag id (no "/" at all) passes straight through
+        ref = Reference("d-a296b77d-83f8-11e5-815f-3c15c2da029e")
+        self.assertEqual(ref.id, "d-a296b77d-83f8-11e5-815f-3c15c2da029e")
+
+    def testBindNull(self):
+        ref = Reference(None)
+        self.assertIsNone(ref.id)
+
+
+class RegionReferenceTest(unittest.TestCase):
+    def __init__(self, *args, **kwargs):
+        super(RegionReferenceTest, self).__init__(*args, **kwargs)
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.INFO)
+
+    def _dset_id(self):
+        root_id = createObjId("groups")
+        return createObjId("datasets", root_id=root_id)
+
+    def testNull(self):
+        ref = RegionReference()
+        self.assertIsNone(ref.id)
+        self.assertIsNone(ref.selection_bytes)
+
+    def testBindWithSelectionInstance(self):
+        dset_id = self._dset_id()
+        sel = selections.select((100,), slice(2, 10))
+        ref = RegionReference()
+        ref.bind("datasets/" + dset_id, sel)
+        self.assertIsNotNone(ref.id)
+        self.assertIsInstance(ref.selection_bytes, bytes)
+        self.assertEqual(selections.Selection.frombytes(ref.selection_bytes), sel)
+
+    def testBindWithSerializedBytes(self):
+        dset_id = self._dset_id()
+        sel = selections.select((100,), slice(2, 10))
+        data = sel.tobytes()
+        ref = RegionReference()
+        ref.bind(dset_id, data)
+        self.assertEqual(ref.selection_bytes, bytes(data))
+        self.assertEqual(selections.Selection.frombytes(ref.selection_bytes), sel)
+
+    def testBindWithoutCollectionPrefix(self):
+        dset_id = self._dset_id()
+        sel = selections.select((100,), slice(2, 10))
+        ref_prefixed = RegionReference()
+        ref_prefixed.bind("datasets/" + dset_id, sel)
+        ref_bare = RegionReference()
+        ref_bare.bind(dset_id, sel)
+        self.assertEqual(ref_prefixed.id, ref_bare.id)
+
+    def testBindSchema1Uuid(self):
+        # a plain (schema 1 style, no "d-" prefix) uuid, as used in
+        # data/json/regionref_dset.json / regionref_attr.json
+        sel = selections.select((100,), slice(2, 10))
+        ref = RegionReference()
+        ref.bind("datasets/a296b77d-83f8-11e5-815f-3c15c2da029e", sel)
+        self.assertEqual(ref.id, "d-a296b77d-83f8-11e5-815f-3c15c2da029e")
+
+    def testBindWithDatasetObject(self):
+        dset_id = self._dset_id()
+        sel = selections.select((100,), slice(2, 10))
+
+        class FakeDatasetObj:
+            def __init__(self, _id):
+                self._id = _id
+
+        ref_via_obj = RegionReference()
+        ref_via_obj.bind(FakeDatasetObj(dset_id), sel)
+        ref_via_str = RegionReference()
+        ref_via_str.bind(dset_id, sel)
+        self.assertEqual(ref_via_obj.id, ref_via_str.id)
+
+    def testConstructorBinds(self):
+        dset_id = self._dset_id()
+        sel = selections.select((100,), slice(2, 10))
+        ref = RegionReference(dset_id, sel)
+        self.assertIsNotNone(ref.id)
+        self.assertEqual(selections.Selection.frombytes(ref.selection_bytes), sel)
+
+    def testBindWrongCollectionRaises(self):
+        root_id = createObjId("groups")
+        group_id = createObjId("groups", root_id=root_id)
+        sel = selections.select((100,), slice(2, 10))
+        ref = RegionReference()
+        with self.assertRaises(TypeError):
+            ref.bind("groups/" + group_id, sel)
+
+    def testBindInvalidSelectionRaises(self):
+        dset_id = self._dset_id()
+        ref = RegionReference()
+        with self.assertRaises(TypeError):
+            ref.bind(dset_id, 42)
+
+    def testTobytesFrombytesRoundtrip(self):
+        dset_id = self._dset_id()
+        sel = selections.select((100,), slice(2, 10))
+        ref = RegionReference(dset_id, sel)
+
+        raw = ref.tobytes()
+        self.assertIsInstance(raw, bytes)
+
+        ref2 = RegionReference.frombytes(raw)
+        self.assertEqual(ref2.id, ref.id)
+        self.assertEqual(selections.Selection.frombytes(ref2.selection_bytes), sel)
+
+    def testTobytesFrombytesNullRef(self):
+        ref = RegionReference()
+        raw = ref.tobytes()
+        ref2 = RegionReference.frombytes(raw)
+        self.assertIsNone(ref2.id)
+        self.assertIsNone(ref2.selection_bytes)
+
+    def testTobytesSurvivesFixedWidthStoragePadding(self):
+        # a RegionReference stored as a raw value in a numpy fixed-length
+        # byte-string ("S<n>") array element must survive being embedded in
+        # an oversized field (which numpy NUL-pads) and read back - this is
+        # exactly the storage strategy used for H5T_REFERENCE dataset values.
+        dset_id = self._dset_id()
+        sel = selections.select((100,), slice(2, 10))
+        ref = RegionReference(dset_id, sel)
+        raw = ref.tobytes()
+
+        dt = np.dtype(f"S{len(raw) + 32}")  # deliberately oversized
+        arr = np.zeros((1,), dtype=dt)
+        arr[0] = raw
+        stored = bytes(arr[0])
+
+        ref2 = RegionReference.frombytes(stored)
+        self.assertEqual(ref2.id, ref.id)
+        self.assertEqual(selections.Selection.frombytes(ref2.selection_bytes), sel)
+
+    def testToJson(self):
+        # matches the format used in data/json/regionref_dset.json /
+        # regionref_attr.json: {"id": <bare uuid>, "select_type": ..., "selection": [...]}
+        dset_id = self._dset_id()
+        sel = selections.select((3, 16), ([0, 2, 1, 2], [1, 11, 0, 4]))
+        ref = RegionReference("datasets/" + dset_id, sel)
+
+        d = ref.to_json()
+        self.assertEqual(d["id"], getUuidFromId(dset_id))
+        self.assertEqual(d["select_type"], "H5S_SEL_POINTS")
+        self.assertEqual(d["selection"], [[0, 1], [2, 11], [1, 0], [2, 4]])
+
+    def testToJsonHyperslab(self):
+        dset_id = self._dset_id()
+        sel = selections.select((3, 16), (slice(0, 2), slice(0, 4)))
+        ref = RegionReference(dset_id, sel)
+
+        d = ref.to_json()
+        self.assertEqual(d["id"], getUuidFromId(dset_id))
+        self.assertEqual(d["select_type"], "H5S_SEL_HYPERSLABS")
+        self.assertEqual(d["selection"], [[[0, 0], [1, 3]]])
+
+    def testToJsonNullRefRaises(self):
+        ref = RegionReference()
+        with self.assertRaises(ValueError):
+            ref.to_json()
+
+    def testToJsonNoSelection(self):
+        # e.g. a region reference read from an actual HDF5 file, where only
+        # the target dataset's identity can be recovered, not its selection
+        dset_id = self._dset_id()
+        ref = RegionReference(dset_id)
+        d = ref.to_json()
+        self.assertEqual(d, {"id": getUuidFromId(dset_id)})
+
+        ref2 = RegionReference.from_json(d)
+        self.assertEqual(ref2.id, ref.id)
+        self.assertIsNone(ref2.selection_bytes)
+
+    def testFromJsonRoundTrip(self):
+        dset_id = self._dset_id()
+        sel = selections.select((3, 16), ([0, 2, 1, 2], [1, 11, 0, 4]))
+        ref = RegionReference("datasets/" + dset_id, sel)
+        d = ref.to_json()
+
+        ref2 = RegionReference.from_json(d)
+        self.assertEqual(ref2.id, ref.id)
+        sel2 = selections.Selection.frombytes(ref2.selection_bytes)
+        self.assertEqual(sel2.select_type, sel.select_type)
+        self.assertEqual(sel2.to_region_json(), sel.to_region_json())
+
+    def testFromJsonBareSchema1Uuid(self):
+        # matches data/json/regionref_dset.json / regionref_attr.json, which
+        # use plain (schema 1 style, no "d-" prefix) uuids for "id"
+        d = {
+            "id": "a296b77d-83f8-11e5-815f-3c15c2da029e",
+            "select_type": "H5S_SEL_POINTS",
+            "selection": [[0, 1], [2, 11], [1, 0], [2, 4]],
+        }
+        ref = RegionReference.from_json(d)
+        self.assertEqual(ref.id, "d-a296b77d-83f8-11e5-815f-3c15c2da029e")
+        self.assertEqual(ref.to_json(), d)
+
+    def testFromJsonNull(self):
+        ref = RegionReference.from_json(None)
+        self.assertIsNone(ref.id)
+        self.assertIsNone(ref.selection_bytes)
+
+    def testFromJsonMissingIdRaises(self):
+        with self.assertRaises(KeyError):
+            RegionReference.from_json({"select_type": "H5S_SEL_POINTS", "selection": [[0]]})
+
+    def testToJsonFancySelectionFallsBackToSelectionDict(self):
+        # H5S_SEL_FANCY has no points/hyperslab equivalent, so to_json()
+        # embeds the fully general Selection.to_dict() instead of raising
+        dset_id = self._dset_id()
+        sel = selections.select((6, 10), (slice(0, 4), [1, 3, 7]))
+        ref = RegionReference("datasets/" + dset_id, sel)
+
+        d = ref.to_json()
+        self.assertEqual(d["id"], getUuidFromId(dset_id))
+        self.assertNotIn("select_type", d)
+        self.assertNotIn("selection", d)
+        self.assertEqual(d["selection_dict"], sel.to_dict())
+
+    def testFromJsonSelectionDictRoundTrip(self):
+        dset_id = self._dset_id()
+        sel = selections.select((6, 10), (slice(0, 4), [1, 3, 7]))
+        ref = RegionReference("datasets/" + dset_id, sel)
+        d = ref.to_json()
+
+        ref2 = RegionReference.from_json(d)
+        self.assertEqual(ref2.id, ref.id)
+        sel2 = selections.Selection.frombytes(ref2.selection_bytes)
+        self.assertEqual(sel2, sel)
+        self.assertEqual(ref2.to_json(), d)
+
+    def testToJsonSteppedHyperslabFallsBackToSelectionDict(self):
+        # stepped hyperslabs also have no region-reference equivalent
+        dset_id = self._dset_id()
+        sel = selections.select((10,), slice(0, 10, 2))
+        ref = RegionReference("datasets/" + dset_id, sel)
+
+        d = ref.to_json()
+        self.assertIn("selection_dict", d)
+        ref2 = RegionReference.from_json(d)
+        sel2 = selections.Selection.frombytes(ref2.selection_bytes)
+        self.assertEqual(sel2, sel)
 
 
 if __name__ == "__main__":

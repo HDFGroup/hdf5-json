@@ -18,7 +18,7 @@ from h5json import Hdf5db
 from h5json import selections
 from h5json.hdf5db import ChunkIterator
 from h5json.objid import isRootObjId, isValidUuid, isSchema2Id
-from h5json.hdf5dtype import special_dtype, Reference
+from h5json.hdf5dtype import special_dtype, Reference, RegionReference
 
 
 class Hdf5dbTest(unittest.TestCase):
@@ -1446,6 +1446,51 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertEqual(arr.dtype, dt)
         self.assertEqual(arr[0], ds1_ref.encode())
         self.assertEqual(arr[1], b'')
+
+        db.close()
+
+    def testCreateRegionReferenceDataset(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        # target dataset that the region reference will point into
+        target_shape = (10,)
+        target_id = db.createDataset(shape=target_shape, dtype=np.int32)
+        db.createHardLink(root_id, "DS1", target_id)
+
+        # build a RegionReference: id of the target dataset + a selection on it
+        sel = selections.select(target_shape, slice(2, 8))
+        ref = RegionReference("datasets/" + target_id, sel)
+        raw = ref.tobytes()
+
+        # RegionReference is a variable-length ("O") type - its size depends
+        # on the bound selection, not just the referenced dataset - so
+        # (unlike a plain object Reference) it isn't a fixed-width dtype
+        dt = special_dtype(ref=RegionReference)
+        self.assertEqual(dt.kind, "O")
+
+        # create a ref dataset
+        shape = (4, )
+        ref_dset_id = db.createDataset(shape=shape, dtype=dt)
+
+        # assign a region ref to element 0, leave the rest empty (no ref)
+        ref_arr = np.empty(shape, dtype=dt)
+        ref_arr[0] = raw
+        for i in range(1, shape[0]):
+            ref_arr[i] = b''
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(ref_dset_id, sel_all, ref_arr)
+        sel_read = selections.select(shape, (slice(0, 2),))
+        arr = db.getDatasetValues(ref_dset_id, sel_read)
+        self.assertEqual(arr.shape, (2, ))
+        self.assertEqual(arr.dtype, dt)
+        self.assertEqual(arr[1], b'')
+
+        # decode the round-tripped region reference and confirm it matches
+        round_tripped = RegionReference.frombytes(arr[0])
+        self.assertEqual(round_tripped.id, ref.id)
+        round_tripped_sel = selections.Selection.frombytes(round_tripped.selection_bytes)
+        self.assertEqual(round_tripped_sel, sel)
 
         db.close()
 

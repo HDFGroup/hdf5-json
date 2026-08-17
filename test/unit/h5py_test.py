@@ -20,8 +20,9 @@ from h5json import Hdf5db
 from h5json.jsonstore.h5json_reader import H5JsonReader
 from h5json.h5pystore.h5py_reader import H5pyReader
 from h5json.h5pystore.h5py_writer import H5pyWriter
-from h5json.hdf5dtype import special_dtype, Reference
-from h5json.objid import isRootObjId, isSchema2Id
+from h5py import h5r
+from h5json.hdf5dtype import special_dtype, Reference, RegionReference
+from h5json.objid import isRootObjId, isSchema2Id, getUuidFromId
 from h5json import selections
 from h5json.time_util import getNow
 
@@ -162,6 +163,64 @@ class H5pyTest(unittest.TestCase):
             self.assertTrue(i * j > 10)
 
         db.close()
+
+    def testReadRegionReferenceAttribute(self):
+        # reads a real HDF5 file with region-reference attributes.  h5py can
+        # resolve which dataset a region reference points to, but there's no
+        # generic way to recover its selection back out of the file, so the
+        # reader binds each RegionReference to its target dataset only, with
+        # no selection (see H5pyReader._copy_element()).
+        filepath = "data/hdf5/regionref_attr.h5"
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5pyReader(filepath, app_logger=self.log)
+        db.open()
+
+        ds1_id = db.getObjectIdByPath("/DS1")
+        ds2_id = db.getObjectIdByPath("/DS2")
+
+        value = db.getAttributeValue(ds1_id, "A1")
+        self.assertEqual(value.shape, (2,))
+        self.assertEqual(value.dtype.metadata.get("ref"), RegionReference)
+
+        for raw in value:
+            ref = RegionReference.frombytes(raw)
+            self.assertEqual(ref.id, ds2_id)
+            self.assertIsNone(ref.selection_bytes)
+            self.assertEqual(ref.to_json(), {"id": getUuidFromId(ds2_id)})
+
+        db.close()
+
+    def testWriteReadRegionReferenceRoundTrip(self):
+        filepath = "test/unit/out/h5py_test_testWriteReadRegionReferenceRoundTrip.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+
+        wdb = Hdf5db(app_logger=self.log)
+        wdb.writer = H5pyWriter(filepath, no_data=False)
+        root_id = wdb.open()
+
+        target_id = wdb.createDataset(shape=(6, 10), dtype=np.int32)
+        wdb.createHardLink(root_id, "DS1", target_id)
+
+        sel = selections.select((6, 10), (slice(0, 3), slice(2, 6)))
+        ref = RegionReference("datasets/" + target_id, sel)
+        dt = special_dtype(ref=RegionReference)
+        wdb.createAttribute(root_id, "A1", np.array([ref.tobytes()], dtype=dt), dtype=dt)
+        wdb.close()
+
+        rdb = Hdf5db(app_logger=self.log)
+        rdb.reader = H5pyReader(filepath, app_logger=self.log)
+        root_id2 = rdb.open()
+        target_id2 = rdb.getObjectIdByPath("/DS1")
+
+        value = rdb.getAttributeValue(root_id2, "A1")
+        read_ref = RegionReference.frombytes(value[0])
+        # target dataset identity survives the round trip
+        self.assertEqual(read_ref.id, target_id2)
+        # the selection itself does not - only h5py's own low-level h5r/h5s
+        # API can decode it, which this reader doesn't currently do
+        self.assertIsNone(read_ref.selection_bytes)
+        rdb.close()
 
     # --- H5pyWriter tests ---
 
@@ -681,6 +740,135 @@ class H5pyTest(unittest.TestCase):
             a1 = f.attrs["A1"]
             ref_obj = f[a1[0]]
             self.assertEqual(ref_obj.name, "/DS1")
+
+    def testCreateRegionReferencePointsAttribute(self):
+        filepath = "test/unit/out/h5py_test_testCreateRegionReferencePointsAttribute.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5pyWriter(filepath, no_data=False)
+        root_id = db.open()
+
+        target_id = db.createDataset(shape=(3, 16), dtype=np.int32)
+        db.createHardLink(root_id, "DS1", target_id)
+
+        sel = selections.select((3, 16), ([0, 2, 1, 2], [1, 11, 0, 4]))
+        ref = RegionReference("datasets/" + target_id, sel)
+        dt = special_dtype(ref=RegionReference)
+        db.createAttribute(root_id, "A1", np.array([ref.tobytes()], dtype=dt), dtype=dt)
+        db.close()
+
+        with h5py.File(filepath) as f:
+            self.assertTrue("A1" in f.attrs)
+            a1 = f.attrs["A1"]
+            hdf5_ref = a1[0]
+            self.assertTrue(hdf5_ref)  # not a null reference
+            sid = h5r.get_region(hdf5_ref, f["DS1"].id)
+            self.assertEqual(sid.get_select_type(), selections.H5S_SEL_POINTS)
+            self.assertEqual(sid.get_select_npoints(), 4)
+            points = sid.get_select_elem_pointlist().tolist()
+            self.assertEqual(points, [[0, 1], [2, 11], [1, 0], [2, 4]])
+
+    def testCreateRegionReferenceHyperslabAttribute(self):
+        filepath = "test/unit/out/h5py_test_testCreateRegionReferenceHyperslabAttribute.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5pyWriter(filepath, no_data=False)
+        root_id = db.open()
+
+        target_id = db.createDataset(shape=(6, 10), dtype=np.int32)
+        db.createHardLink(root_id, "DS1", target_id)
+
+        sel = selections.select((6, 10), (slice(0, 3), slice(2, 6)))
+        ref = RegionReference("datasets/" + target_id, sel)
+        dt = special_dtype(ref=RegionReference)
+        db.createAttribute(root_id, "A1", np.array([ref.tobytes()], dtype=dt), dtype=dt)
+        db.close()
+
+        with h5py.File(filepath) as f:
+            hdf5_ref = f.attrs["A1"][0]
+            self.assertTrue(hdf5_ref)
+            sid = h5r.get_region(hdf5_ref, f["DS1"].id)
+            self.assertEqual(sid.get_select_type(), selections.H5S_SEL_HYPERSLABS)
+            self.assertEqual(sid.get_select_npoints(), 3 * 4)
+            self.assertEqual(sid.get_select_bounds(), ((0, 2), (2, 5)))
+
+    def testCreateRegionReferenceNullAttribute(self):
+        filepath = "test/unit/out/h5py_test_testCreateRegionReferenceNullAttribute.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5pyWriter(filepath, no_data=False)
+        root_id = db.open()
+
+        dt = special_dtype(ref=RegionReference)
+        db.createAttribute(root_id, "A1", np.array([b''], dtype=dt), dtype=dt)
+        db.close()
+
+        with h5py.File(filepath) as f:
+            hdf5_ref = f.attrs["A1"][0]
+            self.assertFalse(hdf5_ref)  # null reference
+
+    def testCreateRegionReferenceFancyAttribute(self):
+        # H5S_SEL_FANCY (mixed slice + coordinate list) has no equivalent in
+        # a real HDF5 region reference's point/hyperslab representation, so
+        # RegionReference.to_json() falls back to embedding the fully
+        # general Selection.to_dict() under a "selection_dict" key (see
+        # hdf5dtype.py).  Confirm that lets it flow all the way through
+        # Hdf5db.createAttribute() and be written as a real HDF5 region
+        # reference (decomposed into a union of hyperslabs, same as HDF5
+        # itself would do for e.g. dset[0:4, [1, 3, 7]]).
+        filepath = "test/unit/out/h5py_test_testCreateRegionReferenceFancyAttribute.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5pyWriter(filepath, no_data=False)
+        root_id = db.open()
+
+        target_id = db.createDataset(shape=(6, 10), dtype=np.int32)
+        db.createHardLink(root_id, "DS1", target_id)
+
+        sel = selections.select((6, 10), (slice(0, 4), [1, 3, 7]))
+        ref = RegionReference("datasets/" + target_id, sel)
+        d = ref.to_json()
+        self.assertIn("selection_dict", d)
+
+        dt = special_dtype(ref=RegionReference)
+        db.createAttribute(root_id, "A1", np.array([ref.tobytes()], dtype=dt), dtype=dt)
+        attr = db.getAttribute(root_id, "A1")
+        self.assertIn("selection_dict", attr["value"][0])
+        db.close()
+
+        with h5py.File(filepath) as f:
+            hdf5_ref = f.attrs["A1"][0]
+            self.assertTrue(hdf5_ref)  # not a null reference
+            sid = h5r.get_region(hdf5_ref, f["DS1"].id)
+            self.assertEqual(sid.get_select_type(), selections.H5S_SEL_HYPERSLABS)
+            self.assertEqual(sid.get_select_npoints(), 4 * 3)  # 4 rows x 3 fancy columns
+
+    def testBuildRegionDataspaceFancySelection(self):
+        # Exercise H5pyWriter._buildRegionDataspace() directly against a
+        # FANCY selection, independent of the JSON round trip covered above.
+        filepath = "test/unit/out/h5py_test_testBuildRegionDataspaceFancySelection.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+
+        writer = H5pyWriter(filepath, no_data=False)
+        with h5py.File(filepath, "w") as f:
+            target = f.create_dataset("DS1", data=np.zeros((6, 10), dtype=np.int32))
+
+            sel = selections.select((6, 10), (slice(0, 4), [1, 3, 7]))
+            ref = RegionReference()
+            ref._selection_bytes = sel.tobytes()  # _buildRegionDataspace only needs the selection
+
+            sid = writer._buildRegionDataspace(target, ref)
+            self.assertEqual(sid.get_select_type(), selections.H5S_SEL_HYPERSLABS)
+            self.assertEqual(sid.get_select_npoints(), 4 * 3)  # 4 rows x 3 fancy columns
+
+            hdf5_ref = h5r.create(target.id, b'.', h5r.DATASET_REGION, sid)
+            sid2 = h5r.get_region(hdf5_ref, target.id)
+            self.assertEqual(sid2.get_select_npoints(), 12)
 
     def testVlenStringDataset(self):
         filepath = "test/unit/out/h5py_test_testVlenStringDataset.h5"
