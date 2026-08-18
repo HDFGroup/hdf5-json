@@ -253,6 +253,34 @@ class H5pyTest(unittest.TestCase):
 
         rdb.close()
 
+    def testConvertArrayDatasetJsonToH5(self):
+        # reproduces `jsontoh5 data/json/array_dset.json <out>.h5` - a
+        # regression test for jsonToArray() not accounting for an H5T_ARRAY
+        # (subarray) dtype's dims when sanity-checking the constructed
+        # array's size/shape (used to raise "setting an array element with
+        # a sequence")
+        filepath = "test/unit/out/h5py_test_testConvertArrayDatasetJsonToH5.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5JsonReader("data/json/array_dset.json", app_logger=self.log)
+        db.writer = H5pyWriter(filepath, no_data=False, app_logger=self.log)
+        db.open()
+        db.close()
+
+        with h5py.File(filepath) as f:
+            ds1 = f["DS1"]
+            self.assertEqual(ds1.dtype, np.dtype(("<i8", (3, 5))))
+            self.assertEqual(ds1.shape, (4,))
+            expected = [
+                [[0, 0, 0, 0, 0], [0, -1, -2, -3, -4], [0, -2, -4, -6, -8]],
+                [[0, 1, 2, 3, 4], [1, 1, 1, 1, 1], [2, 1, 0, -1, -2]],
+                [[0, 2, 4, 6, 8], [2, 3, 4, 5, 6], [4, 4, 4, 4, 4]],
+                [[0, 3, 6, 9, 12], [3, 5, 7, 9, 11], [6, 7, 8, 9, 10]],
+            ]
+            self.assertTrue(np.array_equal(ds1[...], np.array(expected)))
+
     def testReadRegionReferenceAttribute(self):
         # reads a real HDF5 file with region-reference attributes.  h5py can
         # resolve which dataset a region reference points to, but there's no

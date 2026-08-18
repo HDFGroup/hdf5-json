@@ -24,8 +24,8 @@ data_dir = os.path.join(top_dir, "data", "json")
 out_dir = os.path.join(top_dir, "test", "integ", "h5_out")
 
 test_files = (
-    # "array_dset.json",
-    # "arraytype.json",
+    "array_dset.json",
+    "arraytype.json",
     # bitfields not supported yet
     # "bitfield_attr.json",
     # "bitfield_dset.json",
@@ -74,7 +74,7 @@ test_files = (
     # "sample.json",
     "scalar.json",
     # "scalar_attr.json",
-    # "scalar_array_dset.json",
+    "scalar_array_dset.json",
     "tall.json",
     "tall_with_udlink.json",
     "tgroup.json",

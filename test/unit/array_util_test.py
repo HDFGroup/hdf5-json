@@ -661,6 +661,33 @@ class ArrayUtilTest(unittest.TestCase):
         e1b = e1[1]
         self.assertEqual(e1b, b"five")
 
+    def testJsonToArrayH5T_ARRAY(self):
+        # an H5T_ARRAY (subarray) dtype's dims get absorbed directly into
+        # the numpy array's shape - e.g. a (4,) dataset of dtype
+        # (int64, (3, 5)) elements produces a (4, 3, 5) shaped array, size
+        # 60, not 4 - jsonToArray's post-construction sanity checks need to
+        # account for that (regression test - matches data/json/array_dset.json,
+        # which used to fail with "setting an array element with a sequence")
+        typeItem = {
+            "class": "H5T_ARRAY",
+            "dims": [3, 5],
+            "base": {"class": "H5T_INTEGER", "base": "H5T_STD_I64LE"},
+        }
+        dt = createDataType(typeItem)
+        self.assertEqual(dt.subdtype, (np.dtype("int64"), (3, 5)))
+
+        shape = (4,)
+        value = [
+            [[0, 0, 0, 0, 0], [0, -1, -2, -3, -4], [0, -2, -4, -6, -8]],
+            [[0, 1, 2, 3, 4], [1, 1, 1, 1, 1], [2, 1, 0, -1, -2]],
+            [[0, 2, 4, 6, 8], [2, 3, 4, 5, 6], [4, 4, 4, 4, 4]],
+            [[0, 3, 6, 9, 12], [3, 5, 7, 9, 11], [6, 7, 8, 9, 10]],
+        ]
+
+        arr = jsonToArray(shape, dt, value)
+        self.assertEqual(arr.shape, (4, 3, 5))
+        self.assertTrue(np.array_equal(arr, np.array(value, dtype="int64")))
+
     def testToBytes(self):
         # Simple array
         dt = np.dtype("<i4")

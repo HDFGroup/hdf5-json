@@ -140,6 +140,30 @@ class H5pyReaderTest(unittest.TestCase):
 
         db.close()
 
+    def testArrayDataset(self):
+        # reads a real fixture with an H5T_ARRAY (subarray) dtype - a
+        # regression test for jsonToArray() not accounting for the subarray
+        # dims when sanity-checking the constructed array's size/shape
+        # (used to raise "setting an array element with a sequence")
+        filepath = "data/json/array_dset.json"
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.open()
+
+        ds1_id = db.getObjectIdByPath("/DS1")
+        sel_all = selections.select((4,), ...)
+        arr = db.getDatasetValues(ds1_id, sel_all)
+        self.assertEqual(arr.shape, (4, 3, 5))
+        expected = [
+            [[0, 0, 0, 0, 0], [0, -1, -2, -3, -4], [0, -2, -4, -6, -8]],
+            [[0, 1, 2, 3, 4], [1, 1, 1, 1, 1], [2, 1, 0, -1, -2]],
+            [[0, 2, 4, 6, 8], [2, 3, 4, 5, 6], [4, 4, 4, 4, 4]],
+            [[0, 3, 6, 9, 12], [3, 5, 7, 9, 11], [6, 7, 8, 9, 10]],
+        ]
+        self.assertTrue(np.array_equal(arr, np.array(expected)))
+
+        db.close()
+
     def testRegionReferenceAttribute(self):
         # reads the actual fixture file the region reference JSON format was
         # designed around

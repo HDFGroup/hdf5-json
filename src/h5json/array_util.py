@@ -316,22 +316,34 @@ def jsonToArray(data_shape, data_dtype, data_json):
             else:
                 raise
 
+    # An H5T_ARRAY (subarray) dtype's dims get absorbed directly into the
+    # numpy array's shape/size (e.g. dtype (int64, (3, 5)) over a (4,)
+    # dataset produces an array of shape (4, 3, 5), size 60) - so the
+    # expected size/shape below must include them too, not just data_shape.
+    full_shape = tuple(data_shape)
+    expected_size = npoints
+    if data_dtype is not None and data_dtype.subdtype is not None:
+        _, subarray_dims = data_dtype.subdtype
+        full_shape += tuple(subarray_dims)
+        for d in subarray_dims:
+            expected_size *= d
+
     # raise an exception of the array shape doesn't match the selection shape
     # allow if the array is a scalar and the selection shape is one element,
     # numpy is ok with this
-    if arr.size != npoints:
+    if arr.size != expected_size:
         msg = "Input data doesn't match selection number of elements"
-        msg += f" Expected {npoints}, but received: {arr.size}"
+        msg += f" Expected {expected_size}, but received: {arr.size}"
         # try adding an extra dimension to data_json
         # for cases where e.g. compound types are not getting interpreted correctly
         data_json = toTuple(np_shape_rank, [data_json, ])
         arr = get_array(data_json, np_shape_rank, data_dtype)
-        if arr.size != npoints:
+        if arr.size != expected_size:
             # still no good, raise error
             raise ValueError(msg)
 
-    if arr.shape != tuple(data_shape):
-        arr = arr.reshape(tuple(data_shape))
+    if arr.shape != full_shape:
+        arr = arr.reshape(full_shape)
 
     return arr
 
