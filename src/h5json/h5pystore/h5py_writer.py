@@ -212,6 +212,24 @@ class H5pyWriter(H5Writer):
             out = val  # can just copy as is
         return out
 
+    def _writeDatasetFull(self, dset, arr):
+        """ write arr as the full contents of dset (arr.shape == dset.shape).
+        dset[...] = arr can mis-handle a numpy object-dtype array (used for
+        vlen/RegionReference data) when every element happens to have the
+        same length - e.g. all-empty vlen arrays - since numpy "helpfully"
+        homogenizes it into a plain N-d array during the high-level write,
+        and h5py then rejects the now-wrong shape
+        ("Can't broadcast (4, 0) -> (4,)"). write_direct bypasses that
+        broadcasting/reshaping logic, but can't be used unconditionally: for
+        an H5T_ARRAY (subarray) dtype, arr's actual shape includes the
+        subarray dims (e.g. (4, 3, 5) for a (4,) dataset of (3, 5) arrays),
+        which only the high-level path knows how to reconcile against
+        dset.shape. """
+        if arr.dtype.kind == "O":
+            dset.write_direct(arr)
+        else:
+            dset[...] = arr
+
     def _copy_array(self, src_arr, fout=None):
         """Copy the numpy array to a new array.
             Convert any reference type to point to item in the target's hierarchy.
@@ -472,7 +490,7 @@ class H5pyWriter(H5Writer):
             if sel is None or sel.select_type == selections.H5S_SEL_NONE:
                 pass  # no updates
             elif sel.select_type == selections.H5S_SEL_ALL:
-                dset[...] = val
+                self._writeDatasetFull(dset, val)
                 self.log.debug(f"h5py_writer dset {dset.name} updated with sel_all")
             elif sel.select_type == selections.H5S_SEL_HYPERSLABS:
                 slices = []
@@ -519,7 +537,7 @@ class H5pyWriter(H5Writer):
         arr = self.db.getDatasetValues(dset_id, sel_all)
         if arr is not None:
             arr = self._copy_array(arr, fout=dset.file)
-            dset[...] = arr
+            self._writeDatasetFull(dset, arr)
 
     def createAttribute(self, obj, name, attr_json):
         """ add the given attribute to obj """
@@ -541,7 +559,14 @@ class H5pyWriter(H5Writer):
         if not isinstance(src_arr, np.ndarray):
             raise TypeError("Unexpected type for src_arr")
         tgt_arr = self._copy_array(src_arr, fout=obj.file)
-        obj.attrs[name] = tgt_arr
+        # obj.attrs[name] = tgt_arr can mis-handle a numpy object-dtype array
+        # (vlen/RegionReference data) when every element happens to have the
+        # same length - e.g. all-empty vlen arrays - since numpy "helpfully"
+        # homogenizes it into a plain N-d array during the write. Passing an
+        # explicit dtype through attrs.create() preserves tgt_arr's actual
+        # dtype (e.g. vlen-of-reference) instead of letting h5py re-infer it
+        # from the array's runtime contents.
+        obj.attrs.create(name, data=tgt_arr, dtype=tgt_arr.dtype)
 
     def updateAttributes(self, obj_id, obj):
         """ create/replace any modified attributes """

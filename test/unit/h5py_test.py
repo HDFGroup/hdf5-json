@@ -281,6 +281,29 @@ class H5pyTest(unittest.TestCase):
             ]
             self.assertTrue(np.array_equal(ds1[...], np.array(expected)))
 
+    def testConvertVlenAllEmptyDatasetJsonToH5(self):
+        # reproduces `jsontoh5 data/json/sample.json <out>.h5` - a regression
+        # test for a vlen dataset whose elements are all the same length
+        # (all empty here).  numpy homogenizes such an object-dtype array
+        # into a plain N-d array during a high-level `dset[...] = arr`
+        # write, and h5py then rejects the now-wrong shape
+        # ("Can't broadcast (4, 0) -> (4,)").
+        filepath = "test/unit/out/h5py_test_testConvertVlenAllEmptyDatasetJsonToH5.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5JsonReader("data/json/sample.json", app_logger=self.log)
+        db.writer = H5pyWriter(filepath, no_data=False, app_logger=self.log)
+        db.open()
+        db.close()
+
+        with h5py.File(filepath) as f:
+            dset3 = f["dset3"]
+            self.assertEqual(dset3.shape, (4,))
+            for elem in dset3[...]:
+                self.assertEqual(elem.shape, (0,))
+
     def testReadRegionReferenceAttribute(self):
         # reads a real HDF5 file with region-reference attributes.  h5py can
         # resolve which dataset a region reference points to, but there's no
