@@ -1,0 +1,674 @@
+{
+    "apiVersion": "1.1.1",
+    "datasets": {
+        "4dc53e67-b38839bb-234b-01740f-36aa12": {
+            "alias": [
+                "/dset3"
+            ],
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_LATE",
+                "fillTime": "H5D_FILL_TIME_ALLOC",
+                "layout": {
+                    "class": "H5D_CONTIGUOUS"
+                }
+            },
+            "shape": {
+                "class": "H5S_SIMPLE",
+                "dims": [
+                    4
+                ]
+            },
+            "type": {
+                "base": {
+                    "base": "H5T_STD_I32LE",
+                    "class": "H5T_INTEGER"
+                },
+                "class": "H5T_VLEN",
+                "size": "H5T_VARIABLE"
+            },
+            "value": [
+                [],
+                [],
+                [],
+                []
+            ]
+        },
+        "4dc53e67-b38839bb-8b13-e629f0-629144": {
+            "alias": [
+                "/dset2"
+            ],
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_LATE",
+                "fillTime": "H5D_FILL_TIME_IFSET",
+                "layout": {
+                    "class": "H5D_CONTIGUOUS"
+                }
+            },
+            "shape": {
+                "class": "H5S_SIMPLE",
+                "dims": [
+                    5
+                ]
+            },
+            "type": {
+                "class": "H5T_COMPOUND",
+                "fields": [
+                    {
+                        "name": "c",
+                        "type": {
+                            "base": "H5T_IEEE_F64BE",
+                            "class": "H5T_FLOAT"
+                        }
+                    },
+                    {
+                        "name": "b",
+                        "type": {
+                            "base": "H5T_IEEE_F32BE",
+                            "class": "H5T_FLOAT"
+                        }
+                    },
+                    {
+                        "name": "a",
+                        "type": {
+                            "base": "H5T_STD_I32BE",
+                            "class": "H5T_INTEGER"
+                        }
+                    }
+                ]
+            },
+            "value": [
+                [
+                    0.0,
+                    0.0,
+                    0
+                ],
+                [
+                    0.0,
+                    0.0,
+                    0
+                ],
+                [
+                    0.0,
+                    0.0,
+                    0
+                ],
+                [
+                    0.0,
+                    0.0,
+                    0
+                ],
+                [
+                    0.0,
+                    0.0,
+                    0
+                ]
+            ]
+        },
+        "4dc53e67-b38839bb-dac1-d57d7b-38eb71": {
+            "alias": [
+                "/group1/dset3"
+            ],
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_LATE",
+                "fillTime": "H5D_FILL_TIME_IFSET",
+                "layout": {
+                    "class": "H5D_CONTIGUOUS"
+                }
+            },
+            "shape": {
+                "class": "H5S_SIMPLE",
+                "dims": [
+                    5
+                ]
+            },
+            "type": {
+                "class": "H5T_COMPOUND",
+                "fields": [
+                    {
+                        "name": "a",
+                        "type": {
+                            "base": {
+                                "base": "H5T_STD_I32BE",
+                                "class": "H5T_INTEGER"
+                            },
+                            "class": "H5T_ARRAY",
+                            "dims": [
+                                4
+                            ]
+                        }
+                    },
+                    {
+                        "name": "b",
+                        "type": {
+                            "base": {
+                                "base": "H5T_IEEE_F32BE",
+                                "class": "H5T_FLOAT"
+                            },
+                            "class": "H5T_ARRAY",
+                            "dims": [
+                                5,
+                                6
+                            ]
+                        }
+                    }
+                ],
+                "id": "t-4dc53e67-b38839bb-c50e-d91ca2-cc0a31"
+            },
+            "value": [
+                [
+                    [
+                        0,
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ]
+                    ]
+                ],
+                [
+                    [
+                        0,
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ]
+                    ]
+                ],
+                [
+                    [
+                        0,
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ]
+                    ]
+                ],
+                [
+                    [
+                        0,
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ]
+                    ]
+                ],
+                [
+                    [
+                        0,
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ],
+                        [
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ]
+                    ]
+                ]
+            ]
+        },
+        "4dc53e67-b38839bb-ebdb-127102-adf52f": {
+            "alias": [
+                "/dset1"
+            ],
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_LATE",
+                "fillTime": "H5D_FILL_TIME_IFSET",
+                "layout": {
+                    "class": "H5D_CONTIGUOUS"
+                }
+            },
+            "shape": {
+                "class": "H5S_SIMPLE",
+                "dims": [
+                    10,
+                    10
+                ]
+            },
+            "type": {
+                "base": "H5T_STD_I32BE",
+                "class": "H5T_INTEGER"
+            },
+            "value": [
+                [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9
+                ],
+                [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9
+                ],
+                [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9
+                ],
+                [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9
+                ],
+                [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9
+                ],
+                [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9
+                ],
+                [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9
+                ],
+                [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9
+                ],
+                [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9
+                ],
+                [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9
+                ]
+            ]
+        }
+    },
+    "datatypes": {
+        "4dc53e67-b38839bb-c50e-d91ca2-cc0a31": {
+            "alias": [
+                "/type1"
+            ],
+            "type": {
+                "class": "H5T_COMPOUND",
+                "fields": [
+                    {
+                        "name": "a",
+                        "type": {
+                            "base": {
+                                "base": "H5T_STD_I32BE",
+                                "class": "H5T_INTEGER"
+                            },
+                            "class": "H5T_ARRAY",
+                            "dims": [
+                                4
+                            ]
+                        }
+                    },
+                    {
+                        "name": "b",
+                        "type": {
+                            "base": {
+                                "base": "H5T_IEEE_F32BE",
+                                "class": "H5T_FLOAT"
+                            },
+                            "class": "H5T_ARRAY",
+                            "dims": [
+                                5,
+                                6
+                            ]
+                        }
+                    }
+                ]
+            }
+        }
+    },
+    "groups": {
+        "4dc53e67-b38839bb-443a-993aa9-190b6d": {
+            "alias": [
+                "/group1"
+            ],
+            "links": [
+                {
+                    "class": "H5L_TYPE_HARD",
+                    "collection": "datasets",
+                    "id": "4dc53e67-b38839bb-dac1-d57d7b-38eb71",
+                    "title": "dset3"
+                }
+            ]
+        },
+        "4dc53e67-b38839bb-c54d-b6ef3b-00b133": {
+            "alias": [
+                "/"
+            ],
+            "attributes": [
+                {
+                    "name": "attr1",
+                    "shape": {
+                        "class": "H5S_SCALAR"
+                    },
+                    "type": {
+                        "charSet": "H5T_CSET_ASCII",
+                        "class": "H5T_STRING",
+                        "length": 17,
+                        "strPad": "H5T_STR_NULLPAD"
+                    },
+                    "value": ""
+                }
+            ],
+            "links": [
+                {
+                    "class": "H5L_TYPE_HARD",
+                    "collection": "datasets",
+                    "id": "4dc53e67-b38839bb-ebdb-127102-adf52f",
+                    "title": "dset1"
+                },
+                {
+                    "class": "H5L_TYPE_HARD",
+                    "collection": "datasets",
+                    "id": "4dc53e67-b38839bb-8b13-e629f0-629144",
+                    "title": "dset2"
+                },
+                {
+                    "class": "H5L_TYPE_HARD",
+                    "collection": "datasets",
+                    "id": "4dc53e67-b38839bb-234b-01740f-36aa12",
+                    "title": "dset3"
+                },
+                {
+                    "class": "H5L_TYPE_HARD",
+                    "collection": "groups",
+                    "id": "4dc53e67-b38839bb-443a-993aa9-190b6d",
+                    "title": "group1"
+                },
+                {
+                    "class": "H5L_TYPE_HARD",
+                    "collection": "groups",
+                    "id": "4dc53e67-b38839bb-443a-993aa9-190b6d",
+                    "title": "group2"
+                },
+                {
+                    "class": "H5L_TYPE_SOFT",
+                    "h5path": "somevalue",
+                    "title": "slink1"
+                },
+                {
+                    "class": "H5L_TYPE_HARD",
+                    "collection": "datatypes",
+                    "id": "4dc53e67-b38839bb-c50e-d91ca2-cc0a31",
+                    "title": "type1"
+                }
+            ]
+        }
+    },
+    "root": "4dc53e67-b38839bb-c54d-b6ef3b-00b133"
+}
