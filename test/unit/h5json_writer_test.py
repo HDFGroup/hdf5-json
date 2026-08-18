@@ -523,6 +523,27 @@ class H5JsonWriterTest(unittest.TestCase):
         self.assertTrue(size_with_smalldata > size_without_data)
         self.assertTrue(size_with_smalldata < size_with_data)
 
+    def testDumpGroupCreationProperties(self):
+        # regression test: dumpGroup copied "cpl" to "creationProperties" on
+        # the source item dict, but never wrote it into the response dict,
+        # so a group's creation properties were always dropped from the
+        # dumped JSON.
+        filepath = "test/unit/out/h5json_writer_testDumpGroupCreationProperties.json"
+
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        cpl = {"linkCreationOrder": "H5P_CRT_ORDER_TRACKED"}
+        g1_id = db.createGroup(cpl=cpl)
+        db.createHardLink(root_id, "g1", g1_id)
+
+        dumped = db.writer.dumpGroup(g1_id)
+        self.assertTrue("creationProperties" in dumped)
+        self.assertEqual(dumped["creationProperties"], cpl)
+
+        db.close()
+
 
 if __name__ == "__main__":
     # setup test files

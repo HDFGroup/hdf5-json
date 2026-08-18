@@ -88,7 +88,7 @@ class H5JsonReader(H5Reader):
         resp = {}
         # selectively copy from the db dict
         for k in json_obj:
-            for k in ("shape", "type", "cpl", "dcpl", "encoding"):
+            for k in ("shape", "type", "cpl", "dcpl", "creationProperties", "encoding"):
                 if k in json_obj:
                     resp[k] = json_obj[k]
         if include_attrs and "attributes" in json_obj:
@@ -165,7 +165,12 @@ class H5JsonReader(H5Reader):
         if name not in attributes:
             self.log.info(f"attr: [{name}] of {obj_id} not found")
             return None
-        return attributes[name]
+        attr_json = attributes[name]
+        if not includeData and ("value" in attr_json or "encoding" in attr_json):
+            attr_json = dict(attr_json)
+            attr_json.pop("value", None)
+            attr_json.pop("encoding", None)
+        return attr_json
 
     def getDtype(self, obj_json):
         """ Return the dtype for the type given by obj_json """

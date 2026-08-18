@@ -16,6 +16,7 @@ from h5json.filters import getFilterItem
 from h5json.dset_util import guessChunk, shrinkChunk, getChunkSize, expandChunk, generateLayout
 from h5json.dset_util import getDatasetLayoutClass, getContiguousLayout, getChunkDims
 from h5json.dset_util import validateLayout, validateDatasetCreationProps, getDatasetLayout
+from h5json.dset_util import getFillValue
 
 
 class DsetUtilTest(unittest.TestCase):
@@ -513,6 +514,21 @@ class DsetUtilTest(unittest.TestCase):
             if space_bytes > chunk_min:
                 self.assertTrue(chunk_bytes >= chunk_min)
             self.assertTrue(chunk_bytes <= chunk_max)
+
+    def testGetFillValue(self):
+        # regression test: getFillValue looked up a misspelled "filLValue"
+        # key rather than "fillValue", so it always returned None even when
+        # a fill value was set
+        obj_json = {"creationProperties": {"fillValue": 42}}
+        self.assertEqual(getFillValue(obj_json), 42)
+
+        # also accept being passed the cpl dict directly
+        cpl = {"fillValue": 42}
+        self.assertEqual(getFillValue(cpl), 42)
+
+        # no fill value set
+        self.assertEqual(getFillValue({"creationProperties": {}}), None)
+        self.assertEqual(getFillValue({}), None)
 
 
 if __name__ == "__main__":

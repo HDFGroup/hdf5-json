@@ -725,7 +725,7 @@ def getFillValue(obj_json):
         cpl = obj_json["creationProperties"]
     else:
         cpl = obj_json  # assume we've been based a cpl
-    if "filLValue" in cpl:
+    if "fillValue" in cpl:
         return cpl["fillValue"]
     else:
         return None

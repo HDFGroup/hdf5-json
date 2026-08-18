@@ -761,11 +761,11 @@ def squeezeArray(data):
         raise TypeError("expected ndarray")
     if len(data.shape) <= 1:
         return data
-    can_reduce = True
+    can_reduce = False
     for extent in data.shape:
         if extent == 1:
             can_reduce = True
-        break
+            break
     if can_reduce:
         data = data.squeeze()
     return data

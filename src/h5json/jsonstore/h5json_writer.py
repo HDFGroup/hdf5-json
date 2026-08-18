@@ -142,7 +142,9 @@ class H5JsonWriter(H5Writer):
         response["alias"] = alias
 
         if "cpl" in item:
-            item["creationProperties"] = item["cpl"]
+            response["creationProperties"] = item["cpl"]
+        elif "creationProperties" in item:
+            response["creationProperties"] = item["creationProperties"]
         attributes = self.dumpAttributes(obj_id)
         if attributes:
             response["attributes"] = attributes

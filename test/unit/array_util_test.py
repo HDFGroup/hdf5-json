@@ -27,6 +27,7 @@ from h5json.array_util import ndarray_compare
 from h5json.array_util import getNumpyValue
 from h5json.array_util import getBroadcastShape
 from h5json.array_util import isVlen
+from h5json.array_util import squeezeArray
 
 from h5json.hdf5dtype import special_dtype
 from h5json.hdf5dtype import check_dtype
@@ -1525,6 +1526,32 @@ class ArrayUtilTest(unittest.TestCase):
 
         self.assertEqual(arr.shape, (1,))
         self.assertEqual(arr.dtype, dt)
+
+    def testSqueezeArray(self):
+        # rank <= 1: returned unchanged
+        arr = np.zeros((5,))
+        self.assertTrue(squeezeArray(arr) is arr)
+        arr = np.zeros(())
+        self.assertTrue(squeezeArray(arr) is arr)
+
+        # no 1-extent dims: shape/values unchanged
+        arr = np.arange(12).reshape((3, 4))
+        result = squeezeArray(arr)
+        self.assertEqual(result.shape, (3, 4))
+        self.assertTrue(np.array_equal(result, arr))
+
+        # 1-extent dims removed
+        arr = np.arange(12).reshape((1, 3, 1, 4))
+        result = squeezeArray(arr)
+        self.assertEqual(result.shape, (3, 4))
+        self.assertTrue(np.array_equal(result, arr.reshape((3, 4))))
+
+        # non-ndarray input rejected
+        try:
+            squeezeArray([1, 2, 3])
+            self.assertTrue(False)
+        except TypeError:
+            pass  # expected
 
 
 if __name__ == "__main__":

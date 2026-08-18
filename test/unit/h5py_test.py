@@ -281,6 +281,27 @@ class H5pyTest(unittest.TestCase):
             ]
             self.assertTrue(np.array_equal(ds1[...], np.array(expected)))
 
+    def testConvertFillValueDatasetJsonToH5(self):
+        # reproduces `jsontoh5 data/json/fillvalue.json <out>.h5` - a
+        # regression test for two compounding bugs: dset_util.getFillValue()
+        # checked a misspelled "filLValue" key, and H5JsonReader.getObjectById()
+        # never copied the on-disk "creationProperties" key into the
+        # in-memory object at all - so the dataset's fillValue of 42 was
+        # silently dropped and the written HDF5 dataset ended up with the
+        # default fill value (0) instead.
+        filepath = "test/unit/out/h5py_test_testConvertFillValueDatasetJsonToH5.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5JsonReader("data/json/fillvalue.json", app_logger=self.log)
+        db.writer = H5pyWriter(filepath, no_data=False, app_logger=self.log)
+        db.open()
+        db.close()
+
+        with h5py.File(filepath) as f:
+            self.assertEqual(f["dset"].fillvalue, 42)
+
     def testConvertVlenAllEmptyDatasetJsonToH5(self):
         # reproduces `jsontoh5 data/json/sample.json <out>.h5` - a regression
         # test for a vlen dataset whose elements are all the same length

@@ -140,6 +140,48 @@ class H5pyReaderTest(unittest.TestCase):
 
         db.close()
 
+    def testDatasetCreationProperties(self):
+        # regression test: H5JsonReader.getObjectById() only copied the
+        # "cpl"/"dcpl" keys from the raw file JSON into the in-memory
+        # object, but the on-disk h5json format (and Hdf5db.createDataset)
+        # both use "creationProperties" - so a dataset's creation
+        # properties (e.g. fillValue) were silently dropped for any
+        # object read back from a .json file, even though they're present
+        # in the file itself.
+        filepath = "data/json/fillvalue.json"
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.open()
+
+        dset_id = db.getObjectIdByPath("/dset")
+        dset_json = db.getObjectById(dset_id)
+        self.assertTrue("creationProperties" in dset_json)
+        self.assertEqual(dset_json["creationProperties"]["fillValue"], 42)
+
+        db.close()
+
+    def testAttributeIncludeData(self):
+        # regression test: H5JsonReader.getAttribute() accepted an
+        # includeData parameter but ignored it, always returning the
+        # "value" (and "encoding") keys - unlike H5pyReader.getAttribute(),
+        # which omits them when includeData=False.
+        filepath = "data/json/opaque_attr.json"
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.open()
+
+        ds1_id = db.getObjectIdByPath("/DS1")
+
+        attr = db.reader.getAttribute(ds1_id, "A1", includeData=True)
+        self.assertTrue("value" in attr)
+
+        attr = db.reader.getAttribute(ds1_id, "A1", includeData=False)
+        self.assertFalse("value" in attr)
+        self.assertFalse("encoding" in attr)
+        self.assertEqual(attr["type"], {"class": "H5T_OPAQUE", "size": 7})
+
+        db.close()
+
     def testArrayDataset(self):
         # reads a real fixture with an H5T_ARRAY (subarray) dtype - a
         # regression test for jsonToArray() not accounting for the subarray
