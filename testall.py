@@ -23,10 +23,15 @@ unit_tests = [
     "objid_test",
     "hdf5dtype_test",
     "shape_util_test",
+    "link_util_test",
+    "time_util_test",
+    "h5reader_test",
+    "h5writer_test",
     "hdf5db_test",
     "h5json_reader_test",
     "h5json_writer_test",
     "h5py_test",
+    "selection_test",
 ]
 
 unit_tests = tuple(unit_tests)

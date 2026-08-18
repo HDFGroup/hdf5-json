@@ -14,6 +14,7 @@ import logging
 
 from h5json.filters import FILTER_DEFS
 from h5json.filters import getFilterItem, validateFilter, isCompressionFilter
+from h5json.filters import getAllFilterNames, getCompressionFilter, getShuffleFilter
 
 
 class FiltersTest(unittest.TestCase):
@@ -90,6 +91,42 @@ class FiltersTest(unittest.TestCase):
             self.assertTrue(False)  # shouldn't get here
         except TypeError:
             pass  # expected
+
+    def testGetAllFilterNames(self):
+        names = getAllFilterNames()
+        # tuple of unique, sorted filter names - excludes "none" (id 0)
+        self.assertEqual(type(names), tuple)
+        self.assertEqual(len(names), 13)
+        self.assertEqual(names, tuple(sorted(names)))
+        self.assertEqual(len(names), len(set(names)))
+        for expected_name in ("gzip", "szip", "shuffle", "fletcher32", "lzf", "zstd"):
+            self.assertTrue(expected_name in names)
+        self.assertFalse("none" in names)
+        # class keys shouldn't show up, only the plain names
+        self.assertFalse("H5Z_FILTER_DEFLATE" in names)
+
+    def testGetCompressionAndShuffleFilters(self):
+        gzip_filter = getFilterItem("gzip")
+        shuffle_filter = getFilterItem("shuffle")
+        fletcher_filter = getFilterItem("fletcher32")
+
+        filters = [shuffle_filter, gzip_filter, fletcher_filter]
+        compression_filter = getCompressionFilter(filters)
+        self.assertEqual(compression_filter, gzip_filter)
+        found_shuffle_filter = getShuffleFilter(filters)
+        self.assertEqual(found_shuffle_filter, shuffle_filter)
+
+        # no compression filter present
+        no_compression = [shuffle_filter, fletcher_filter]
+        self.assertEqual(getCompressionFilter(no_compression), None)
+
+        # no shuffle filter present
+        no_shuffle = [gzip_filter, fletcher_filter]
+        self.assertEqual(getShuffleFilter(no_shuffle), None)
+
+        # empty filter list
+        self.assertEqual(getCompressionFilter([]), None)
+        self.assertEqual(getShuffleFilter([]), None)
 
 
 if __name__ == "__main__":

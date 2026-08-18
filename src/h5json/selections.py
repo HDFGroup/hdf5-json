@@ -32,13 +32,16 @@ H5S_SEL_ALL = 3
 H5S_SEL_FANCY = 4
 
 
-# Boolean selection operations
-H5S_SELECT_SET = 1
-H5S_SELECT_APPEND = 2
-H5S_SELECT_PREPEND = 3
-H5S_SELECT_OR = 4
-H5S_SELECT_NONE = 5
-H5S_SELECT_NOTB = 6
+# Boolean selection operations (values match the real HDF5 H5Sselect_t enum,
+# i.e. h5py.h5s.SELECT_*)
+H5S_SELECT_SET = 0
+H5S_SELECT_OR = 1
+H5S_SELECT_AND = 2
+H5S_SELECT_XOR = 3
+H5S_SELECT_NOTB = 4
+H5S_SELECT_NOTA = 5
+H5S_SELECT_APPEND = 6
+H5S_SELECT_PREPEND = 7
 
 
 # --- Binary (tobytes/frombytes) serialization format ---
@@ -1121,7 +1124,7 @@ class Selection(object):
 
     def broadcast(self, target_shape):
         """ Get an iterable for broadcasting """
-        if np.product(target_shape) != self.nselect:
+        if np.prod(target_shape) != self.nselect:
             raise TypeError("Broadcasting is not supported for point-wise selections")
         yield self._id
 
@@ -1440,7 +1443,7 @@ class SimpleSelection(Selection):
             raise TypeError("Broadcasting is not supported for complex selections")
 
         if self._shape == ():
-            if np.product(target_shape) != 1:
+            if np.prod(target_shape) != 1:
                 raise TypeError(f"Can't broadcast {target_shape} to scalar")
             yield self._sel
             return
@@ -1691,21 +1694,23 @@ def guess_shape(sid):
         * None, for unselected scalars and for NULL dataspaces
     """
 
+    from h5py import h5s
+
     sel_class = sid.get_simple_extent_type()    # Dataspace class
     sel_type = sid.get_select_type()            # Flavor of selection in use
 
-    if sel_class == 'H5S_NULL':
+    if sel_class == h5s.NULL:
         # NULL dataspaces don't support selections
         return None
 
-    elif sel_class == 'H5S_SCALAR':
+    elif sel_class == h5s.SCALAR:
         # NumPy has no way of expressing empty 0-rank selections, so we use None
         if sel_type == H5S_SEL_NONE:
             return None
         if sel_type == H5S_SEL_ALL:
             return tuple()
 
-    elif sel_class != 'H5S_SIMPLE':
+    elif sel_class != h5s.SIMPLE:
         raise TypeError(f"Unrecognized dataspace class {sel_class}")
 
     # We have a "simple" (rank >= 1) dataspace
@@ -1766,7 +1771,7 @@ def guess_shape(sid):
 
     shape = tuple(get_n_axis(sid, x) for x in range(rank))
 
-    if np.product(shape) != N:
+    if np.prod(shape) != N:
         # This means multiple hyperslab selections are in effect,
         # so we fall back to a 1D shape
         return (N,)

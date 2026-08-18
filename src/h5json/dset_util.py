@@ -675,7 +675,7 @@ def generate_dcpl(
     filters=[],
     chunk_min=CHUNK_MIN,
     chunk_max=CHUNK_MAX,
-    max_chunks_per_folder=None,
+    max_chunks_per_folder=0,
     initializer=None,
     initializer_opts=None
 ):
@@ -697,8 +697,7 @@ def generate_dcpl(
 
     # End argument validation
 
-    kwargs = {"has_filter": filters}
-    kwargs["chunks"] = chunks
+    kwargs = {"chunks": chunks}
     kwargs["chunk_min"] = chunk_min
     kwargs["chunk_max"] = chunk_max
     kwargs["max_chunks_per_folder"] = max_chunks_per_folder

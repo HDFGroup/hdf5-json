@@ -16,7 +16,8 @@ from h5json.filters import getFilterItem
 from h5json.dset_util import guessChunk, shrinkChunk, getChunkSize, expandChunk, generateLayout
 from h5json.dset_util import getDatasetLayoutClass, getContiguousLayout, getChunkDims
 from h5json.dset_util import validateLayout, validateDatasetCreationProps, getDatasetLayout
-from h5json.dset_util import getFillValue
+from h5json.dset_util import getFillValue, generate_dcpl
+from h5json.objid import createObjId
 
 
 class DsetUtilTest(unittest.TestCase):
@@ -516,9 +517,6 @@ class DsetUtilTest(unittest.TestCase):
             self.assertTrue(chunk_bytes <= chunk_max)
 
     def testGetFillValue(self):
-        # regression test: getFillValue looked up a misspelled "filLValue"
-        # key rather than "fillValue", so it always returned None even when
-        # a fill value was set
         obj_json = {"creationProperties": {"fillValue": 42}}
         self.assertEqual(getFillValue(obj_json), 42)
 
@@ -529,6 +527,262 @@ class DsetUtilTest(unittest.TestCase):
         # no fill value set
         self.assertEqual(getFillValue({"creationProperties": {}}), None)
         self.assertEqual(getFillValue({}), None)
+
+    def testValidateLayoutChunkDims(self):
+        type_json = {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"}
+        shape = {"class": "H5S_SIMPLE", "dims": [10, 20]}
+
+        # layout rank must match shape rank
+        try:
+            validateLayout(shape, type_json, {"class": "H5D_CHUNKED", "dims": [5]})
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+        # chunk dims must be integers
+        try:
+            validateLayout(shape, type_json, {"class": "H5D_CHUNKED", "dims": [5, "x"]})
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+        # chunk extent must be positive
+        try:
+            validateLayout(shape, type_json, {"class": "H5D_CHUNKED", "dims": [5, 0]})
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+        # without maxdims, chunk extent can't exceed the shape extent
+        try:
+            validateLayout(shape, type_json, {"class": "H5D_CHUNKED", "dims": [5, 30]})
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+        # with a fixed (non-extensible) maxdims, chunk extent can't exceed it
+        shape_ext = {"class": "H5S_SIMPLE", "dims": [10, 20], "maxdims": [10, 25]}
+        try:
+            validateLayout(shape_ext, type_json, {"class": "H5D_CHUNKED", "dims": [5, 30]})
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+        # an unlimited maxdims dimension allows any positive chunk extent
+        shape_unlim = {"class": "H5S_SIMPLE", "dims": [10, 20], "maxdims": [10, "H5S_UNLIMITED"]}
+        validateLayout(shape_unlim, type_json, {"class": "H5D_CHUNKED", "dims": [5, 1000]})
+
+        # a single int chunk dim gets promoted to a 1-element list
+        shape_1d = {"class": "H5S_SIMPLE", "dims": [10]}
+        validateLayout(shape_1d, type_json, {"class": "H5D_CHUNKED", "dims": 5})
+
+        # missing "class" key
+        try:
+            validateLayout(shape, type_json, {"dims": [5, 10]})
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+        # unrecognized layout class
+        try:
+            validateLayout(shape, type_json, {"class": "H5D_BOGUS"})
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+    def testValidateLayoutRefClasses(self):
+        type_json = {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"}
+        vlen_type = {
+            "class": "H5T_STRING",
+            "charSet": "H5T_CSET_ASCII",
+            "length": "H5T_VARIABLE",
+            "strPad": "H5T_STR_NULLTERM",
+        }
+        shape = {"class": "H5S_SIMPLE", "dims": [10, 20]}
+        shape_ext = {"class": "H5S_SIMPLE", "dims": [10, 20], "maxdims": [10, 25]}
+
+        # H5D_CONTIGUOUS_REF
+        try:
+            validateLayout(
+                shape, vlen_type,
+                {"class": "H5D_CONTIGUOUS_REF", "file_uri": "f", "offset": 0, "size": 100}
+            )
+            self.assertTrue(False)  # variable-length types not allowed
+        except ValueError:
+            pass  # expected
+
+        for missing_key in ("file_uri", "offset", "size"):
+            layout = {"class": "H5D_CONTIGUOUS_REF", "file_uri": "f", "offset": 0, "size": 100}
+            del layout[missing_key]
+            try:
+                validateLayout(shape, type_json, layout)
+                self.assertTrue(False)
+            except ValueError:
+                pass  # expected
+
+        try:
+            layout = {
+                "class": "H5D_CONTIGUOUS_REF", "file_uri": "f", "offset": 0, "size": 100,
+                "dims": [5, 10],
+            }
+            validateLayout(shape, type_json, layout)
+            self.assertTrue(False)  # dims not allowed for this layout class
+        except ValueError:
+            pass  # expected
+
+        try:
+            layout = {"class": "H5D_CONTIGUOUS_REF", "file_uri": "f", "offset": 0, "size": 100}
+            validateLayout(shape_ext, type_json, layout)
+            self.assertTrue(False)  # maxdims not allowed for this layout class
+        except ValueError:
+            pass  # expected
+
+        # valid H5D_CONTIGUOUS_REF
+        layout = {"class": "H5D_CONTIGUOUS_REF", "file_uri": "f", "offset": 0, "size": 100}
+        validateLayout(shape, type_json, layout)
+
+        # H5D_CHUNKED_REF
+        try:
+            layout = {"class": "H5D_CHUNKED_REF", "file_uri": "f", "dims": [5, 10], "chunks": {}}
+            validateLayout(shape, vlen_type, layout)
+            self.assertTrue(False)  # variable-length types not allowed
+        except ValueError:
+            pass  # expected
+
+        for missing_key in ("file_uri", "dims", "chunks"):
+            layout = {"class": "H5D_CHUNKED_REF", "file_uri": "f", "dims": [5, 10], "chunks": {}}
+            del layout[missing_key]
+            try:
+                validateLayout(shape, type_json, layout)
+                self.assertTrue(False)
+            except ValueError:
+                pass  # expected
+
+        # valid H5D_CHUNKED_REF
+        layout = {"class": "H5D_CHUNKED_REF", "file_uri": "f", "dims": [5, 10], "chunks": {}}
+        validateLayout(shape, type_json, layout)
+
+        # H5D_CHUNKED_REF_INDIRECT
+        root_id = createObjId("groups")
+        chunk_table_id = createObjId("datasets", root_id=root_id)
+
+        try:
+            layout = {"class": "H5D_CHUNKED_REF_INDIRECT", "dims": [5, 10], "chunk_table": chunk_table_id}
+            validateLayout(shape, vlen_type, layout)
+            self.assertTrue(False)  # variable-length types not allowed
+        except ValueError:
+            pass  # expected
+
+        for missing_key in ("dims", "chunk_table"):
+            layout = {"class": "H5D_CHUNKED_REF_INDIRECT", "dims": [5, 10], "chunk_table": chunk_table_id}
+            del layout[missing_key]
+            try:
+                validateLayout(shape, type_json, layout)
+                self.assertTrue(False)
+            except ValueError:
+                pass  # expected
+
+        try:
+            layout = {"class": "H5D_CHUNKED_REF_INDIRECT", "dims": [5, 10], "chunk_table": "bogus-id"}
+            validateLayout(shape, type_json, layout)
+            self.assertTrue(False)  # invalid chunk table uuid
+        except ValueError:
+            pass  # expected
+
+        # valid H5D_CHUNKED_REF_INDIRECT
+        layout = {"class": "H5D_CHUNKED_REF_INDIRECT", "dims": [5, 10], "chunk_table": chunk_table_id}
+        validateLayout(shape, type_json, layout)
+
+    def testValidateLayoutStorageClasses(self):
+        type_json = {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"}
+        shape = {"class": "H5S_SIMPLE", "dims": [10, 20]}
+        shape_ext = {"class": "H5S_SIMPLE", "dims": [10, 20], "maxdims": [10, 25]}
+
+        # H5D_CHUNKED requires a "dims" key
+        try:
+            validateLayout(shape, type_json, {"class": "H5D_CHUNKED"})
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+        # H5D_CHUNKED is only valid with an H5S_SIMPLE shape class
+        try:
+            scalar_shape_with_dims = {"class": "H5S_SCALAR", "dims": [1]}
+            validateLayout(scalar_shape_with_dims, type_json, {"class": "H5D_CHUNKED", "dims": [1]})
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+        # H5D_CONTIGUOUS: "dims" not allowed in layout
+        try:
+            validateLayout(shape, type_json, {"class": "H5D_CONTIGUOUS", "dims": [5, 10]})
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+        # H5D_CONTIGUOUS: "maxdims" not allowed in shape
+        try:
+            validateLayout(shape_ext, type_json, {"class": "H5D_CONTIGUOUS"})
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+        # valid H5D_CONTIGUOUS
+        validateLayout(shape, type_json, {"class": "H5D_CONTIGUOUS"})
+
+        # H5D_COMPACT: "dims" not allowed in layout
+        try:
+            validateLayout(shape, type_json, {"class": "H5D_COMPACT", "dims": [5, 10]})
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+        # H5D_COMPACT: "maxdims" not allowed in shape
+        try:
+            validateLayout(shape_ext, type_json, {"class": "H5D_COMPACT"})
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+        # valid H5D_COMPACT
+        validateLayout(shape, type_json, {"class": "H5D_COMPACT"})
+
+    def testGenerateDcpl(self):
+        type_json = {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"}
+
+        # H5S_NULL / H5S_SCALAR (non-simple) shapes: creation property
+        # list is trivially empty
+        null_shape = {"class": "H5S_NULL"}
+        self.assertEqual(generate_dcpl(null_shape, type_json), {})
+
+        scalar_shape = {"class": "H5S_SCALAR"}
+        self.assertEqual(generate_dcpl(scalar_shape, type_json), {})
+
+        # chunks/filters aren't supported for non-simple shapes
+        try:
+            generate_dcpl(null_shape, type_json, chunks=(2,))
+            self.assertTrue(False)
+        except TypeError:
+            pass  # expected
+
+        deflate_filter = {"class": "H5Z_FILTER_DEFLATE", "id": 1, "name": "deflate"}
+        try:
+            generate_dcpl(scalar_shape, type_json, filters=[deflate_filter])
+            self.assertTrue(False)
+        except TypeError:
+            pass  # expected
+
+        simple_shape = {"class": "H5S_SIMPLE", "dims": [10, 20]}
+        plist = generate_dcpl(simple_shape, type_json)
+        self.assertTrue("layout" in plist)
+        self.assertEqual(plist["layout"]["class"], "H5D_CONTIGUOUS")
+        self.assertTrue("filters" not in plist)
+
+        plist = generate_dcpl(simple_shape, type_json, chunks=(5, 10))
+        self.assertEqual(plist["layout"], {"class": "H5D_CHUNKED", "dims": [5, 10]})
+
+        plist = generate_dcpl(simple_shape, type_json, filters=[deflate_filter])
+        self.assertEqual(plist["filters"], [deflate_filter])
 
 
 if __name__ == "__main__":

@@ -16,9 +16,11 @@ import numpy as np
 from h5json import selections
 from h5json.selections import (
     H5S_SEL_ALL,
+    H5S_SEL_NONE,
     H5S_SEL_HYPERSLABS,
     H5S_SEL_POINTS,
     H5S_SEL_FANCY,
+    Selection,
     SimpleSelection,
 )
 
@@ -183,6 +185,19 @@ class SimpleSelectionTest(unittest.TestCase):
             self.assertEqual(x[3], (False,))
             count += 1
         self.assertEqual(count, 10)
+
+    def testBroadcastScalar(self):
+        sel = selections.select((), ...)
+        self.assertIsInstance(sel, SimpleSelection)
+        self.assertEqual(sel.shape, ())
+
+        it = sel.broadcast(())
+        self.assertEqual(next(it), sel._sel)
+        with self.assertRaises(StopIteration):
+            next(it)
+
+        with self.assertRaises(TypeError):
+            next(sel.broadcast((2,)))
 
     def testBroadcast2D(self):
         shape = (8, 10)
@@ -1197,6 +1212,123 @@ class RegionJsonTest(unittest.TestCase):
     def testFromRegionJsonUnsupportedTypeRaises(self):
         with self.assertRaises(NotImplementedError):
             selections.from_region_json({"select_type": "H5S_SEL_ALL", "selection": [[0]]})
+
+
+class SelectionBaseClassTest(unittest.TestCase):
+    """Tests for base Selection class members that are overridden by
+    SimpleSelection - the only concrete Selection subclass in this codebase.
+
+    SimpleSelection overrides mshape, tgtshape, getSelectNpoints(), and
+    broadcast(), so those base-class implementations are never reached
+    through a SimpleSelection instance. These tests instantiate Selection
+    directly to exercise the base-class code paths.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(SelectionBaseClassTest, self).__init__(*args, **kwargs)
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.WARNING)
+
+    def testMshapeAndTgtshape(self):
+        shape = (4, 5)
+        sel = Selection(shape)
+        # base Selection.__init__ always defaults to H5S_SEL_ALL
+        self.assertEqual(sel.select_type, H5S_SEL_ALL)
+        self.assertEqual(sel.nselect, 20)
+        # base class mshape is always 1-D: (nselect,) - unlike
+        # SimpleSelection.mshape, which preserves the selection's rank
+        self.assertEqual(sel.mshape, (20,))
+        # base class tgtshape is just an alias for mshape
+        self.assertEqual(sel.tgtshape, sel.mshape)
+        self.assertEqual(sel.tgtshape, (20,))
+
+    def testGetSelectNpointsAll(self):
+        shape = (3, 4)
+        sel = Selection(shape)
+        self.assertEqual(sel.select_type, H5S_SEL_ALL)
+        self.assertEqual(sel.getSelectNpoints(), 12)
+
+    def testGetSelectNpointsNone(self):
+        sel = Selection((10,))
+        sel._select_type = H5S_SEL_NONE
+        self.assertEqual(sel.getSelectNpoints(), 0)
+
+    def testGetSelectNpointsUnsupportedTypeRaises(self):
+        # the base class implementation only understands H5S_SEL_NONE and
+        # H5S_SEL_ALL - any other select type (hyperslab, points, fancy) is
+        # unsupported at the base-class level and raises IOError
+        sel = Selection((10,))
+        sel._select_type = H5S_SEL_HYPERSLABS
+        with self.assertRaises(IOError):
+            sel.getSelectNpoints()
+
+    def testBroadcastRaisesDueToUnsetId(self):
+        # The base Selection.broadcast() implementation used to call
+        # np.product(), removed in NumPy 2.0 (this project requires
+        # numpy>=2.0 - see pyproject.toml) - that's now fixed (np.prod()).
+        # However the base class's "yield self._id" line still raises
+        # AttributeError, since self._id is never set anywhere in the base
+        # class (only SimpleSelection instances are ever constructed in
+        # this codebase, and SimpleSelection overrides broadcast() with its
+        # own working implementation - see SimpleSelectionTest - so this
+        # base-class path is dead code with no real caller). This is a
+        # separate, deeper issue than the np.product bug and hasn't been
+        # fixed since the intended yielded value for a full-selection
+        # broadcast on the base class is undefined; this test documents the
+        # current, verified behavior.
+        shape = (4, 5)
+        sel = Selection(shape)  # select_type ALL, nselect == 20
+        gen = sel.broadcast(shape)
+        with self.assertRaises(AttributeError) as ctx:
+            next(gen)
+        self.assertIn("_id", str(ctx.exception))
+
+
+class FromQueryResultTest(unittest.TestCase):
+    """Tests for selections.from_query_result(), which builds a paired-
+    coordinate point selection (SimpleSelection with select_type
+    H5S_SEL_POINTS) from the (N, rank) coordinate array returned by an
+    arrayQuery/query_util expression evaluation."""
+
+    def __init__(self, *args, **kwargs):
+        super(FromQueryResultTest, self).__init__(*args, **kwargs)
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.WARNING)
+
+    def testRank1(self):
+        shape = (10,)
+        indices = np.array([[2], [5], [7]])
+        sel = selections.from_query_result(shape, indices)
+        self.assertIsInstance(sel, SimpleSelection)
+        self.assertEqual(sel.select_type, H5S_SEL_POINTS)
+        self.assertEqual(sel.nselect, 3)
+        self.assertEqual(sel.slices, ([2, 5, 7],))
+
+    def testRank2(self):
+        shape = (4, 5)
+        indices = np.array([[0, 1], [2, 3]])
+        sel = selections.from_query_result(shape, indices)
+        self.assertIsInstance(sel, SimpleSelection)
+        self.assertEqual(sel.select_type, H5S_SEL_POINTS)
+        self.assertEqual(sel.nselect, 2)
+        self.assertEqual(sel.slices, ([0, 2], [1, 3]))
+
+    def testEmptyResultRank1(self):
+        # N == 0 short-circuits to an empty paired-coordinate selection
+        # without inspecting the rank-specific branches
+        shape = (10,)
+        indices = np.empty((0, 1), dtype=int)
+        sel = selections.from_query_result(shape, indices)
+        self.assertIsInstance(sel, SimpleSelection)
+        self.assertEqual(sel.nselect, 0)
+        self.assertEqual(sel.slices, ([],))
+
+    def testEmptyResultRank2(self):
+        shape = (4, 5)
+        indices = np.empty((0, 2), dtype=int)
+        sel = selections.from_query_result(shape, indices)
+        self.assertEqual(sel.nselect, 0)
+        self.assertEqual(sel.slices, ([], []))
 
 
 if __name__ == "__main__":

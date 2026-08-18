@@ -22,12 +22,16 @@ from h5json.array_util import jsonToArray
 from h5json.array_util import arrayToBytes
 from h5json.array_util import bytesToArray
 from h5json.array_util import getByteArraySize
+from h5json.array_util import getArraySize
 from h5json.array_util import IndexIterator
 from h5json.array_util import ndarray_compare
 from h5json.array_util import getNumpyValue
 from h5json.array_util import getBroadcastShape
 from h5json.array_util import isVlen
 from h5json.array_util import squeezeArray
+from h5json.array_util import encodeData
+from h5json.array_util import decodeData
+from h5json.array_util import array_for_new_object
 
 from h5json.hdf5dtype import special_dtype
 from h5json.hdf5dtype import check_dtype
@@ -1552,6 +1556,96 @@ class ArrayUtilTest(unittest.TestCase):
             self.assertTrue(False)
         except TypeError:
             pass  # expected
+
+    def testGetArraySize(self):
+        # 1-D array: itemsize * number of elements
+        arr = np.zeros((4,), dtype="i4")
+        self.assertEqual(getArraySize(arr), 16)
+
+        # multi-dimensional array: itemsize * product of all extents
+        arr2 = np.zeros((3, 4), dtype="f8")
+        self.assertEqual(getArraySize(arr2), 96)
+
+        arr3 = np.zeros((2, 3, 4), dtype="u1")
+        self.assertEqual(getArraySize(arr3), 24)
+
+        # scalar (0-d) array: shape is (), so just itemsize
+        arr4 = np.zeros((), dtype="i4")
+        self.assertEqual(getArraySize(arr4), 4)
+
+    def testEncodeData(self):
+        # str input gets utf-8 encoded, then base64 encoded
+        encoded = encodeData("hello")
+        self.assertEqual(encoded, base64.b64encode(b"hello"))
+        self.assertEqual(decodeData(encoded), b"hello")
+
+        # bytes input, base64 encoded directly
+        encoded = encodeData(b"hello")
+        self.assertEqual(encoded, base64.b64encode(b"hello"))
+
+        # only base64 encoding is supported
+        try:
+            encodeData("hello", encoding="hex")
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+        # non str/bytes input is rejected
+        try:
+            encodeData(42)
+            self.assertTrue(False)
+        except TypeError:
+            pass  # expected
+
+        # a string that can't be utf-8 encoded (lone surrogate) raises
+        # ValueError rather than propagating the UnicodeEncodeError
+        try:
+            encodeData("\udc80abc")
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+    def testArrayForNewObject(self):
+        # plain list of ints, no dtype specified -> numpy infers the dtype
+        arr = array_for_new_object([1, 2, 3])
+        self.assertTrue(isinstance(arr, np.ndarray))
+        self.assertEqual(arr.dtype, np.dtype("int64"))
+        self.assertTrue(np.array_equal(arr, [1, 2, 3]))
+
+        # list of strings, no dtype specified -> guess_dtype() picks a
+        # variable-length string dtype
+        arr = array_for_new_object(["a", "bb", "ccc"])
+        self.assertEqual(arr.dtype.kind, "O")
+        self.assertEqual(check_dtype(vlen=arr.dtype), str)
+        self.assertEqual(list(arr), ["a", "bb", "ccc"])
+
+        # list of bytes, no dtype specified -> guess_dtype() picks a
+        # variable-length bytes dtype
+        arr = array_for_new_object([b"a", b"bb"])
+        self.assertEqual(check_dtype(vlen=arr.dtype), bytes)
+
+        # explicit dtype overrides numpy's own inference for a plain list
+        arr = array_for_new_object([1, 2, 3], specified_dtype=np.dtype("i4"))
+        self.assertEqual(arr.dtype, np.dtype("int32"))
+
+        # float16 is special-cased (workaround for h5py issue #819): data
+        # is pre-converted in python rather than left to numpy/h5py
+        arr = array_for_new_object([1.5, 2.5], specified_dtype=np.dtype("float16"))
+        self.assertEqual(arr.dtype, np.dtype("float16"))
+        self.assertTrue(np.array_equal(arr, np.array([1.5, 2.5], dtype="float16")))
+
+        # already an ndarray: asarray() is a no-op, but the result is
+        # explicitly re-viewed with the tagged (special) dtype
+        dt_str = special_dtype(vlen=str)
+        src = np.array(["x", "y"], dtype=object)
+        arr = array_for_new_object(src, specified_dtype=dt_str)
+        self.assertEqual(check_dtype(vlen=arr.dtype), str)
+        self.assertEqual(list(arr), ["x", "y"])
+
+        # scalar (non-list/array) input produces a 0-d array
+        arr = array_for_new_object(42)
+        self.assertEqual(arr.shape, ())
+        self.assertEqual(arr[()], 42)
 
 
 if __name__ == "__main__":

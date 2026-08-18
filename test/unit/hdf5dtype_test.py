@@ -895,6 +895,121 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertTrue("VALUE3" in dt.fields.keys())
         self.assertEqual(typeSize, hdf5dtype.getDtypeItemSize(dt))
 
+    def testFindItemType(self):
+        # simple scalar python types
+        self.assertEqual(hdf5dtype.find_item_type(5), int)
+        self.assertEqual(hdf5dtype.find_item_type(5.0), float)
+        self.assertEqual(hdf5dtype.find_item_type("abc"), str)
+        self.assertEqual(hdf5dtype.find_item_type(b"abc"), bytes)
+        self.assertEqual(hdf5dtype.find_item_type(True), bool)
+
+        # lists/tuples - uniform item type (possibly nested)
+        self.assertEqual(hdf5dtype.find_item_type([1, 2, 3]), int)
+        self.assertEqual(hdf5dtype.find_item_type([[1, 2], [3, 4]]), int)
+        self.assertEqual(hdf5dtype.find_item_type((1, 2, 3)), int)
+
+        # mixed item types -> None
+        self.assertIsNone(hdf5dtype.find_item_type([1, "a"]))
+
+        # empty collection -> no common type -> None
+        self.assertIsNone(hdf5dtype.find_item_type([]))
+
+        # numpy array with a specific (non-object) dtype -> None
+        arr_int = np.array([1, 2, 3])
+        self.assertIsNone(hdf5dtype.find_item_type(arr_int))
+
+        # numpy object arrays are treated like plain python collections
+        arr_obj_str = np.array(["a", "b"], dtype=object)
+        self.assertEqual(hdf5dtype.find_item_type(arr_obj_str), str)
+        arr_obj_int = np.array([1, 2, 3], dtype=object)
+        self.assertEqual(hdf5dtype.find_item_type(arr_obj_int), int)
+
+        # a numpy array using the h5py vlen extension is not treated as
+        # a plain object collection - falls into the "return None" branch
+        dt_vlen = special_dtype(vlen=str)
+        arr_vlen = np.array(["a", "b"], dtype=dt_vlen)
+        self.assertIsNone(hdf5dtype.find_item_type(arr_vlen))
+
+    def testGuessDtype(self):
+        # non-str/bytes item types -> None (left to array constructor)
+        self.assertIsNone(hdf5dtype.guess_dtype(5))
+        self.assertIsNone(hdf5dtype.guess_dtype([1, 2, 3]))
+        self.assertIsNone(hdf5dtype.guess_dtype([]))
+
+        # bytes items -> vlen bytes special dtype
+        dt_bytes = hdf5dtype.guess_dtype([b"a", b"b"])
+        self.assertEqual(dt_bytes.kind, "O")
+        self.assertEqual(check_dtype(vlen=dt_bytes), bytes)
+
+        # str items -> vlen str special dtype
+        dt_str = hdf5dtype.guess_dtype(["a", "b"])
+        self.assertEqual(dt_str.kind, "O")
+        self.assertEqual(check_dtype(vlen=dt_str), str)
+
+        # nested lists of str also resolve to a uniform item type
+        dt_nested = hdf5dtype.guess_dtype([["a", "b"], ["c", "d"]])
+        self.assertEqual(check_dtype(vlen=dt_nested), str)
+
+    def testIsFloat16Dtype(self):
+        self.assertFalse(hdf5dtype.is_float16_dtype(None))
+        self.assertTrue(hdf5dtype.is_float16_dtype(np.float16))
+        self.assertTrue(hdf5dtype.is_float16_dtype("f2"))  # normalizes strings
+        self.assertTrue(hdf5dtype.is_float16_dtype(np.dtype("<f2")))
+        self.assertFalse(hdf5dtype.is_float16_dtype(np.float32))
+        # same itemsize as float16, but different kind
+        self.assertFalse(hdf5dtype.is_float16_dtype(np.int16))
+
+    def testValidateTypeItem(self):
+        # valid type item - should pass without raising
+        typeItem = {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"}
+        hdf5dtype.validateTypeItem(typeItem)
+
+        # valid predefined type name string
+        hdf5dtype.validateTypeItem("H5T_STD_I16LE")
+
+        # missing 'base' for H5T_INTEGER -> KeyError
+        with self.assertRaises(KeyError):
+            hdf5dtype.validateTypeItem({"class": "H5T_INTEGER"})
+
+        # missing 'class' key entirely -> KeyError
+        with self.assertRaises(KeyError):
+            hdf5dtype.validateTypeItem({"base": "H5T_STD_I32LE"})
+
+        # unrecognized predefined type name -> TypeError
+        with self.assertRaises(TypeError):
+            hdf5dtype.validateTypeItem("foobar")
+
+        # not a dict or string -> TypeError
+        with self.assertRaises(TypeError):
+            hdf5dtype.validateTypeItem(42)
+
+    def testGetSubType(self):
+        dt_compound = np.dtype([("a", "<i4"), ("b", "<f8"), ("c", "S10")])
+
+        sub = hdf5dtype.getSubType(dt_compound, ["a", "c"])
+        self.assertEqual(sub.names, ("a", "c"))
+        self.assertEqual(sub["a"], np.dtype("<i4"))
+        self.assertEqual(sub["c"], np.dtype("S10"))
+
+        # a single field name given as a (non-list) string is accepted
+        sub_single = hdf5dtype.getSubType(dt_compound, "b")
+        self.assertEqual(sub_single.names, ("b",))
+        self.assertEqual(sub_single["b"], np.dtype("<f8"))
+
+        # parent must be a compound type
+        with self.assertRaises(TypeError):
+            hdf5dtype.getSubType(np.dtype("<i4"), ["a"])
+
+        # null/empty field specification
+        with self.assertRaises(TypeError):
+            hdf5dtype.getSubType(dt_compound, None)
+        with self.assertRaises(TypeError):
+            hdf5dtype.getSubType(dt_compound, [])
+
+        # requested field not present in the parent type
+        with self.assertRaises(TypeError):
+            hdf5dtype.getSubType(dt_compound, ["z"])
+
 
 class ReferenceTest(unittest.TestCase):
     def __init__(self, *args, **kwargs):
@@ -922,6 +1037,46 @@ class ReferenceTest(unittest.TestCase):
     def testBindNull(self):
         ref = Reference(None)
         self.assertIsNone(ref.id)
+
+    def testTolistDataset(self):
+        root_id = createObjId("groups")
+        dset_id = createObjId("datasets", root_id=root_id)
+        ref = Reference("datasets/" + dset_id)
+        self.assertEqual(ref.tolist(), ["datasets/" + dset_id])
+
+    def testTolistGroup(self):
+        root_id = createObjId("groups")
+        group_id = createObjId("groups", root_id=root_id)
+        ref = Reference("groups/" + group_id)
+        self.assertEqual(ref.tolist(), ["groups/" + group_id])
+
+    def testTolistDatatype(self):
+        root_id = createObjId("groups")
+        dtype_id = createObjId("datatypes", root_id=root_id)
+        ref = Reference("datatypes/" + dtype_id)
+        self.assertEqual(ref.tolist(), ["datatypes/" + dtype_id])
+
+    def testTolistUnboundRaises(self):
+        # an unbound reference has self._id is None (not a string)
+        ref = Reference(None)
+        with self.assertRaises(TypeError):
+            ref.tolist()
+
+    def testTolistEmptyStringId(self):
+        # simulate a bound reference whose id happens to be an empty string
+        root_id = createObjId("groups")
+        dset_id = createObjId("datasets", root_id=root_id)
+        ref = Reference("datasets/" + dset_id)
+        ref._id = ""
+        self.assertEqual(ref.tolist(), [("",)])
+
+    def testTolistUnexpectedIdTypeRaises(self):
+        root_id = createObjId("groups")
+        dset_id = createObjId("datasets", root_id=root_id)
+        ref = Reference("datasets/" + dset_id)
+        ref._id = "x-1234"  # unrecognized collection prefix
+        with self.assertRaises(TypeError):
+            ref.tolist()
 
 
 class RegionReferenceTest(unittest.TestCase):

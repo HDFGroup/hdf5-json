@@ -1456,6 +1456,105 @@ class H5pyTest(unittest.TestCase):
 
         db.close()
 
+    def testReaderGetRootIdAndObjIdByAddress(self):
+        # exercises H5pyReader.get_root_id() and H5pyReader.getObjIdByAddress(),
+        # neither of which is invoked by Hdf5db itself - Hdf5db tracks its own
+        # root_id (fetched via reader.open()'s return value), and the address
+        # map is only used internally by the reader to resolve hard links and
+        # committed-type references.
+        filepath = "data/hdf5/tall.h5"
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5pyReader(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        self.assertEqual(db.reader.get_root_id(), root_id)
+        self.assertEqual(db.reader.get_root_id(), db.root_id)
+
+        g1_id = db.getObjectIdByPath("/g1")
+
+        # open the same file independently (read-only) to get a real HDF5
+        # object address for "/g1", and confirm the reader's address map
+        # (populated while resolving hard links) can look it up
+        with h5py.File(filepath) as f:
+            g1_addr = h5py.h5o.get_info(f["g1"].id).addr
+
+        self.assertEqual(db.reader.getObjIdByAddress(g1_addr), g1_id)
+
+        # an address that was never registered should return None
+        self.assertIsNone(db.reader.getObjIdByAddress(0xdeadbeef))
+
+        db.close()
+
+    def testWriterGetStats(self):
+        # exercises H5pyWriter.getStats(), which Hdf5db itself never calls
+        filepath = "test/unit/out/h5py_test_testWriterGetStats.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5pyWriter(filepath, no_data=False)
+        root_id = db.open()
+        db.createAttribute(root_id, "attr1", 42)
+        db.close()  # flush so the file actually exists on disk
+
+        stats = db.writer.getStats()
+        self.assertEqual(set(stats.keys()), {"created", "lastModified", "owner"})
+
+        file_stat = os.stat(filepath)
+        self.assertEqual(stats["created"], file_stat.st_ctime)
+        self.assertEqual(stats["lastModified"], file_stat.st_mtime)
+        self.assertEqual(stats["owner"], file_stat.st_uid)
+
+    def testGuessShape(self):
+        # selections.guess_shape() operates directly on a real h5py low-level
+        # dataspace id (h5py.h5s.SpaceID) - get_simple_extent_type(),
+        # get_select_type(), get_select_bounds(), select_hyperslab(), etc are
+        # all low-level h5s calls with no equivalent on this project's own
+        # Selection classes, so it can only be meaningfully exercised against
+        # a real h5py file/dataset - hence testing it here rather than in
+        # selection_test.py.
+        #
+
+        filepath = "test/unit/out/h5py_test_testGuessShape.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+
+        with h5py.File(filepath, "w") as f:
+            dset = f.create_dataset("simple", shape=(10, 20), dtype="i4")
+
+            # simple dataspace, default (all) selection
+            sid_all = dset.id.get_space()
+            self.assertEqual(selections.guess_shape(sid_all), (10, 20))
+
+            # simple dataspace, hyperslab selection
+            sid_hyper = dset.id.get_space()
+            sid_hyper.select_hyperslab((2, 3), (4, 5))
+            self.assertEqual(selections.guess_shape(sid_hyper), (4, 5))
+
+            # simple dataspace, no selection
+            sid_none = dset.id.get_space()
+            sid_none.select_none()
+            self.assertEqual(selections.guess_shape(sid_none), (0, 0))
+
+            # simple dataspace, point selection
+            sid_points = dset.id.get_space()
+            sid_points.select_elements([[1, 2], [3, 4]])
+            self.assertEqual(selections.guess_shape(sid_points), (2,))
+
+            # scalar dataspace, default (all) selection
+            scalar_dset = f.create_dataset("scalar", shape=(), dtype="i4")
+            sid_scalar = scalar_dset.id.get_space()
+            self.assertEqual(selections.guess_shape(sid_scalar), ())
+
+            # scalar dataspace, no selection
+            sid_scalar_none = scalar_dset.id.get_space()
+            sid_scalar_none.select_none()
+            self.assertTrue(selections.guess_shape(sid_scalar_none) is None)
+
+            # null dataspace
+            sid_null = h5py.h5s.create(h5py.h5s.NULL)
+            self.assertTrue(selections.guess_shape(sid_null) is None)
+
 
 if __name__ == "__main__":
     # setup test files

@@ -19,6 +19,9 @@ from h5json import selections
 from h5json.hdf5db import ChunkIterator
 from h5json.objid import isRootObjId, isValidUuid, isSchema2Id
 from h5json.hdf5dtype import special_dtype, Reference, RegionReference
+from h5json.h5writer import H5NullWriter
+from h5json.jsonstore.h5json_writer import H5JsonWriter
+from h5json.jsonstore.h5json_reader import H5JsonReader
 
 
 class Hdf5dbTest(unittest.TestCase):
@@ -1539,6 +1542,187 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertEqual(attr_value.tobytes(), b'\xfe\xff')
 
         db.close()
+
+    def testClosedProperty(self):
+        # closed before any reader/writer is set at all
+        db = Hdf5db(app_logger=self.log)
+        self.assertFalse(db.closed)
+
+        # set a writer directly (bypassing db.open()) so the reader stays
+        # unset - this exercises the "elif self.writer" branch of closed
+        writer = H5NullWriter(None, app_logger=self.log)
+        db.writer = writer
+        self.assertTrue(db.closed)  # writer hasn't been opened yet
+
+        writer.open()
+        self.assertFalse(db.closed)
+
+        writer.close()
+        self.assertTrue(db.closed)
+
+    def testGetDtype(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        dt = np.dtype([("x", np.int32), ("y", np.float64)])
+        ctype_id = db.createCommittedType(dt)
+        db.createHardLink(root_id, "ctype", ctype_id)
+
+        # obj_json whose "type" is a direct reference (by id) to a committed
+        # datatype, rather than an inline type description - exercises the
+        # committed-type branch of getDtype()
+        obj_json = {"type": ctype_id}
+        resolved_dtype = db.getDtype(obj_json)
+        self.assertEqual(resolved_dtype, dt)
+
+        # sanity check against the more common "inline type json" branch -
+        # the committed type's own json describes its type inline
+        ctype_json = db.getObjectById(ctype_id)
+        self.assertEqual(db.getDtype({"type": ctype_json["type"]}), dt)
+
+        # obj_json with no "type" key at all (e.g. a group)
+        with self.assertRaises(TypeError):
+            db.getDtype({"links": {}})
+
+        db.close()
+
+    def testGetObjectByPath(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        g1_id = db.createGroup()
+        db.createHardLink(root_id, "g1", g1_id)
+        db.createAttribute(g1_id, "a1", "hello")
+
+        dset_id = db.createDataset((4,), dtype=np.int32)
+        db.createHardLink(g1_id, "dset", dset_id)
+
+        root_obj = db.getObjectByPath("/")
+        self.assertEqual(root_obj, db.getObjectById(root_id))
+
+        g1_obj = db.getObjectByPath("g1")
+        self.assertEqual(g1_obj, db.getObjectById(g1_id))
+        self.assertIn("a1", g1_obj["attributes"])
+
+        dset_obj = db.getObjectByPath("/g1/dset")
+        self.assertEqual(dset_obj, db.getObjectById(dset_id))
+        self.assertEqual(dset_obj["type"]["class"], "H5T_INTEGER")
+
+        # non-existent path raises KeyError (mirrors getObjectIdByPath)
+        with self.assertRaises(KeyError):
+            db.getObjectByPath("/g1/nosuch")
+
+        db.close()
+
+    def testTrackingSetsAndDeleteObject(self):
+        filepath = "test/unit/out/hdf5db_testTrackingSetsAndDeleteObject.json"
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        # fresh db - no dirty/deleted/resized objects tracked yet
+        self.assertEqual(db.dirty_objects, set())
+        self.assertEqual(db.deleted_objects, set())
+        self.assertEqual(db.resized_datasets, set())
+
+        g1_id = db.createGroup()
+        db.createHardLink(root_id, "g1", g1_id)
+        self.assertIn(g1_id, db.new_objects)
+
+        shape = (4, 4)
+        maxdims = (None, 8)
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": shape}}
+        dset_id = db.createDataset(shape, maxdims=maxdims, dtype=np.int32, cpl=cpl)
+        db.createHardLink(root_id, "dset", dset_id)
+        self.assertIn(dset_id, db.new_objects)
+
+        # flush persists the new objects, clearing the new/dirty/resized sets
+        self.assertTrue(db.flush())
+        self.assertEqual(db.new_objects, set())
+        self.assertEqual(db.dirty_objects, set())
+        self.assertEqual(db.resized_datasets, set())
+
+        # modifying a previously-flushed (no longer "new") object marks it dirty
+        db.createAttribute(g1_id, "a1", "hello")
+        self.assertIn(g1_id, db.dirty_objects)
+
+        # resizing a previously-flushed (no longer "new") dataset marks it resized
+        db.resizeDataset(dset_id, (4, 8))
+        self.assertIn(dset_id, db.resized_datasets)
+
+        # deleteObject removes the object from the dirty set and adds it to
+        # deleted_objects
+        db.deleteObject(g1_id)
+        self.assertIn(g1_id, db.deleted_objects)
+        self.assertNotIn(g1_id, db.dirty_objects)
+        self.assertNotIn(g1_id, db.getCollection("groups"))
+        self.assertFalse(g1_id in db)
+
+        # deleteObject removes a resized dataset from the resized_datasets set
+        db.deleteObject(dset_id)
+        self.assertIn(dset_id, db.deleted_objects)
+        self.assertNotIn(dset_id, db.resized_datasets)
+
+        # deleting the root group is not allowed
+        with self.assertRaises(KeyError):
+            db.deleteObject(root_id)
+
+        # deleting an id that was never created should raise
+        with self.assertRaises(KeyError):
+            db.deleteObject("d-does-not-exist")
+
+        # a freshly created (still "new") object can also be deleted directly
+        g2_id = db.createGroup()
+        self.assertIn(g2_id, db.new_objects)
+        db.deleteObject(g2_id)
+        self.assertNotIn(g2_id, db.new_objects)
+        self.assertIn(g2_id, db.deleted_objects)
+
+        db.close()
+
+    def testReadAll(self):
+        filepath = "test/unit/out/hdf5db_testReadAll.json"
+
+        wdb = Hdf5db(app_logger=self.log)
+        wdb.writer = H5JsonWriter(filepath, app_logger=self.log)
+        root_id = wdb.open()
+
+        g1_id = wdb.createGroup()
+        wdb.createHardLink(root_id, "g1", g1_id)
+        g2_id = wdb.createGroup()
+        wdb.createHardLink(g1_id, "g2", g2_id)
+        dset_id = wdb.createDataset((4,), dtype=np.int32)
+        wdb.createHardLink(g2_id, "dset", dset_id)
+        wdb.createAttribute(g1_id, "a1", "hello")
+        wdb.close()
+
+        rdb = Hdf5db(app_logger=self.log)
+        rdb.reader = H5JsonReader(filepath, app_logger=self.log)
+        reopened_root_id = rdb.open()
+        self.assertEqual(reopened_root_id, root_id)
+
+        # before readAll, nothing has been pulled into the in-memory db yet
+        self.assertEqual(rdb.getCollection(), [])
+
+        rdb.readAll()
+
+        obj_ids = rdb.getCollection()
+        self.assertEqual(len(obj_ids), 4)  # root, g1, g2, dset
+        for expected_id in (root_id, g1_id, g2_id, dset_id):
+            self.assertIn(expected_id, obj_ids)
+
+        groups = rdb.getCollection("groups")
+        self.assertEqual(len(groups), 3)
+        datasets = rdb.getCollection("datasets")
+        self.assertEqual(datasets, [dset_id])
+
+        # attributes on objects pulled in via readAll should be usable too
+        self.assertEqual(rdb.getAttributes(g1_id), ["a1"])
+
+        # readAll should raise once the db is closed
+        rdb.close()
+        with self.assertRaises(IOError):
+            rdb.readAll()
 
 
 if __name__ == "__main__":

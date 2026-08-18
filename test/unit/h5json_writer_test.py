@@ -12,6 +12,7 @@
 import unittest
 import time
 from os.path import getsize
+from os import stat
 import logging
 import numpy as np
 from h5json import Hdf5db
@@ -524,10 +525,6 @@ class H5JsonWriterTest(unittest.TestCase):
         self.assertTrue(size_with_smalldata < size_with_data)
 
     def testDumpGroupCreationProperties(self):
-        # regression test: dumpGroup copied "cpl" to "creationProperties" on
-        # the source item dict, but never wrote it into the response dict,
-        # so a group's creation properties were always dropped from the
-        # dumped JSON.
         filepath = "test/unit/out/h5json_writer_testDumpGroupCreationProperties.json"
 
         db = Hdf5db(app_logger=self.log)
@@ -541,6 +538,38 @@ class H5JsonWriterTest(unittest.TestCase):
         dumped = db.writer.dumpGroup(g1_id)
         self.assertTrue("creationProperties" in dumped)
         self.assertEqual(dumped["creationProperties"], cpl)
+
+        db.close()
+
+    def testGetStats(self):
+        # exercises H5JsonWriter.getStats(), which Hdf5db itself never calls
+        filepath = "test/unit/out/h5json_writer_testGetStats.json"
+
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        root_id = db.open()
+        db.createAttribute(root_id, "attr1", 42)
+        db.close()  # flush so the file actually exists on disk
+
+        stats = db.writer.getStats()
+        self.assertEqual(set(stats.keys()), {"created", "lastModified", "owner"})
+
+        os_stat_info = stat(filepath)
+        self.assertEqual(stats["created"], os_stat_info.st_ctime)
+        self.assertEqual(stats["lastModified"], os_stat_info.st_mtime)
+        self.assertEqual(stats["owner"], os_stat_info.st_uid)
+
+    def testGetFilters(self):
+        # exercises H5JsonWriter.getFilters(), which always returns an empty
+        # tuple since the json store doesn't implement compression filters
+        filepath = "test/unit/out/h5json_writer_testGetFilters.json"
+
+        db = Hdf5db(app_logger=self.log)
+        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        db.open()
+
+        self.assertEqual(db.writer.getFilters(), ())
+        self.assertEqual(db.writer.getFilters(compressors_only=True), ())
 
         db.close()
 

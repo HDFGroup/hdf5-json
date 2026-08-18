@@ -9,6 +9,7 @@
 # distribution tree.  If you do not have access to this file, you may        #
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
+import os
 import unittest
 import logging
 import numpy as np
@@ -141,13 +142,6 @@ class H5pyReaderTest(unittest.TestCase):
         db.close()
 
     def testDatasetCreationProperties(self):
-        # regression test: H5JsonReader.getObjectById() only copied the
-        # "cpl"/"dcpl" keys from the raw file JSON into the in-memory
-        # object, but the on-disk h5json format (and Hdf5db.createDataset)
-        # both use "creationProperties" - so a dataset's creation
-        # properties (e.g. fillValue) were silently dropped for any
-        # object read back from a .json file, even though they're present
-        # in the file itself.
         filepath = "data/json/fillvalue.json"
         db = Hdf5db(app_logger=self.log)
         db.reader = H5JsonReader(filepath, app_logger=self.log)
@@ -161,10 +155,6 @@ class H5pyReaderTest(unittest.TestCase):
         db.close()
 
     def testAttributeIncludeData(self):
-        # regression test: H5JsonReader.getAttribute() accepted an
-        # includeData parameter but ignored it, always returning the
-        # "value" (and "encoding") keys - unlike H5pyReader.getAttribute(),
-        # which omits them when includeData=False.
         filepath = "data/json/opaque_attr.json"
         db = Hdf5db(app_logger=self.log)
         db.reader = H5JsonReader(filepath, app_logger=self.log)
@@ -283,6 +273,82 @@ class H5pyReaderTest(unittest.TestCase):
         read_sel = selections.Selection.frombytes(read_ref.selection_bytes)
         self.assertEqual(read_sel.to_region_json(), sel.to_region_json())
         rdb.close()
+
+    def testGetRootId(self):
+        # exercises H5JsonReader.get_root_id(), which Hdf5db itself never
+        # calls directly - it uses the return value of reader.open() instead
+        filepath = "data/json/tall.json"
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        # before open() the reader hasn't parsed the file yet, so its own
+        # root id is still unset
+        self.assertIsNone(db.reader.get_root_id())
+
+        root_id = db.open()
+        self.assertEqual(db.reader.get_root_id(), root_id)
+        self.assertEqual(db.reader.get_root_id(), db.root_id)
+        db.close()
+
+    def testGetDtype(self):
+        # exercises H5JsonReader.getDtype(), used internally by
+        # getDatasetValues()/getAttribute() consumers but not otherwise
+        # invoked directly against the reader
+        filepath = "data/json/tall.json"
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.open()
+
+        dset111_id = db.getObjectIdByPath("/g1/g1.1/dset1.1.1")
+        dset_json = db.reader.getObjectById(dset111_id)
+        dtype = db.reader.getDtype(dset_json)
+        self.assertEqual(dtype, np.dtype(">i4"))
+
+        # a datatype item without a "type" key should raise KeyError
+        with self.assertRaises(KeyError):
+            db.reader.getDtype({"shape": {"class": "H5S_SCALAR"}})
+
+        db.close()
+
+    def testGetDtypeCommittedType(self):
+        # getDtype() also has to resolve a "datatypes/<uuid>" reference to a
+        # committed type - exercise that branch via a round trip through
+        # H5JsonWriter/H5JsonReader
+        write_path = "test/unit/out/h5json_reader_testGetDtypeCommittedType.json"
+
+        wdb = Hdf5db(app_logger=self.log)
+        wdb.writer = H5JsonWriter(write_path, app_logger=self.log)
+        root_id = wdb.open()
+        dt = np.dtype("S15")
+        ctype_id = wdb.createCommittedType(dt)
+        wdb.createHardLink(root_id, "ctype", ctype_id)
+        wdb.createAttribute(root_id, "A1", "hello world!", dtype=f"datatypes/{ctype_id}")
+        wdb.close()
+
+        rdb = Hdf5db(app_logger=self.log)
+        rdb.reader = H5JsonReader(write_path, app_logger=self.log)
+        rdb.open()
+        root_id2 = rdb.getObjectIdByPath("/")
+        attr_json = rdb.reader.getAttribute(root_id2, "A1")
+        resolved_dtype = rdb.reader.getDtype(attr_json)
+        self.assertEqual(resolved_dtype, dt)
+        rdb.close()
+
+    def testGetStats(self):
+        # exercises H5JsonReader.getStats(), which Hdf5db itself never calls
+        filepath = "data/json/tall.json"
+        db = Hdf5db(app_logger=self.log)
+        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.open()
+
+        stats = db.reader.getStats()
+        self.assertEqual(set(stats.keys()), {"created", "lastModified", "owner"})
+
+        file_stat = os.stat(filepath)
+        self.assertEqual(stats["created"], file_stat.st_ctime)
+        self.assertEqual(stats["lastModified"], file_stat.st_mtime)
+        self.assertEqual(stats["owner"], file_stat.st_uid)
+
+        db.close()
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ import unittest
 from h5json.objid import isRootObjId, isValidUuid, validateUuid
 from h5json.objid import createObjId, getCollectionForId, getUuidFromId, getHashTagForId
 from h5json.objid import isObjId, isS3ObjKey, getS3Key, getObjId, isSchema2Id
+from h5json.objid import getRootObjId, isValidChunkId, getClassForObjId
 
 
 class IdUtilTest(unittest.TestCase):
@@ -204,6 +205,67 @@ class IdUtilTest(unittest.TestCase):
             self.assertEqual(getCollectionForId(test_id), "datatypes")
             self.assertEqual(getUuidFromId(test_id), test_uuid)
             self.assertEqual(getHashTagForId(test_id), "t-" + test_uuid)
+
+    def testGetRootObjId(self):
+        root_id = createObjId("groups")
+        group_id = createObjId("groups", root_id=root_id)
+        dataset_id = createObjId("datasets", root_id=root_id)
+        ctype_id = createObjId("datatypes", root_id=root_id)
+        chunk_id = "c" + dataset_id[1:] + "_1_2"
+
+        # root id maps to itself
+        self.assertEqual(getRootObjId(root_id), root_id)
+        # objects created with root_id as their root should map back to root_id
+        self.assertEqual(getRootObjId(group_id), root_id)
+        self.assertEqual(getRootObjId(dataset_id), root_id)
+        self.assertEqual(getRootObjId(ctype_id), root_id)
+        self.assertEqual(getRootObjId(chunk_id), root_id)
+
+        # only supported for v2 (schema 2) ids
+        group1_id = "g-314d61b8-9954-11e6-a733-3c15c2da029e"  # orig (v1) schema
+        try:
+            getRootObjId(group1_id)
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+    def testIsValidChunkId(self):
+        chunk1_id = "c-8c785f1c-9953-11e6-9bc2-0242ac110005_7_2"  # orig schema
+        chunk2_id = "c-8c785f1c-995311e6-9bc2-0242ac-110005_7_2"  # v2 schema
+        group_id = "g-314d61b8-9954-11e6-a733-3c15c2da029e"
+        dataset_id = "d-4c48f3ae-9954-11e6-a3cd-3c15c2da029e"
+
+        self.assertTrue(isValidChunkId(chunk1_id))
+        self.assertTrue(isValidChunkId(chunk2_id))
+        self.assertFalse(isValidChunkId(group_id))
+        self.assertFalse(isValidChunkId(dataset_id))
+        # not even a valid uuid
+        self.assertFalse(isValidChunkId("not-a-valid-id"))
+
+    def testGetClassForObjId(self):
+        group_id = "g-314d61b8-9954-11e6-a733-3c15c2da029e"
+        dataset_id = "d-4c48f3ae-9954-11e6-a3cd-3c15c2da029e"
+        ctype_id = "t-8c785f1c-9953-11e6-9bc2-0242ac110005"
+        chunk_id = "c-8c785f1c-9953-11e6-9bc2-0242ac110005_7_2"
+        domain_id = "/bob/mydata.h5"
+
+        self.assertEqual(getClassForObjId(domain_id), "domains")
+        self.assertEqual(getClassForObjId(chunk_id), "chunks")
+        self.assertEqual(getClassForObjId(group_id), "groups")
+        self.assertEqual(getClassForObjId(dataset_id), "datasets")
+        self.assertEqual(getClassForObjId(ctype_id), "datatypes")
+
+        try:
+            getClassForObjId(12345)
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+        try:
+            getClassForObjId("")
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
 
 
 if __name__ == "__main__":

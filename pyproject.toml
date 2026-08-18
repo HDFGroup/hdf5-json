@@ -17,7 +17,7 @@ classifiers = [
 authors = [{ "name" = "The HDF Group", "email" = "help@hdfgroup.org" }]
 keywords = ["json", "hdf5", "multidimensional array", "data", "datacube"]
 requires-python = ">=3.9"
-version = "1.0.0"
+version = "2.0.0"
 
 dependencies = [
     "h5py >= 3.10",
