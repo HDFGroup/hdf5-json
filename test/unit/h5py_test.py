@@ -1555,6 +1555,37 @@ class H5pyTest(unittest.TestCase):
             sid_null = h5py.h5s.create(h5py.h5s.NULL)
             self.assertTrue(selections.guess_shape(sid_null) is None)
 
+    def testAutoFlushH5pyRoundTrip(self):
+        # confirms Hdf5db's memory-threshold auto-flush works correctly
+        # against the h5py storage backend too: writing an update that
+        # crosses the threshold should trigger a flush automatically (no
+        # explicit db.flush() call), and the data should be correctly
+        # persisted to the real HDF5 file afterward.
+        filepath = "test/unit/out/h5py_test_testAutoFlushH5pyRoundTrip.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)
+
+        shape = (50,)
+        arr = np.arange(50, dtype=np.int64)  # 400 bytes
+
+        db = Hdf5db(app_logger=self.log, auto_flush_memory=arr.nbytes, auto_flush_interval=None)
+        db.writer = H5pyWriter(filepath, no_data=False, app_logger=self.log)
+        root_id = db.open()
+
+        dset_id = db.createDataset(shape, dtype=np.int64)
+        db.createHardLink(root_id, "dset", dset_id)
+        db.flush()  # clean slate
+
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, arr)  # crosses the memory threshold
+        self.assertEqual(db.memory_usage, 0)  # confirms auto-flush already ran
+        self.assertEqual(db.dirty_objects, set())
+
+        db.close()
+
+        with h5py.File(filepath, "r") as f:
+            self.assertTrue(np.array_equal(f["dset"][...], arr))
+
 
 if __name__ == "__main__":
     # setup test files

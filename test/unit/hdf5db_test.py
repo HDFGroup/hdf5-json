@@ -1680,6 +1680,149 @@ class Hdf5dbTest(unittest.TestCase):
 
         db.close()
 
+    def testAutoFlushDefaultsAndOverrides(self):
+        from h5json.hdf5db import DEFAULT_AUTO_FLUSH_MEMORY, DEFAULT_AUTO_FLUSH_INTERVAL
+
+        db = Hdf5db(app_logger=self.log)
+        self.assertEqual(db.auto_flush_memory, DEFAULT_AUTO_FLUSH_MEMORY)
+        self.assertEqual(db.auto_flush_interval, DEFAULT_AUTO_FLUSH_INTERVAL)
+        self.assertEqual(db.memory_usage, 0)
+        # last_flush_time is set at construction, before any flush() has happened
+        self.assertTrue(db.last_flush_time > 0)
+
+        db2 = Hdf5db(app_logger=self.log, auto_flush_memory=1024, auto_flush_interval=5)
+        self.assertEqual(db2.auto_flush_memory, 1024)
+        self.assertEqual(db2.auto_flush_interval, 5)
+
+        db3 = Hdf5db(app_logger=self.log, auto_flush_memory=None, auto_flush_interval=None)
+        self.assertIsNone(db3.auto_flush_memory)
+        self.assertIsNone(db3.auto_flush_interval)
+
+    def testMemoryUsageTracksDatasetUpdates(self):
+        filepath = "test/unit/out/hdf5db_testMemoryUsageTracksDatasetUpdates.json"
+        db = Hdf5db(app_logger=self.log, auto_flush_memory=None, auto_flush_interval=None)
+        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        self.assertEqual(db.memory_usage, 0)
+
+        shape = (100,)
+        dset_id = db.createDataset(shape, dtype=np.int64)
+        db.createHardLink(root_id, "dset", dset_id)
+        self.assertEqual(db.memory_usage, 0)  # no values written yet
+
+        arr = np.arange(100, dtype=np.int64)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, arr)
+        self.assertEqual(db.memory_usage, arr.nbytes)
+
+        # a full-coverage rewrite discards (and un-counts) the prior update
+        db.setDatasetValues(dset_id, sel_all, arr)
+        self.assertEqual(db.memory_usage, arr.nbytes)
+
+        # a partial (hyperslab) update adds to, rather than replaces, the total
+        sel_partial = selections.select(shape, slice(0, 10))
+        db.setDatasetValues(dset_id, sel_partial, arr[:10])
+        self.assertEqual(db.memory_usage, arr.nbytes + arr[:10].nbytes)
+
+        # flush() resets the tracked memory usage back to 0
+        db.flush()
+        self.assertEqual(db.memory_usage, 0)
+        db.close()
+
+    def testAutoFlushOnMemoryThreshold(self):
+        filepath = "test/unit/out/hdf5db_testAutoFlushOnMemoryThreshold.json"
+        arr = np.zeros((100,), dtype=np.int64)  # 800 bytes
+        db = Hdf5db(app_logger=self.log, auto_flush_memory=arr.nbytes, auto_flush_interval=None)
+        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        shape = arr.shape
+        dset_id = db.createDataset(shape, dtype=np.int64)
+        db.createHardLink(root_id, "dset", dset_id)
+        db.flush()  # start with a clean slate so createDataset above doesn't count
+
+        sel_all = selections.select(shape, ...)
+        # writing an update whose size meets the threshold triggers an
+        # automatic flush - without ever calling db.flush() explicitly
+        db.setDatasetValues(dset_id, sel_all, arr)
+        self.assertEqual(db.memory_usage, 0)
+        self.assertEqual(db.dirty_objects, set())
+        self.assertEqual(db.new_objects, set())
+
+        db.close()
+
+    def testAutoFlushOnTimeInterval(self):
+        filepath = "test/unit/out/hdf5db_testAutoFlushOnTimeInterval.json"
+        db = Hdf5db(app_logger=self.log, auto_flush_memory=None, auto_flush_interval=0.05)
+        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        g1_id = db.createGroup()
+        db.createHardLink(root_id, "g1", g1_id)
+        db.flush()  # clean slate, resets last_flush_time
+
+        time.sleep(0.1)  # exceed the 0.05s auto_flush_interval
+
+        # any subsequent mutating call should now trigger an automatic flush
+        db.createAttribute(g1_id, "a1", "hello")
+        self.assertEqual(db.dirty_objects, set())
+
+        db.close()
+
+    def testAutoFlushDisabled(self):
+        filepath = "test/unit/out/hdf5db_testAutoFlushDisabled.json"
+        # a tiny memory threshold and interval would normally trigger
+        # immediately, but passing None for both disables auto-flush entirely
+        db = Hdf5db(app_logger=self.log, auto_flush_memory=None, auto_flush_interval=None)
+        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        shape = (100,)
+        dset_id = db.createDataset(shape, dtype=np.int64)
+        db.createHardLink(root_id, "dset", dset_id)
+        db.flush()
+
+        time.sleep(0.05)
+        arr = np.ones(shape, dtype=np.int64)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, arr)
+
+        # nothing should have been auto-flushed
+        self.assertEqual(db.memory_usage, arr.nbytes)
+        self.assertIn(dset_id, db.dirty_objects)
+
+        db.close()
+
+    def testAutoFlushJsonRoundTrip(self):
+        # confirm data written via an automatic (not explicit) flush is
+        # actually persisted correctly - not just that in-memory tracking
+        # state looks right
+        filepath = "test/unit/out/hdf5db_testAutoFlushJsonRoundTrip.json"
+        shape = (50,)
+        arr = np.arange(50, dtype=np.int64)  # 400 bytes
+
+        wdb = Hdf5db(app_logger=self.log, auto_flush_memory=arr.nbytes, auto_flush_interval=None)
+        wdb.writer = H5JsonWriter(filepath, app_logger=self.log)
+        root_id = wdb.open()
+
+        dset_id = wdb.createDataset(shape, dtype=np.int64)
+        wdb.createHardLink(root_id, "dset", dset_id)
+        wdb.flush()  # clean slate
+
+        sel_all = selections.select(shape, ...)
+        wdb.setDatasetValues(dset_id, sel_all, arr)  # crosses memory threshold
+        self.assertEqual(wdb.memory_usage, 0)  # confirms auto-flush already ran
+        wdb.close()
+
+        rdb = Hdf5db(app_logger=self.log)
+        rdb.reader = H5JsonReader(filepath, app_logger=self.log)
+        rdb.open()
+        read_dset_id = rdb.getObjectIdByPath("/dset")
+        result = rdb.getDatasetValues(read_dset_id, selections.select(shape, ...))
+        self.assertTrue(np.array_equal(result, arr))
+        rdb.close()
+
     def testReadAll(self):
         filepath = "test/unit/out/hdf5db_testReadAll.json"
 

@@ -26,6 +26,13 @@ from .apiversion import _apiver
 from .h5reader import H5Reader, H5NullReader
 from .h5writer import H5Writer, H5NullWriter
 
+# Default auto-flush thresholds (see Hdf5db.__init__) - pending dataset value
+# updates are held in memory and normally only written out when flush()/close()
+# is called explicitly.  These defaults bound how much can accumulate before
+# an automatic flush is triggered, similar to a disk cache's write-back policy.
+DEFAULT_AUTO_FLUSH_MEMORY = 128 * 1024 * 1024  # 128 MiB
+DEFAULT_AUTO_FLUSH_INTERVAL = 30  # seconds
+
 
 def _query_rel_to_abs(x_sel, rel_indices, rank):
     """Map arrayQuery relative indices (within a sub-array) to absolute dataset indices.
@@ -203,6 +210,8 @@ class Hdf5db:
         h5_reader: H5Reader = None,
         h5_writer: H5Writer = None,
         app_logger=None,
+        auto_flush_memory=DEFAULT_AUTO_FLUSH_MEMORY,
+        auto_flush_interval=DEFAULT_AUTO_FLUSH_INTERVAL,
     ):
         if app_logger:
             self.log = app_logger
@@ -216,6 +225,14 @@ class Hdf5db:
         self._deleted_objects = set()   # set of deleted objects
         self._resized_datasets = set()  # set of dataset ids that have been resized
         self._dataset_updates = {}      # list of dataset values updates keyed by dset_id
+
+        # auto-flush policy: pending changes are flushed automatically once
+        # either threshold is crossed. Pass None for either to disable that
+        # trigger (e.g. auto_flush_interval=None to only auto-flush on
+        # memory pressure).
+        self._auto_flush_memory = auto_flush_memory
+        self._auto_flush_interval = auto_flush_interval
+        self._last_flush_time = getNow()
 
         self._root_id = None
 
@@ -317,6 +334,53 @@ class Hdf5db:
     def resized_datasets(self):
         return self._resized_datasets
 
+    @property
+    def memory_usage(self):
+        """ Approximate number of bytes currently held in memory for pending
+        (not yet flushed) dataset value updates - the dominant contributor to
+        memory growth, since dataset spaces can be arbitrarily large.
+        New/dirty/deleted object metadata (group, dataset, attribute JSON) is
+        comparatively negligible and not included. """
+        total = 0
+        for updates in self._dataset_updates.values():
+            for (_, arr) in updates:
+                total += arr.nbytes
+        return total
+
+    @property
+    def last_flush_time(self):
+        """ Time (per time_util.getNow()) that flush() last completed successfully,
+        or of __init__() if there hasn't been one yet """
+        return self._last_flush_time
+
+    @property
+    def auto_flush_memory(self):
+        """ memory_usage threshold (bytes) that triggers an automatic flush,
+        or None if the memory-based trigger is disabled """
+        return self._auto_flush_memory
+
+    @property
+    def auto_flush_interval(self):
+        """ Number of seconds since the last flush that triggers an automatic
+        flush, or None if the time-based trigger is disabled """
+        return self._auto_flush_interval
+
+    def _maybeAutoFlush(self):
+        """ Flush pending changes if either auto-flush threshold has been
+        crossed. No-op if no writer is set/open, or the writer is the
+        no-op H5NullWriter (which can't actually persist anything). """
+        if self._writer is None or self._writer.isClosed():
+            return
+        if isinstance(self._writer, H5NullWriter):
+            return
+        if self._auto_flush_memory is not None and self.memory_usage >= self._auto_flush_memory:
+            self.log.debug(f"auto-flush: memory_usage {self.memory_usage} >= {self._auto_flush_memory}")
+            self.flush()
+        elif self._auto_flush_interval is not None and \
+                (getNow() - self._last_flush_time) >= self._auto_flush_interval:
+            self.log.debug(f"auto-flush: {getNow() - self._last_flush_time}s since last flush")
+            self.flush()
+
     def make_dirty(self, obj_id):
         """ Mark the object as dirty and update the lastModified timestamp """
         obj_id = getHashTagForId(obj_id)
@@ -331,6 +395,7 @@ class Hdf5db:
         if not self.is_new(obj_id):
             # object hasn't been initially written yet, add to dirty_object set
             self._dirty_objects.add(obj_id)
+        self._maybeAutoFlush()
 
     def flush(self):
         """ write out any changes """
@@ -347,6 +412,7 @@ class Hdf5db:
         self._deleted_objects.clear()
         self._resized_datasets.clear()
         self._dataset_updates.clear()
+        self._last_flush_time = getNow()
 
         return True
 
@@ -1451,6 +1517,8 @@ class Hdf5db:
 
         if do_flush:
             self.flush()
+        else:
+            self._maybeAutoFlush()
 
     def deleteObject(self, obj_id):
         """ Delete the given object """
@@ -1471,6 +1539,7 @@ class Hdf5db:
             self._resized_datasets.remove(obj_id)
 
         self._deleted_objects.add(obj_id)
+        self._maybeAutoFlush()
 
     def getLinks(self, grp_id):
         """ Get the links for the given group """
@@ -1563,6 +1632,7 @@ class Hdf5db:
         group_json["created"] = getNow()
         self.db[grp_id] = group_json
         self._new_objects.add(grp_id)
+        self._maybeAutoFlush()
         return grp_id
 
     def createCommittedType(self, datatype, cpl=None):
@@ -1588,6 +1658,7 @@ class Hdf5db:
         ctype_json["created"] = getNow()
         self.db[ctype_id] = ctype_json
         self._new_objects.add(ctype_id)
+        self._maybeAutoFlush()
         return ctype_id
 
     def createDataset(
@@ -1642,6 +1713,7 @@ class Hdf5db:
         dset_id = createObjId("datasets", root_id=self.root_id)
         self.db[dset_id] = dset_json
         self._new_objects.add(dset_id)
+        self._maybeAutoFlush()
         return dset_id
 
     def getCollection(self, col_type=None):

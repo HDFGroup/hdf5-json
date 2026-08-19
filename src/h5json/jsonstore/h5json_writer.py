@@ -43,10 +43,20 @@ class H5JsonWriter(H5Writer):
         self._data_limit = data_limit
         self._root_id = None
         self._indent = indent
-        self._file_dumped = False
+        self._init = True  # True until the first flush() completes
 
     def flush(self):
-        """ Write dirty items """
+        """ Write dirty items.
+
+        flush() may be called more than once per session (e.g. Hdf5db's
+        periodic auto-flush, or close() flushing before its own final
+        flush()). dumpGroups()/dumpDatasets()/dumpDatatypes() only recompute
+        entries for objects that are new/dirty/resized (or deleted) since
+        the previous flush - see the "_init" handling there - since
+        recomputing an unchanged dataset's value via Hdf5db.getDatasetValues()
+        would incorrectly return a zero/fill-value array once its pending
+        update has already been cleared by an earlier flush (there being no
+        reader to re-fetch the previously-written value from). """
 
         if not self._root_id:
             msg = "flush called prior to open"
@@ -54,11 +64,8 @@ class H5JsonWriter(H5Writer):
             raise IOError(msg)
 
         self.log.info("flush")
-        if self._file_dumped:
-            self.log.info("flush: file already dumped, nothing to do")
-        else:
-            self.dumpFile()
-            self._file_dumped = True
+        self.dumpFile()
+        self._init = False
 
         return True
 
@@ -154,19 +161,26 @@ class H5JsonWriter(H5Writer):
         return response
 
     def dumpGroups(self):
-        groups = {}
-        item = self.dumpGroup(self._root_uuid)
+        groups = self.json.setdefault("groups", {})
+
         root_uuid = getUuidFromId(self._root_uuid)
-        groups[root_uuid] = item
+        if self._init or root_uuid not in groups or self.db.is_dirty(self._root_uuid):
+            groups[root_uuid] = self.dumpGroup(self._root_uuid)
+
         obj_ids = self.db.getCollection("groups")
+        live_uuids = {root_uuid}
         for obj_id in obj_ids:
             if obj_id == self._root_uuid:
                 continue
-            item = self.dumpGroup(obj_id)
             obj_uuid = getUuidFromId(obj_id)
-            groups[obj_uuid] = item
+            live_uuids.add(obj_uuid)
+            if self._init or obj_uuid not in groups or self.db.is_dirty(obj_id):
+                groups[obj_uuid] = self.dumpGroup(obj_id)
 
-        self.json["groups"] = groups
+        # drop entries for groups deleted since the last flush
+        for obj_uuid in list(groups):
+            if obj_uuid not in live_uuids:
+                del groups[obj_uuid]
 
     def dumpDataset(self, obj_id):
         response = {}
@@ -228,14 +242,22 @@ class H5JsonWriter(H5Writer):
 
     def dumpDatasets(self):
         obj_ids = self.db.getCollection("datasets")
-        if obj_ids:
-            datasets = {}
-            for obj_id in obj_ids:
-                item = self.dumpDataset(obj_id)
-                obj_uuid = getUuidFromId(obj_id)
-                datasets[obj_uuid] = item
+        datasets = self.json.setdefault("datasets", {})
 
-            self.json["datasets"] = datasets
+        live_uuids = set()
+        for obj_id in obj_ids:
+            obj_uuid = getUuidFromId(obj_id)
+            live_uuids.add(obj_uuid)
+            if self._init or obj_uuid not in datasets or self.db.is_dirty(obj_id):
+                datasets[obj_uuid] = self.dumpDataset(obj_id)
+
+        # drop entries for datasets deleted since the last flush
+        for obj_uuid in list(datasets):
+            if obj_uuid not in live_uuids:
+                del datasets[obj_uuid]
+
+        if not datasets:
+            del self.json["datasets"]
 
     def dumpDatatype(self, obj_id):
         response = {}
@@ -252,14 +274,22 @@ class H5JsonWriter(H5Writer):
 
     def dumpDatatypes(self):
         obj_ids = self.db.getCollection("datatypes")
-        if obj_ids:
-            datatypes = {}
-            for obj_id in obj_ids:
-                item = self.dumpDatatype(obj_id)
-                obj_uuid = getUuidFromId(obj_id)
-                datatypes[obj_uuid] = item
+        datatypes = self.json.setdefault("datatypes", {})
 
-            self.json["datatypes"] = datatypes
+        live_uuids = set()
+        for obj_id in obj_ids:
+            obj_uuid = getUuidFromId(obj_id)
+            live_uuids.add(obj_uuid)
+            if self._init or obj_uuid not in datatypes or self.db.is_dirty(obj_id):
+                datatypes[obj_uuid] = self.dumpDatatype(obj_id)
+
+        # drop entries for datatypes deleted since the last flush
+        for obj_uuid in list(datatypes):
+            if obj_uuid not in live_uuids:
+                del datatypes[obj_uuid]
+
+        if not datatypes:
+            del self.json["datatypes"]
 
     def dumpFile(self):
         self._root_uuid = self.db.getObjectIdByPath("/")

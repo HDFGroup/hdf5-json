@@ -17,6 +17,7 @@ import logging
 import numpy as np
 from h5json import Hdf5db
 from h5json.jsonstore.h5json_writer import H5JsonWriter
+from h5json.jsonstore.h5json_reader import H5JsonReader
 
 from h5json.hdf5dtype import special_dtype, Reference, RegionReference
 from h5json.objid import getUuidFromId
@@ -572,6 +573,55 @@ class H5JsonWriterTest(unittest.TestCase):
         self.assertEqual(db.writer.getFilters(compressors_only=True), ())
 
         db.close()
+
+    def testMultipleFlushesPreserveEarlierData(self):
+        # regression test: H5JsonWriter used to only ever dump the file once
+        # (guarded by a "_file_dumped" flag) - a second flush() was a no-op.
+        # That guard was removed to support Hdf5db's periodic auto-flush, but
+        # naively re-dumping the ENTIRE db from scratch on every flush() call
+        # is itself unsafe: Hdf5db.getDatasetValues() can only reconstruct a
+        # dataset's value from its pending (not yet flushed) update or from a
+        # reader - once an earlier flush() clears that dataset's pending
+        # update, a later full re-derive (with no reader attached) would
+        # incorrectly return a zero-filled array, corrupting already-flushed
+        # data. dumpGroups()/dumpDatasets()/dumpDatatypes() now only
+        # recompute entries for objects that are new/dirty/resized since the
+        # previous flush, leaving unchanged (already-flushed) entries alone.
+        filepath = "test/unit/out/h5json_writer_testMultipleFlushesPreserveEarlierData.json"
+
+        db = Hdf5db(app_logger=self.log, auto_flush_memory=None, auto_flush_interval=None)
+        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        shape = (10,)
+        arr1 = np.arange(10, dtype=np.int32)
+        dset1_id = db.createDataset(shape, dtype=np.int32)
+        db.createHardLink(root_id, "dset1", dset1_id)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset1_id, sel_all, arr1)
+
+        # first flush persists dset1 and clears its pending update
+        db.flush()
+
+        # write and flush a second, unrelated dataset
+        arr2 = np.arange(10, 20, dtype=np.int32)
+        dset2_id = db.createDataset(shape, dtype=np.int32)
+        db.createHardLink(root_id, "dset2", dset2_id)
+        db.setDatasetValues(dset2_id, sel_all, arr2)
+        db.flush()
+
+        # a third (redundant) flush with nothing new should also be harmless
+        db.flush()
+        db.close()
+
+        rdb = Hdf5db(app_logger=self.log)
+        rdb.reader = H5JsonReader(filepath, app_logger=self.log)
+        rdb.open()
+        result1 = rdb.getDatasetValues(rdb.getObjectIdByPath("/dset1"), sel_all)
+        result2 = rdb.getDatasetValues(rdb.getObjectIdByPath("/dset2"), sel_all)
+        self.assertTrue(np.array_equal(result1, arr1))
+        self.assertTrue(np.array_equal(result2, arr2))
+        rdb.close()
 
 
 if __name__ == "__main__":
