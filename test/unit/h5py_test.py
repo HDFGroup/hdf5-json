@@ -1723,6 +1723,55 @@ class H5pyTest(unittest.TestCase):
         with h5py.File(filepath, "r") as f:
             self.assertTrue(np.array_equal(f["dset"][...], expected))
 
+    def testQueryDatasetUpdateValueOverUnflushedBaseData(self):
+        # regression test for the original concern behind these
+        # queryDataset(update_value=...) tests: setDatasetValues() leaves its
+        # write pending in memory (no explicit flush). queryDataset() with
+        # update_value forces a flush before querying (so the query itself
+        # runs against real storage), which persists that pending base write
+        # to the h5py file - but the update_value write it then applies is
+        # itself only recorded in memory (_dataset_updates), not flushed.
+        # getDatasetValues(), while the db is still open, must correctly
+        # report the flushed base data overlaid with the still-pending
+        # update - not a value it merely remembers without also reflecting
+        # what's really on disk.
+        filepath = "test/unit/out/h5py_test_testQueryDatasetUpdateValueOverUnflushedBaseData.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)
+
+        db = Hdf5db(app_logger=self.log, auto_flush_memory=None, auto_flush_interval=None)
+        db.plugin = H5pyPlugin(filepath, no_data=False, app_logger=self.log)
+        root_id = db.open()
+
+        shape = (20,)
+        arr = np.arange(20, dtype=np.int32)
+        dset_id = db.createDataset(shape, dtype=np.int32)
+        db.createHardLink(root_id, "dset", dset_id)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, arr)  # left pending - no explicit flush
+
+        query = "field('_') > 15"
+        indices = db.queryDataset(dset_id, query, update_value=-1)
+        self.assertEqual(sorted(int(i[0]) for i in indices), [16, 17, 18, 19])
+
+        # queryDataset()'s internal flush (forced by update_value) persisted
+        # the base arr write, but not the update_value change it applied
+        # afterward - the file on disk should still show the unmodified arr
+        with h5py.File(filepath, "r") as f:
+            self.assertTrue(np.array_equal(f["dset"][...], arr))
+
+        # getDatasetValues(), with the db still open, must report the
+        # flushed base data with the still-pending update overlaid
+        expected = arr.copy()
+        expected[16:20] = -1
+        result = db.getDatasetValues(dset_id, sel_all)
+        self.assertTrue(np.array_equal(result, expected))
+
+        db.close()  # flushes the update to disk
+
+        with h5py.File(filepath, "r") as f:
+            self.assertTrue(np.array_equal(f["dset"][...], expected))
+
 
 if __name__ == "__main__":
     # setup test files
