@@ -15,8 +15,7 @@ documented.
 :maxdepth: 1
 
 hdf5db
-h5reader
-h5writer
+storage_plugin
 ```
 
 ## Types and Selections
@@ -50,8 +49,6 @@ h5py_util
 ```{toctree}
 :maxdepth: 1
 
-h5pystore/h5py_reader
-h5pystore/h5py_writer
-jsonstore/h5json_reader
-jsonstore/h5json_writer
+h5pystore/h5py_plugin
+jsonstore/h5json_plugin
 ```

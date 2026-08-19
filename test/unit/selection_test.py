@@ -853,6 +853,59 @@ class ContainedFancyTest(unittest.TestCase):
         self.assertTrue(selections.contained(fancy, s_all))
 
 
+class ContainedPointsTest(unittest.TestCase):
+    """Regression tests for contained() with H5S_SEL_POINTS selections.
+
+    contained() used to only special-case H5S_SEL_FANCY, routing it (and,
+    implicitly, anything else that wasn't a plain hyperslab/all selection)
+    through the hyperslab-assuming fallback path, which indexes .step - a
+    property H5S_SEL_POINTS selections don't have, raising AttributeError.
+    contained() now routes H5S_SEL_POINTS through _fancy_contained() too,
+    matching how intersect() and translate() already treat points and fancy
+    selections the same way.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(ContainedPointsTest, self).__init__(*args, **kwargs)
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.WARNING)
+
+    def testPointsContainedInHyperslab(self):
+        shape = (20,)
+        points = selections.select(shape, [16, 17, 18, 19])
+        self.assertEqual(points.select_type, H5S_SEL_POINTS)
+        hyp = selections.select(shape, slice(10, 20))
+        self.assertTrue(selections.contained(points, hyp))
+
+    def testPointsNotContainedInHyperslab(self):
+        shape = (20,)
+        points = selections.select(shape, [9, 16, 17])
+        hyp = selections.select(shape, slice(10, 20))
+        self.assertFalse(selections.contained(points, hyp))
+
+    def testHyperslabNotContainedInPoints(self):
+        shape = (20,)
+        hyp = selections.select(shape, slice(16, 19))  # 16, 17, 18
+        points = selections.select(shape, [16, 17, 18, 19])
+        self.assertTrue(selections.contained(hyp, points))
+
+        hyp2 = selections.select(shape, slice(15, 19))  # 15, 16, 17, 18
+        self.assertFalse(selections.contained(hyp2, points))
+
+    def testPointsContainedInSelectAll(self):
+        shape = (20,)
+        points = selections.select(shape, [1, 5, 19])
+        s_all = selections.select(shape, ...)
+        self.assertTrue(selections.contained(points, s_all))
+
+    def testPointsContainedInPoints(self):
+        shape = (20,)
+        s1 = selections.select(shape, [16, 18])
+        s2 = selections.select(shape, [16, 17, 18, 19])
+        self.assertTrue(selections.contained(s1, s2))
+        self.assertFalse(selections.contained(s2, s1))
+
+
 class TranslateTest(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(TranslateTest, self).__init__(*args, **kwargs)

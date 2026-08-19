@@ -43,28 +43,30 @@ The core design separates storage backends from the in-memory object model via a
 
 ### Central Class: `Hdf5db` (`src/h5json/hdf5db.py`)
 
-`Hdf5db` is an in-memory store for HDF5 objects (groups, datasets, committed datatypes). It tracks object state (new, dirty, deleted) and delegates I/O to pluggable reader/writer instances. Opening reads from the reader into `_db`; closing flushes to the writer.  Updates to the object state live in memory until the next flush.  Reads from Hdfdb must take into account 'dirty' objects that have not yet been flushed to memory.
+`Hdf5db` is an in-memory store for HDF5 objects (groups, datasets, committed datatypes). It tracks object state (new, dirty, deleted) and delegates I/O to a single pluggable `StoragePlugin` instance (set via the `plugin` property), which serves both reads and writes. Opening reads from the plugin into `_db`; closing flushes to it. Updates to the object state live in memory until the next flush. Reads from Hdf5db must take into account 'dirty' objects that have not yet been flushed to storage. Because one plugin instance backs both directions, a read always reflects whatever that plugin has most recently flushed.
 
 ### Storage Backends
 
-Abstract base classes in `src/h5json/h5reader.py` and `src/h5json/h5writer.py` define the interface. Two concrete pairs exist:
+`StoragePlugin` (`src/h5json/storage_plugin.py`) is the abstract base class defining the interface (`getObjectById`, `getAttribute`, `getDatasetValues`, `open`, `flush`, `close`, etc.), plus `NullPlugin`, a no-op plugin `Hdf5db` installs automatically when none is set. Two concrete plugins exist:
 
-| Backend | Reader | Writer | Storage |
-|---------|--------|--------|---------|
-| h5py | `h5pystore/h5py_reader.py` | `h5pystore/h5py_writer.py` | `.h5` HDF5 files via h5py |
-| json | `jsonstore/h5json_reader.py` | `jsonstore/h5json_writer.py` | h5json `.json` files |
+| Backend | Plugin | Storage |
+|---------|--------|---------|
+| h5py | `h5pystore/h5py_plugin.py` (`H5pyPlugin`) | `.h5` HDF5 files via h5py |
+| json | `jsonstore/h5json_plugin.py` (`H5JsonPlugin`) | h5json `.json` files |
+
+Each plugin takes `append` (preserve existing state vs. reset) and `read_only` (guarantee the plugin never writes, regardless of what the db does) constructor flags.
 
 ### CLI Apps (`src/h5json/apps/`)
 
-Each app wires a reader to a writer through `Hdf5db`:
-- `h5tojson`: `H5pyReader` → `H5JsonWriter` — converts HDF5 to JSON
-- `jsontoh5`: `H5JsonReader` → `H5pyWriter` — converts JSON to HDF5
+Each app wires two `Hdf5db` instances together via `Hdf5db.copy()`, which walks the source db's object tree and recreates it in the destination:
+- `h5tojson`: `H5pyPlugin` (source, `read_only=True`) → `H5JsonPlugin` (dest) — converts HDF5 to JSON
+- `jsontoh5`: `H5JsonPlugin` (source, `read_only=True`) → `H5pyPlugin` (dest) — converts JSON to HDF5
 - `validator.py`: validates a JSON file against the h5json JSON Schema
 
 ### Key Utility Modules
 
 - `hdf5dtype.py` — bidirectional mapping between HDF5/numpy dtypes and h5json type descriptors; exports `getTypeItem`, `createDataType`, `Reference`
-- `selections.py` — HDF5 dataspace selection types (hyperslabs, point selections, fancy indexing); used by both reader backends
+- `selections.py` — HDF5 dataspace selection types (hyperslabs, point selections, fancy indexing); used by both storage plugins
 - `array_util.py` — conversion between JSON array representations and numpy arrays
 - `query_util.py` — expression parser and evaluator for dataset value queries (used by `Hdf5db.getDatasetValues` and `Hdf5db.queryDataset`)
 - `filters.py` — HDF5 compression filter handling

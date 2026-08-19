@@ -267,6 +267,48 @@ class RegionReference:
         return "<HDF5 region reference>"
 
 
+def is_reference(val):
+    """ Return True if the type or value is a Reference """
+
+    if isinstance(val, object) and val.__class__.__name__ == "Reference":
+        return True
+    elif isinstance(val, type) and val.__name__ == "Reference":
+        return True
+    else:
+        return False
+
+
+def is_regionreference(val):
+    """ Return True if the type or value is a RegionReference """
+
+    if isinstance(val, object) and val.__class__.__name__ == "RegionReference":
+        return True
+    elif isinstance(val, type) and val.__name__ == "RegionReference":
+        return True
+
+    return False
+
+
+def has_reference(dtype):
+    """ return True if the dtype (or a sub-type) is a Reference or RegionReference type """
+    has_ref = False
+    if not isinstance(dtype, np.dtype):
+        return False
+    if len(dtype) > 0:
+        for name in dtype.fields:
+            item = dtype.fields[name]
+            if has_reference(item[0]):
+                has_ref = True
+                break
+    elif dtype.metadata and "ref" in dtype.metadata:
+        basedt = dtype.metadata["ref"]
+        has_ref = is_reference(basedt) or is_regionreference(basedt)
+    elif dtype.metadata and "vlen" in dtype.metadata:
+        basedt = dtype.metadata["vlen"]
+        has_ref = has_reference(basedt)
+    return has_ref
+
+
 def special_dtype(**kwds):
     """Create a new h5py "special" type.  Only one keyword may be given.
 

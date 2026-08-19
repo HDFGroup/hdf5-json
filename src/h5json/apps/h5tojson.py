@@ -14,8 +14,8 @@ import os.path as op
 import logging
 
 from h5json import Hdf5db
-from h5json.jsonstore.h5json_writer import H5JsonWriter
-from h5json.h5pystore.h5py_reader import H5pyReader
+from h5json.jsonstore.h5json_plugin import H5JsonPlugin
+from h5json.h5pystore.h5py_plugin import H5pyPlugin
 
 
 def main():
@@ -51,11 +51,19 @@ def main():
 
     log.info(f"h5tojson {filename}")
 
-    db = Hdf5db(app_logger=log)
-    db.reader = H5pyReader(filename, app_logger=log)
-    db.writer = H5JsonWriter(None, data_limit=data_limit, app_logger=log)
-    db.open()  # read HDF5 data into db
-    db.close()  # close will trigger write to json file
+    # read_only=True: open the source file in h5py mode='r' - src_db never
+    # creates/modifies anything, and read_only guarantees that even if it
+    # somehow did, nothing could actually be written back to the source file
+    src_db = Hdf5db(plugin=H5pyPlugin(filename, read_only=True, app_logger=log), app_logger=log)
+    src_db.open()  # read HDF5 data into src_db
+
+    dst_db = Hdf5db(plugin=H5JsonPlugin(None, data_limit=data_limit, app_logger=log), app_logger=log)
+    dst_db.open()
+
+    src_db.copy(dst_db)  # write src_db's content into dst_db
+
+    dst_db.close()  # triggers write to json file (stdout, since filepath is None)
+    src_db.close()
 
 
 if __name__ == "__main__":

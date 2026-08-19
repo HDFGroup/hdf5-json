@@ -19,9 +19,8 @@ from h5json import selections
 from h5json.hdf5db import ChunkIterator
 from h5json.objid import isRootObjId, isValidUuid, isSchema2Id
 from h5json.hdf5dtype import special_dtype, Reference, RegionReference
-from h5json.h5writer import H5NullWriter
-from h5json.jsonstore.h5json_writer import H5JsonWriter
-from h5json.jsonstore.h5json_reader import H5JsonReader
+from h5json.storage_plugin import NullPlugin
+from h5json.jsonstore.h5json_plugin import H5JsonPlugin
 
 
 class Hdf5dbTest(unittest.TestCase):
@@ -1544,20 +1543,19 @@ class Hdf5dbTest(unittest.TestCase):
         db.close()
 
     def testClosedProperty(self):
-        # closed before any reader/writer is set at all
+        # closed before any plugin is set at all
         db = Hdf5db(app_logger=self.log)
         self.assertFalse(db.closed)
 
-        # set a writer directly (bypassing db.open()) so the reader stays
-        # unset - this exercises the "elif self.writer" branch of closed
-        writer = H5NullWriter(None, app_logger=self.log)
-        db.writer = writer
-        self.assertTrue(db.closed)  # writer hasn't been opened yet
+        # set a plugin directly (bypassing db.open())
+        plugin = NullPlugin(None, app_logger=self.log)
+        db.plugin = plugin
+        self.assertTrue(db.closed)  # plugin hasn't been opened yet
 
-        writer.open()
+        plugin.open()
         self.assertFalse(db.closed)
 
-        writer.close()
+        plugin.close()
         self.assertTrue(db.closed)
 
     def testGetDtype(self):
@@ -1617,7 +1615,7 @@ class Hdf5dbTest(unittest.TestCase):
     def testTrackingSetsAndDeleteObject(self):
         filepath = "test/unit/out/hdf5db_testTrackingSetsAndDeleteObject.json"
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log)
         root_id = db.open()
 
         # fresh db - no dirty/deleted/resized objects tracked yet
@@ -1701,7 +1699,7 @@ class Hdf5dbTest(unittest.TestCase):
     def testMemoryUsageTracksDatasetUpdates(self):
         filepath = "test/unit/out/hdf5db_testMemoryUsageTracksDatasetUpdates.json"
         db = Hdf5db(app_logger=self.log, auto_flush_memory=None, auto_flush_interval=None)
-        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log)
         root_id = db.open()
 
         self.assertEqual(db.memory_usage, 0)
@@ -1734,7 +1732,7 @@ class Hdf5dbTest(unittest.TestCase):
         filepath = "test/unit/out/hdf5db_testAutoFlushOnMemoryThreshold.json"
         arr = np.zeros((100,), dtype=np.int64)  # 800 bytes
         db = Hdf5db(app_logger=self.log, auto_flush_memory=arr.nbytes, auto_flush_interval=None)
-        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log)
         root_id = db.open()
 
         shape = arr.shape
@@ -1755,7 +1753,7 @@ class Hdf5dbTest(unittest.TestCase):
     def testAutoFlushOnTimeInterval(self):
         filepath = "test/unit/out/hdf5db_testAutoFlushOnTimeInterval.json"
         db = Hdf5db(app_logger=self.log, auto_flush_memory=None, auto_flush_interval=0.05)
-        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log)
         root_id = db.open()
 
         g1_id = db.createGroup()
@@ -1775,7 +1773,7 @@ class Hdf5dbTest(unittest.TestCase):
         # a tiny memory threshold and interval would normally trigger
         # immediately, but passing None for both disables auto-flush entirely
         db = Hdf5db(app_logger=self.log, auto_flush_memory=None, auto_flush_interval=None)
-        db.writer = H5JsonWriter(filepath, app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log)
         root_id = db.open()
 
         shape = (100,)
@@ -1803,7 +1801,7 @@ class Hdf5dbTest(unittest.TestCase):
         arr = np.arange(50, dtype=np.int64)  # 400 bytes
 
         wdb = Hdf5db(app_logger=self.log, auto_flush_memory=arr.nbytes, auto_flush_interval=None)
-        wdb.writer = H5JsonWriter(filepath, app_logger=self.log)
+        wdb.plugin = H5JsonPlugin(filepath, app_logger=self.log)
         root_id = wdb.open()
 
         dset_id = wdb.createDataset(shape, dtype=np.int64)
@@ -1816,7 +1814,7 @@ class Hdf5dbTest(unittest.TestCase):
         wdb.close()
 
         rdb = Hdf5db(app_logger=self.log)
-        rdb.reader = H5JsonReader(filepath, app_logger=self.log)
+        rdb.plugin = H5JsonPlugin(filepath, read_only=True, app_logger=self.log)
         rdb.open()
         read_dset_id = rdb.getObjectIdByPath("/dset")
         result = rdb.getDatasetValues(read_dset_id, selections.select(shape, ...))
@@ -1827,7 +1825,7 @@ class Hdf5dbTest(unittest.TestCase):
         filepath = "test/unit/out/hdf5db_testReadAll.json"
 
         wdb = Hdf5db(app_logger=self.log)
-        wdb.writer = H5JsonWriter(filepath, app_logger=self.log)
+        wdb.plugin = H5JsonPlugin(filepath, app_logger=self.log)
         root_id = wdb.open()
 
         g1_id = wdb.createGroup()
@@ -1840,7 +1838,7 @@ class Hdf5dbTest(unittest.TestCase):
         wdb.close()
 
         rdb = Hdf5db(app_logger=self.log)
-        rdb.reader = H5JsonReader(filepath, app_logger=self.log)
+        rdb.plugin = H5JsonPlugin(filepath, read_only=True, app_logger=self.log)
         reopened_root_id = rdb.open()
         self.assertEqual(reopened_root_id, root_id)
 

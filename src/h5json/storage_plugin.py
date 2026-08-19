@@ -18,18 +18,35 @@ import time
 from .objid import createObjId
 
 
-class H5Reader(ABC):
+class StoragePlugin(ABC):
     """
-    This abstract class defines properties and methods that the Hdf5db class uses for reading from an HDF5
-    compatible storage medium.
+    This abstract class defines properties and methods that the Hdf5db class uses to read from and
+    write to a storage medium.  A single plugin instance is both the reader and the writer for a
+    given Hdf5db - there's no separate "reader" object with its own view of the store, so a read
+    always reflects whatever the same plugin instance has most recently flushed.
     """
 
     def __init__(
         self,
         filepath,
+        append=False,
+        no_data=False,
+        read_only=False,
         app_logger=None
     ):
         self._filepath = filepath
+        self._append = append
+        self._no_data = no_data
+        # read_only=True means this plugin must never write to its storage,
+        # even if the db it's attached to is otherwise flushed/closed
+        # normally (e.g. a source db in a format-conversion tool, which
+        # should never risk modifying its input). Concrete plugins should
+        # make flush() a safe no-op (raising only if there's actually
+        # something pending to write) when this is set, and open() should
+        # use the least-privileged access mode the backend supports.
+        self._read_only = read_only
+        self._db_ref = None
+        self._lastModified = None
         if app_logger:
             self.log = app_logger
         else:
@@ -37,6 +54,7 @@ class H5Reader(ABC):
 
     def set_db(self, db):
         self._db_ref = weakref.ref(db)
+        self.log.debug("plugin set db ref")
 
     @property
     def db(self):
@@ -51,8 +69,24 @@ class H5Reader(ABC):
 
     @property
     def closed(self):
-        """ return True if the reader handle is closed (or never opened) """
+        """ return True if the plugin's storage handle is closed (or never opened) """
         return self.isClosed()
+
+    @property
+    def lastModified(self):
+        return self._lastModified
+
+    @property
+    def append(self):
+        return self._append
+
+    @property
+    def no_data(self):
+        return self._no_data
+
+    @property
+    def read_only(self):
+        return self._read_only
 
     @abstractmethod
     def get_root_id(self):
@@ -81,12 +115,15 @@ class H5Reader(ABC):
         """
         pass
 
-    def queryDataset(self, obj_id, query, sel=None, limit=0):
+    def queryDataset(self, obj_id, query, sel=None, limit=0, update_value=None):
         """
-        Query the given dataset using the selection and query expression
+        Query the given dataset using the selection and query expression.
+
+        If update_value is provided, elements matching the query (up to limit elements if limit is
+        non-zero) are updated to the given value.
 
         Return a numpy array of indices for the elements that match the query.
-        Readers are not required to implement this — by default it raises
+        Plugins are not required to implement this — by default it raises
         NotImplementedError, and Hdf5db falls back to querying the dataset values
         it fetches via getDatasetValues. Override this only if the storage backend
         has a more efficient way to evaluate the query (e.g. pushing it down to storage).
@@ -95,7 +132,12 @@ class H5Reader(ABC):
 
     @abstractmethod
     def open(self):
-        """ Open data source for reading """
+        """ Open storage handle, return root_id """
+        pass
+
+    @abstractmethod
+    def flush(self):
+        """ Write dirty items """
         pass
 
     @abstractmethod
@@ -117,15 +159,23 @@ class H5Reader(ABC):
         """
         pass
 
+    @abstractmethod
+    def getFilters(self, compressors_only=False):
+        """ returns a list of filters supported by the plugin """
+        pass
 
-class H5NullReader(H5Reader):
+
+class NullPlugin(StoragePlugin):
     """
-    This class can be used by HDF5DB as a default no-op reader
+    This class can be used by HDF5DB as a default no-op plugin - it can't actually read or persist
+    anything, but lets a fresh, backend-less Hdf5db still mint a root id and be opened/closed.
     """
 
     def __init__(
         self,
         filepath,
+        append=False,
+        no_data=False,
         app_logger=None
     ):
         if app_logger:
@@ -133,8 +183,8 @@ class H5NullReader(H5Reader):
         else:
             self.log = logging.getLogger()
 
-        super().__init__(filepath, app_logger=app_logger)
-        self.log.debug("H5NullReader.__init__")
+        super().__init__(filepath, append=append, no_data=no_data, app_logger=app_logger)
+        self.log.debug("NullPlugin.__init__")
 
         self._root_id = None
         self._is_closed = True
@@ -162,7 +212,7 @@ class H5NullReader(H5Reader):
         """
         return None
 
-    def getDatasetValues(self, obj_id, sel=None, dtype=None):
+    def getDatasetValues(self, obj_id, sel=None, dtype=None, query=None):
         """
         Get values from dataset identified by obj_id.
         If a slices list or tuple is provided, it should have the same
@@ -174,8 +224,8 @@ class H5NullReader(H5Reader):
         return None
 
     def open(self):
-        """ Open data source for reading """
-        self.log.debug("H5NullReader open")
+        """ Open storage handle, return root_id """
+        self.log.debug("NullPlugin open")
         if self.db is None:
             # no db set yet
             self.log.warning("no self.db db_ref")
@@ -191,6 +241,12 @@ class H5NullReader(H5Reader):
                     self._root_id = createObjId(obj_type="groups")
             self._is_closed = False
         return self._root_id
+
+    def flush(self):
+        """ Write dirty items """
+        self.log.debug("NullPlugin flush")
+        # Null plugin is unable to actually persist anything, so return False
+        return False
 
     def close(self):
         """ close any open handles to the storage """
@@ -211,3 +267,7 @@ class H5NullReader(H5Reader):
         stats["lastModified"] = 0
         stats['owner'] = ""
         return stats
+
+    def getFilters(self, compressors_only=False):
+        """ return empty list of filters """
+        return ()

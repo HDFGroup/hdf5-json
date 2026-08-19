@@ -17,9 +17,8 @@ import os
 import h5py
 import numpy as np
 from h5json import Hdf5db
-from h5json.jsonstore.h5json_reader import H5JsonReader
-from h5json.h5pystore.h5py_reader import H5pyReader
-from h5json.h5pystore.h5py_writer import H5pyWriter
+from h5json.jsonstore.h5json_plugin import H5JsonPlugin
+from h5json.h5pystore.h5py_plugin import H5pyPlugin
 from h5py import h5r
 from h5json.hdf5dtype import special_dtype, Reference, RegionReference
 from h5json.objid import isRootObjId, isSchema2Id, getUuidFromId
@@ -50,12 +49,12 @@ class H5pyTest(unittest.TestCase):
         # self.log.propagate = False  # prevent log out going to stdout
         self.log.info("init!")
 
-    # --- H5pyReader tests ---
+    # --- H5pyPlugin read tests ---
 
     def testReadTall(self):
         filepath = "data/hdf5/tall.h5"
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5pyReader(filepath, app_logger=self.log)
+        db.plugin = H5pyPlugin(filepath, read_only=True, app_logger=self.log)
         root_id = db.open()
         root_json = db.getObjectById(root_id)
         root_attrs = root_json["attributes"]
@@ -136,7 +135,7 @@ class H5pyTest(unittest.TestCase):
         # updates
         filepath = "data/hdf5/tall.h5"
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5pyReader(filepath, app_logger=self.log)
+        db.plugin = H5pyPlugin(filepath, read_only=True, app_logger=self.log)
         db.open()
         dset111_id = db.getObjectIdByPath("/g1/g1.1/dset1.1.1")
 
@@ -169,11 +168,11 @@ class H5pyTest(unittest.TestCase):
         # attached ("Character array") - h5py's high-level API can't read
         # this at all (raises OSError: no appropriate function for
         # conversion path) unless the memory type's tag is set to match, so
-        # this also exercises H5pyReader._readOpaqueDataset()'s low-level
+        # this also exercises H5pyPlugin._readOpaqueDataset()'s low-level
         # tag-matched read.
         filepath = "data/hdf5/opaque_dset.h5"
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5pyReader(filepath, app_logger=self.log)
+        db.plugin = H5pyPlugin(filepath, read_only=True, app_logger=self.log)
         db.open()
 
         ds1_id = db.getObjectIdByPath("/DS1")
@@ -198,7 +197,7 @@ class H5pyTest(unittest.TestCase):
         # "tag" attached - see testReadOpaqueDataset()
         filepath = "data/hdf5/opaque_attr.h5"
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5pyReader(filepath, app_logger=self.log)
+        db.plugin = H5pyPlugin(filepath, read_only=True, app_logger=self.log)
         db.open()
 
         ds1_id = db.getObjectIdByPath("/DS1")
@@ -221,7 +220,7 @@ class H5pyTest(unittest.TestCase):
             os.remove(filepath)  # cleanup any previous run
 
         wdb = Hdf5db(app_logger=self.log)
-        wdb.writer = H5pyWriter(filepath, no_data=False)
+        wdb.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = wdb.open()
 
         dt = np.dtype("V2")
@@ -239,7 +238,7 @@ class H5pyTest(unittest.TestCase):
         wdb.close()
 
         rdb = Hdf5db(app_logger=self.log)
-        rdb.reader = H5pyReader(filepath, app_logger=self.log)
+        rdb.plugin = H5pyPlugin(filepath, read_only=True, app_logger=self.log)
         root_id2 = rdb.open()
         ds1_id = rdb.getObjectIdByPath("/DS1")
 
@@ -263,11 +262,17 @@ class H5pyTest(unittest.TestCase):
         if os.path.isfile(filepath):
             os.remove(filepath)  # cleanup any previous run
 
-        db = Hdf5db(app_logger=self.log)
-        db.reader = H5JsonReader("data/json/array_dset.json", app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False, app_logger=self.log)
-        db.open()
-        db.close()
+        src_db = Hdf5db(app_logger=self.log)
+        src_db.plugin = H5JsonPlugin("data/json/array_dset.json", read_only=True, app_logger=self.log)
+        src_db.open()
+
+        dst_db = Hdf5db(app_logger=self.log)
+        dst_db.plugin = H5pyPlugin(filepath, no_data=False, app_logger=self.log)
+        dst_db.open()
+
+        src_db.copy(dst_db)
+        dst_db.close()
+        src_db.close()
 
         with h5py.File(filepath) as f:
             ds1 = f["DS1"]
@@ -284,7 +289,7 @@ class H5pyTest(unittest.TestCase):
     def testConvertFillValueDatasetJsonToH5(self):
         # reproduces `jsontoh5 data/json/fillvalue.json <out>.h5` - a
         # regression test for two compounding bugs: dset_util.getFillValue()
-        # checked a misspelled "filLValue" key, and H5JsonReader.getObjectById()
+        # checked a misspelled "filLValue" key, and H5JsonPlugin.getObjectById()
         # never copied the on-disk "creationProperties" key into the
         # in-memory object at all - so the dataset's fillValue of 42 was
         # silently dropped and the written HDF5 dataset ended up with the
@@ -293,11 +298,17 @@ class H5pyTest(unittest.TestCase):
         if os.path.isfile(filepath):
             os.remove(filepath)  # cleanup any previous run
 
-        db = Hdf5db(app_logger=self.log)
-        db.reader = H5JsonReader("data/json/fillvalue.json", app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False, app_logger=self.log)
-        db.open()
-        db.close()
+        src_db = Hdf5db(app_logger=self.log)
+        src_db.plugin = H5JsonPlugin("data/json/fillvalue.json", read_only=True, app_logger=self.log)
+        src_db.open()
+
+        dst_db = Hdf5db(app_logger=self.log)
+        dst_db.plugin = H5pyPlugin(filepath, no_data=False, app_logger=self.log)
+        dst_db.open()
+
+        src_db.copy(dst_db)
+        dst_db.close()
+        src_db.close()
 
         with h5py.File(filepath) as f:
             self.assertEqual(f["dset"].fillvalue, 42)
@@ -313,11 +324,17 @@ class H5pyTest(unittest.TestCase):
         if os.path.isfile(filepath):
             os.remove(filepath)  # cleanup any previous run
 
-        db = Hdf5db(app_logger=self.log)
-        db.reader = H5JsonReader("data/json/sample.json", app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False, app_logger=self.log)
-        db.open()
-        db.close()
+        src_db = Hdf5db(app_logger=self.log)
+        src_db.plugin = H5JsonPlugin("data/json/sample.json", read_only=True, app_logger=self.log)
+        src_db.open()
+
+        dst_db = Hdf5db(app_logger=self.log)
+        dst_db.plugin = H5pyPlugin(filepath, no_data=False, app_logger=self.log)
+        dst_db.open()
+
+        src_db.copy(dst_db)
+        dst_db.close()
+        src_db.close()
 
         with h5py.File(filepath) as f:
             dset3 = f["dset3"]
@@ -330,10 +347,10 @@ class H5pyTest(unittest.TestCase):
         # resolve which dataset a region reference points to, but there's no
         # generic way to recover its selection back out of the file, so the
         # reader binds each RegionReference to its target dataset only, with
-        # no selection (see H5pyReader._copy_element()).
+        # no selection (see H5pyPlugin._copy_element_in()).
         filepath = "data/hdf5/regionref_attr.h5"
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5pyReader(filepath, app_logger=self.log)
+        db.plugin = H5pyPlugin(filepath, read_only=True, app_logger=self.log)
         db.open()
 
         ds1_id = db.getObjectIdByPath("/DS1")
@@ -357,7 +374,7 @@ class H5pyTest(unittest.TestCase):
             os.remove(filepath)  # cleanup any previous run
 
         wdb = Hdf5db(app_logger=self.log)
-        wdb.writer = H5pyWriter(filepath, no_data=False)
+        wdb.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = wdb.open()
 
         target_id = wdb.createDataset(shape=(6, 10), dtype=np.int32)
@@ -370,7 +387,7 @@ class H5pyTest(unittest.TestCase):
         wdb.close()
 
         rdb = Hdf5db(app_logger=self.log)
-        rdb.reader = H5pyReader(filepath, app_logger=self.log)
+        rdb.plugin = H5pyPlugin(filepath, read_only=True, app_logger=self.log)
         root_id2 = rdb.open()
         target_id2 = rdb.getObjectIdByPath("/DS1")
 
@@ -383,12 +400,12 @@ class H5pyTest(unittest.TestCase):
         self.assertIsNone(read_ref.selection_bytes)
         rdb.close()
 
-    # --- H5pyWriter tests ---
+    # --- H5pyPlugin write tests ---
 
     def testOpen(self):
         filepath = "test/unit/out/h5py_test_testOpen.h5"
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath)
+        db.plugin = H5pyPlugin(filepath)
         root_id = db.open()
         self.assertTrue(isSchema2Id(root_id))
         self.assertTrue(isRootObjId(root_id))
@@ -396,7 +413,7 @@ class H5pyTest(unittest.TestCase):
         self.assertEqual(db.getObjectIdByPath("/"), root_id)
         db.close()
         self.assertTrue(db.closed)
-        self.assertTrue(db.writer.isClosed())
+        self.assertTrue(db.plugin.isClosed())
         obj_id = db.open()
         self.assertEqual(obj_id, root_id)
         db.close()
@@ -408,7 +425,7 @@ class H5pyTest(unittest.TestCase):
             os.remove(filepath)  # cleanup any previous run
 
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
         self.assertEqual(db.getObjectIdByPath("/"), root_id)
         db.createAttribute(root_id, "attr1", value=[1, 2, 3, 4])
@@ -602,7 +619,7 @@ class H5pyTest(unittest.TestCase):
         if os.path.isfile(filepath):
             os.remove(filepath)  # cleanup any previous run
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
 
         nrows = 8
         ncols = 10
@@ -649,7 +666,7 @@ class H5pyTest(unittest.TestCase):
         if os.path.isfile(filepath):
             os.remove(filepath)  # cleanup any previous run
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
         db.createAttribute(root_id, "A1", None, shape="H5S_NULL", dtype=np.int32)
         item = db.getAttribute(root_id, "A1")
@@ -672,7 +689,7 @@ class H5pyTest(unittest.TestCase):
         if os.path.isfile(filepath):
             os.remove(filepath)  # cleanup any previous run
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
         dims = ()
         value = 42
@@ -706,7 +723,7 @@ class H5pyTest(unittest.TestCase):
         if os.path.isfile(filepath):
             os.remove(filepath)  # cleanup any previous run
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
         value = "Hello, world!"
         db.createAttribute(root_id, "A1", value, dtype=np.dtype("S13"))  # dims, datatype, value)
@@ -737,7 +754,7 @@ class H5pyTest(unittest.TestCase):
         value = b"Hello, world!"
 
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
         dt = special_dtype(vlen=bytes)
         # write the attribute
@@ -770,7 +787,7 @@ class H5pyTest(unittest.TestCase):
         value = "one: 一"
 
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
         dt = special_dtype(vlen=str)
         # write the attribute
@@ -803,7 +820,7 @@ class H5pyTest(unittest.TestCase):
         value = [2, 3, 5, 7, 11]
 
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
         db.createAttribute(root_id, "A1", value, dtype=np.int16)
         item = db.getAttribute(root_id, "A1")
@@ -832,7 +849,7 @@ class H5pyTest(unittest.TestCase):
         if os.path.isfile(filepath):
             os.remove(filepath)  # cleanup any previous run
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
         dset_id = db.createDataset(shape=(), dtype=np.int32)
         db.createHardLink(root_id, "DS1", dset_id)
@@ -863,7 +880,7 @@ class H5pyTest(unittest.TestCase):
         if os.path.isfile(filepath):
             os.remove(filepath)  # cleanup any previous run
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
         dset_id = db.createDataset(shape=(), dtype=np.int32)
         db.createHardLink(root_id, "DS1", dset_id)
@@ -907,7 +924,7 @@ class H5pyTest(unittest.TestCase):
         if os.path.isfile(filepath):
             os.remove(filepath)  # cleanup any previous run
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
 
         target_id = db.createDataset(shape=(3, 16), dtype=np.int32)
@@ -935,7 +952,7 @@ class H5pyTest(unittest.TestCase):
         if os.path.isfile(filepath):
             os.remove(filepath)  # cleanup any previous run
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
 
         target_id = db.createDataset(shape=(6, 10), dtype=np.int32)
@@ -960,7 +977,7 @@ class H5pyTest(unittest.TestCase):
         if os.path.isfile(filepath):
             os.remove(filepath)  # cleanup any previous run
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
 
         dt = special_dtype(ref=RegionReference)
@@ -984,7 +1001,7 @@ class H5pyTest(unittest.TestCase):
         if os.path.isfile(filepath):
             os.remove(filepath)  # cleanup any previous run
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
 
         target_id = db.createDataset(shape=(6, 10), dtype=np.int32)
@@ -1009,13 +1026,13 @@ class H5pyTest(unittest.TestCase):
             self.assertEqual(sid.get_select_npoints(), 4 * 3)  # 4 rows x 3 fancy columns
 
     def testBuildRegionDataspaceFancySelection(self):
-        # Exercise H5pyWriter._buildRegionDataspace() directly against a
+        # Exercise H5pyPlugin._buildRegionDataspace() directly against a
         # FANCY selection, independent of the JSON round trip covered above.
         filepath = "test/unit/out/h5py_test_testBuildRegionDataspaceFancySelection.h5"
         if os.path.isfile(filepath):
             os.remove(filepath)  # cleanup any previous run
 
-        writer = H5pyWriter(filepath, no_data=False)
+        writer = H5pyPlugin(filepath, no_data=False)
         with h5py.File(filepath, "w") as f:
             target = f.create_dataset("DS1", data=np.zeros((6, 10), dtype=np.int32))
 
@@ -1042,7 +1059,7 @@ class H5pyTest(unittest.TestCase):
         init_arr = np.array(data, dtype=dtype)
 
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
 
         root_id = db.open()
         dset_id = db.createDataset(shape, dtype=dtype)
@@ -1079,7 +1096,7 @@ class H5pyTest(unittest.TestCase):
         dt = np.dtype("S15")
 
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
         ctype_id = db.createCommittedType(dt)
         db.createHardLink(root_id, "ctype", ctype_id)
@@ -1119,7 +1136,7 @@ class H5pyTest(unittest.TestCase):
             os.remove(filepath)  # cleanup any previous run
 
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
         dt_str = special_dtype(vlen=str)
         fields = []
@@ -1172,12 +1189,17 @@ class H5pyTest(unittest.TestCase):
         if os.path.isfile(file_out):
             os.remove(file_out)  # cleanup any previous run
 
+        src_db = Hdf5db(app_logger=self.log)
+        src_db.plugin = H5JsonPlugin(file_in, read_only=True, app_logger=self.log)
+        src_db.open()
+
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5JsonReader(file_in)
-        db.writer = H5pyWriter(file_out)
+        db.plugin = H5pyPlugin(file_out, app_logger=self.log)
         db.open()
-        # close should create everything the json reader read to the output file
+
+        src_db.copy(db)  # write everything the json source read to the output file
         db.close()
+        src_db.close()
         self.assertTrue(db.closed)
 
         with h5py.File(file_out) as f:
@@ -1257,7 +1279,7 @@ class H5pyTest(unittest.TestCase):
             os.remove(filepath)  # cleanup any previous run
 
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
         self.assertEqual(db.getObjectIdByPath("/"), root_id)
         g1_id = db.createGroup()
@@ -1298,7 +1320,7 @@ class H5pyTest(unittest.TestCase):
     def testQueryDatasetChunked(self):
         # verifies queryDataset works correctly both before a flush (querying
         # in-memory updates directly) and after (querying persisted, chunked
-        # data through H5pyReader via Hdf5db.getChunkIterator)
+        # data through H5pyPlugin via Hdf5db.getChunkIterator)
         filepath = "test/unit/out/h5py_test_testQueryDatasetChunked.h5"
         if os.path.isfile(filepath):
             os.remove(filepath)  # cleanup any previous run
@@ -1331,7 +1353,7 @@ class H5pyTest(unittest.TestCase):
         expected_indexes = {1, 4, 7, 10}
 
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
         dset_id = db.createDataset(shape, dtype=dtype, cpl=cpl)
         db.createHardLink(root_id, "trades", dset_id)
@@ -1350,7 +1372,7 @@ class H5pyTest(unittest.TestCase):
         # reopen with a real reader - queryDataset must now read the
         # persisted, chunked data from storage
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5pyReader(filepath, app_logger=self.log)
+        db.plugin = H5pyPlugin(filepath, read_only=True, app_logger=self.log)
         db.open()
         dset_id = db.getObjectIdByPath("/trades")
 
@@ -1378,7 +1400,7 @@ class H5pyTest(unittest.TestCase):
     def testGetDatasetValuesByQueryChunked(self):
         # verifies Hdf5db.getDatasetValues(..., query=...) works correctly both
         # before a flush (filtering in-memory updates directly) and after
-        # (filtering persisted, chunked data read through H5pyReader via
+        # (filtering persisted, chunked data read through H5pyPlugin via
         # Hdf5db.getChunkIterator)
         filepath = "test/unit/out/h5py_test_testGetDatasetValuesByQueryChunked.h5"
         if os.path.isfile(filepath):
@@ -1412,7 +1434,7 @@ class H5pyTest(unittest.TestCase):
         expected_indexes = (1, 4, 7, 10)
 
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
         dset_id = db.createDataset(shape, dtype=dtype, cpl=cpl)
         db.createHardLink(root_id, "trades", dset_id)
@@ -1431,7 +1453,7 @@ class H5pyTest(unittest.TestCase):
         # reopen with a real reader - getDatasetValues must now filter the
         # persisted, chunked data read from storage rather than in-memory updates
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5pyReader(filepath, app_logger=self.log)
+        db.plugin = H5pyPlugin(filepath, read_only=True, app_logger=self.log)
         db.open()
         dset_id = db.getObjectIdByPath("/trades")
 
@@ -1457,18 +1479,18 @@ class H5pyTest(unittest.TestCase):
         db.close()
 
     def testReaderGetRootIdAndObjIdByAddress(self):
-        # exercises H5pyReader.get_root_id() and H5pyReader.getObjIdByAddress(),
+        # exercises H5pyPlugin.get_root_id() and H5pyPlugin.getObjIdByAddress(),
         # neither of which is invoked by Hdf5db itself - Hdf5db tracks its own
         # root_id (fetched via reader.open()'s return value), and the address
         # map is only used internally by the reader to resolve hard links and
         # committed-type references.
         filepath = "data/hdf5/tall.h5"
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5pyReader(filepath, app_logger=self.log)
+        db.plugin = H5pyPlugin(filepath, read_only=True, app_logger=self.log)
         root_id = db.open()
 
-        self.assertEqual(db.reader.get_root_id(), root_id)
-        self.assertEqual(db.reader.get_root_id(), db.root_id)
+        self.assertEqual(db.plugin.get_root_id(), root_id)
+        self.assertEqual(db.plugin.get_root_id(), db.root_id)
 
         g1_id = db.getObjectIdByPath("/g1")
 
@@ -1478,26 +1500,26 @@ class H5pyTest(unittest.TestCase):
         with h5py.File(filepath) as f:
             g1_addr = h5py.h5o.get_info(f["g1"].id).addr
 
-        self.assertEqual(db.reader.getObjIdByAddress(g1_addr), g1_id)
+        self.assertEqual(db.plugin.getObjIdByAddress(g1_addr), g1_id)
 
         # an address that was never registered should return None
-        self.assertIsNone(db.reader.getObjIdByAddress(0xdeadbeef))
+        self.assertIsNone(db.plugin.getObjIdByAddress(0xdeadbeef))
 
         db.close()
 
     def testWriterGetStats(self):
-        # exercises H5pyWriter.getStats(), which Hdf5db itself never calls
+        # exercises H5pyPlugin.getStats(), which Hdf5db itself never calls
         filepath = "test/unit/out/h5py_test_testWriterGetStats.h5"
         if os.path.isfile(filepath):
             os.remove(filepath)  # cleanup any previous run
 
         db = Hdf5db(app_logger=self.log)
-        db.writer = H5pyWriter(filepath, no_data=False)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
         root_id = db.open()
         db.createAttribute(root_id, "attr1", 42)
         db.close()  # flush so the file actually exists on disk
 
-        stats = db.writer.getStats()
+        stats = db.plugin.getStats()
         self.assertEqual(set(stats.keys()), {"created", "lastModified", "owner"})
 
         file_stat = os.stat(filepath)
@@ -1569,7 +1591,7 @@ class H5pyTest(unittest.TestCase):
         arr = np.arange(50, dtype=np.int64)  # 400 bytes
 
         db = Hdf5db(app_logger=self.log, auto_flush_memory=arr.nbytes, auto_flush_interval=None)
-        db.writer = H5pyWriter(filepath, no_data=False, app_logger=self.log)
+        db.plugin = H5pyPlugin(filepath, no_data=False, app_logger=self.log)
         root_id = db.open()
 
         dset_id = db.createDataset(shape, dtype=np.int64)
@@ -1585,6 +1607,121 @@ class H5pyTest(unittest.TestCase):
 
         with h5py.File(filepath, "r") as f:
             self.assertTrue(np.array_equal(f["dset"][...], arr))
+
+    def testQueryDatasetUpdateValueNoReader(self):
+        # regression test for a bug in the old separate-reader/writer design:
+        # a write-only session (a writer but no reader attached - a very
+        # natural way to create a dataset and later query/update it in the
+        # same session) could silently query and "update" against a phantom
+        # zero-filled array instead of the actual just-flushed data, because
+        # Hdf5db.getDatasetValues() decided whether to re-fetch from storage
+        # based on whether a *reader* had ever been attached at all. With a
+        # single plugin now serving both reads and writes, that ambiguity is
+        # gone - a read always reflects whatever this plugin has flushed.
+        filepath = "test/unit/out/h5py_test_testQueryDatasetUpdateValueNoReader.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)
+
+        db = Hdf5db(app_logger=self.log, auto_flush_memory=None, auto_flush_interval=None)
+        db.plugin = H5pyPlugin(filepath, no_data=False, app_logger=self.log)
+        root_id = db.open()
+
+        shape = (20,)
+        arr = np.arange(20, dtype=np.int32)
+        dset_id = db.createDataset(shape, dtype=np.int32)
+        db.createHardLink(root_id, "dset", dset_id)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, arr)
+        db.flush()  # persist to disk and clear _dataset_updates/_new_objects
+
+        query = "field('_') > 15"
+
+        # 4 matches (values 16, 17, 18, 19) - the query correctly runs
+        # against the real, already-flushed data.
+        indices = db.queryDataset(dset_id, query, update_value=-1)
+        self.assertEqual(sorted(int(i[0]) for i in indices), [16, 17, 18, 19])
+
+        # a plain read through the same db instance correctly reflects the
+        # (still only in-memory, not yet flushed) update, rather than a
+        # phantom zero-filled array
+        expected = arr.copy()
+        expected[16:20] = -1
+        result = db.getDatasetValues(dset_id, sel_all)
+        self.assertTrue(np.array_equal(result, expected))
+
+        db.close()  # flushes the update to disk
+
+        with h5py.File(filepath, "r") as f:
+            self.assertTrue(np.array_equal(f["dset"][...], expected))
+
+    def testQueryDatasetUpdateValueWithReader(self):
+        # regression test: with a real reader attached (read-modify-write
+        # against an existing file - the natural workaround for the no-reader
+        # issue in testQueryDatasetUpdateValueNoReader above), the query
+        # correctly finds matches, and applying the update used to crash on a
+        # later read.
+        #
+        # queryDataset()'s update_value handling builds a point selection
+        # from the matched (N, rank) index array via
+        # selections.select(sel.shape, result) and writes to it via
+        # setDatasetValues(). A later Hdf5db.getDatasetValues() call
+        # (e.g. from a subsequent, unrelated query or read) checks whether
+        # its own selection is already covered by a pending update via
+        # selections.contained(sel, update_sel). contained() used to only
+        # special-case H5S_SEL_FANCY selections (routing to
+        # _fancy_contained) - a plain H5S_SEL_POINTS selection (what
+        # select() builds from a bare (N, rank) index array) fell through
+        # to the hyperslab-assuming code path, which indexed update_sel.step
+        # - a property that raises AttributeError for point selections
+        # (they have no meaningful "step"). contained() now routes
+        # H5S_SEL_POINTS through _fancy_contained() too, matching how
+        # intersect() and translate() already treat points and fancy
+        # selections the same way.
+        filepath = "test/unit/out/h5py_test_testQueryDatasetUpdateValueWithReader.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)
+
+        db = Hdf5db(app_logger=self.log)
+        db.plugin = H5pyPlugin(filepath, no_data=False, app_logger=self.log)
+        root_id = db.open()
+        shape = (20,)
+        arr = np.arange(20, dtype=np.int32)
+        dset_id = db.createDataset(shape, dtype=np.int32)
+        db.createHardLink(root_id, "dset", dset_id)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, arr)
+        db.close()
+
+        # reopen read-write, pointed at the same file - a single plugin now
+        # serves both reads and writes, so getDatasetValues() correctly
+        # re-fetches already-flushed data
+        db2 = Hdf5db(app_logger=self.log)
+        db2.plugin = H5pyPlugin(filepath, append=True, no_data=False, app_logger=self.log)
+        db2.open()
+        dset_id2 = db2.getObjectIdByPath("/dset")
+
+        query = "field('_') > 15"
+        # the query itself works correctly, since the reader can supply
+        # the real (already flushed) data
+        indices = db2.queryDataset(dset_id2, query, update_value=-1)
+        self.assertEqual(sorted(int(i[0]) for i in indices), [16, 17, 18, 19])
+
+        # a subsequent read that needs to check the pending point-selection
+        # update against the reader's data now correctly reflects it, instead
+        # of raising AttributeError
+        expected = arr.copy()
+        expected[16:20] = -1
+        result = db2.getDatasetValues(dset_id2, sel_all)
+        self.assertTrue(np.array_equal(result, expected))
+
+        db2.close()
+
+        # confirm the update was actually persisted to the file - a single
+        # shared plugin (rather than a separate reader/writer pair) means
+        # updateAttributes()/updateDatasetValues() always find every object,
+        # including ones only loaded (not created) this session
+        with h5py.File(filepath, "r") as f:
+            self.assertTrue(np.array_equal(f["dset"][...], expected))
 
 
 if __name__ == "__main__":

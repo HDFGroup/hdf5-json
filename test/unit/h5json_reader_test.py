@@ -14,8 +14,7 @@ import unittest
 import logging
 import numpy as np
 from h5json import Hdf5db
-from h5json.jsonstore.h5json_reader import H5JsonReader
-from h5json.jsonstore.h5json_writer import H5JsonWriter
+from h5json.jsonstore.h5json_plugin import H5JsonPlugin
 from h5json.hdf5dtype import special_dtype, RegionReference
 from h5json.objid import getUuidFromId
 from h5json import selections
@@ -43,7 +42,7 @@ class H5pyReaderTest(unittest.TestCase):
     def testSimple(self):
         filepath = "data/json/tall.json"
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log, read_only=True)
         self.assertTrue(db.closed)
         root_id = db.open()
         self.assertTrue(root_id)
@@ -101,7 +100,7 @@ class H5pyReaderTest(unittest.TestCase):
         # around
         filepath = "data/json/opaque_attr.json"
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log, read_only=True)
         db.open()
 
         ds1_id = db.getObjectIdByPath("/DS1")
@@ -126,7 +125,7 @@ class H5pyReaderTest(unittest.TestCase):
         # around
         filepath = "data/json/opaque_dset.json"
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log, read_only=True)
         db.open()
 
         ds1_id = db.getObjectIdByPath("/DS1")
@@ -144,7 +143,7 @@ class H5pyReaderTest(unittest.TestCase):
     def testDatasetCreationProperties(self):
         filepath = "data/json/fillvalue.json"
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log, read_only=True)
         db.open()
 
         dset_id = db.getObjectIdByPath("/dset")
@@ -157,15 +156,15 @@ class H5pyReaderTest(unittest.TestCase):
     def testAttributeIncludeData(self):
         filepath = "data/json/opaque_attr.json"
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log, read_only=True)
         db.open()
 
         ds1_id = db.getObjectIdByPath("/DS1")
 
-        attr = db.reader.getAttribute(ds1_id, "A1", includeData=True)
+        attr = db.plugin.getAttribute(ds1_id, "A1", includeData=True)
         self.assertTrue("value" in attr)
 
-        attr = db.reader.getAttribute(ds1_id, "A1", includeData=False)
+        attr = db.plugin.getAttribute(ds1_id, "A1", includeData=False)
         self.assertFalse("value" in attr)
         self.assertFalse("encoding" in attr)
         self.assertEqual(attr["type"], {"class": "H5T_OPAQUE", "size": 7})
@@ -179,7 +178,7 @@ class H5pyReaderTest(unittest.TestCase):
         # (used to raise "setting an array element with a sequence")
         filepath = "data/json/array_dset.json"
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log, read_only=True)
         db.open()
 
         ds1_id = db.getObjectIdByPath("/DS1")
@@ -201,7 +200,7 @@ class H5pyReaderTest(unittest.TestCase):
         # designed around
         filepath = "data/json/regionref_attr.json"
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log, read_only=True)
         db.open()
 
         ds1_id = db.getObjectIdByPath("/DS1")
@@ -241,7 +240,7 @@ class H5pyReaderTest(unittest.TestCase):
         write_path = "test/unit/out/h5json_reader_testRegionReferenceRoundTrip.json"
 
         wdb = Hdf5db(app_logger=self.log)
-        wdb.writer = H5JsonWriter(write_path, app_logger=self.log)
+        wdb.plugin = H5JsonPlugin(write_path, app_logger=self.log)
         root_id = wdb.open()
 
         target_id = wdb.createDataset(shape=(3, 16), dtype=np.int32)
@@ -260,7 +259,7 @@ class H5pyReaderTest(unittest.TestCase):
         wdb.close()
 
         rdb = Hdf5db(app_logger=self.log)
-        rdb.reader = H5JsonReader(write_path, app_logger=self.log)
+        rdb.plugin = H5JsonPlugin(write_path, app_logger=self.log, read_only=True)
         rdb.open()
         read_target_id = rdb.getObjectIdByPath("/DS1")
         read_ref_dset_id = rdb.getObjectIdByPath("/DS2")
@@ -279,14 +278,14 @@ class H5pyReaderTest(unittest.TestCase):
         # calls directly - it uses the return value of reader.open() instead
         filepath = "data/json/tall.json"
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log, read_only=True)
         # before open() the reader hasn't parsed the file yet, so its own
         # root id is still unset
-        self.assertIsNone(db.reader.get_root_id())
+        self.assertIsNone(db.plugin.get_root_id())
 
         root_id = db.open()
-        self.assertEqual(db.reader.get_root_id(), root_id)
-        self.assertEqual(db.reader.get_root_id(), db.root_id)
+        self.assertEqual(db.plugin.get_root_id(), root_id)
+        self.assertEqual(db.plugin.get_root_id(), db.root_id)
         db.close()
 
     def testGetDtype(self):
@@ -295,17 +294,17 @@ class H5pyReaderTest(unittest.TestCase):
         # invoked directly against the reader
         filepath = "data/json/tall.json"
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log, read_only=True)
         db.open()
 
         dset111_id = db.getObjectIdByPath("/g1/g1.1/dset1.1.1")
-        dset_json = db.reader.getObjectById(dset111_id)
-        dtype = db.reader.getDtype(dset_json)
+        dset_json = db.plugin.getObjectById(dset111_id)
+        dtype = db.plugin.getDtype(dset_json)
         self.assertEqual(dtype, np.dtype(">i4"))
 
         # a datatype item without a "type" key should raise KeyError
         with self.assertRaises(KeyError):
-            db.reader.getDtype({"shape": {"class": "H5S_SCALAR"}})
+            db.plugin.getDtype({"shape": {"class": "H5S_SCALAR"}})
 
         db.close()
 
@@ -316,7 +315,7 @@ class H5pyReaderTest(unittest.TestCase):
         write_path = "test/unit/out/h5json_reader_testGetDtypeCommittedType.json"
 
         wdb = Hdf5db(app_logger=self.log)
-        wdb.writer = H5JsonWriter(write_path, app_logger=self.log)
+        wdb.plugin = H5JsonPlugin(write_path, app_logger=self.log)
         root_id = wdb.open()
         dt = np.dtype("S15")
         ctype_id = wdb.createCommittedType(dt)
@@ -325,11 +324,11 @@ class H5pyReaderTest(unittest.TestCase):
         wdb.close()
 
         rdb = Hdf5db(app_logger=self.log)
-        rdb.reader = H5JsonReader(write_path, app_logger=self.log)
+        rdb.plugin = H5JsonPlugin(write_path, app_logger=self.log, read_only=True)
         rdb.open()
         root_id2 = rdb.getObjectIdByPath("/")
-        attr_json = rdb.reader.getAttribute(root_id2, "A1")
-        resolved_dtype = rdb.reader.getDtype(attr_json)
+        attr_json = rdb.plugin.getAttribute(root_id2, "A1")
+        resolved_dtype = rdb.plugin.getDtype(attr_json)
         self.assertEqual(resolved_dtype, dt)
         rdb.close()
 
@@ -337,10 +336,10 @@ class H5pyReaderTest(unittest.TestCase):
         # exercises H5JsonReader.getStats(), which Hdf5db itself never calls
         filepath = "data/json/tall.json"
         db = Hdf5db(app_logger=self.log)
-        db.reader = H5JsonReader(filepath, app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log, read_only=True)
         db.open()
 
-        stats = db.reader.getStats()
+        stats = db.plugin.getStats()
         self.assertEqual(set(stats.keys()), {"created", "lastModified", "owner"})
 
         file_stat = os.stat(filepath)

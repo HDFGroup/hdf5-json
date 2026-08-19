@@ -14,17 +14,17 @@ import numpy as np
 import logging
 from .hdf5dtype import getTypeItem, createDataType, Reference, special_dtype, isOpaqueDtype
 from .hdf5dtype import numpy_integer_types, numpy_float_types
+from .hdf5dtype import RegionReference, is_reference, is_regionreference, has_reference
 from .array_util import jsonToArray, bytesArrayToList
 from .query_util import arrayQuery
 from .dset_util import resize_dataset, getDatasetLayoutClass, getChunkDims
 from .shape_util import getShapeClass, getShapeDims, getShapeJson
-from .filters import validateFilters
+from .filters import validateFilters, FILTER_DEFS
 from .objid import createObjId, getCollectionForId, isValidUuid, getUuidFromId, getHashTagForId
 from . import selections
 from .time_util import getNow
 from .apiversion import _apiver
-from .h5reader import H5Reader, H5NullReader
-from .h5writer import H5Writer, H5NullWriter
+from .storage_plugin import StoragePlugin, NullPlugin
 
 # Default auto-flush thresholds (see Hdf5db.__init__) - pending dataset value
 # updates are held in memory and normally only written out when flush()/close()
@@ -55,6 +55,43 @@ def _query_rel_to_abs(x_sel, rel_indices, rank):
         else:
             abs_result[:, d] = int(s)
     return abs_result
+
+
+def _withFilterName(filter_json):
+    """ Return filter_json unchanged if it already has a "name" key, otherwise a copy with
+    "name" filled in from FILTER_DEFS based on its "class" (if recognized). """
+    if not isinstance(filter_json, dict) or "name" in filter_json or "class" not in filter_json:
+        return filter_json
+    for filter_class, _, filter_name, _ in FILTER_DEFS:
+        if filter_class == filter_json["class"]:
+            filter_json = dict(filter_json)
+            filter_json["name"] = filter_name
+            break
+    return filter_json
+
+
+def _dtypesStructurallyEqual(dt1, dt2):
+    """ Compare two dtypes by field names/types/shape rather than exact byte layout.
+
+    A dataset's expected dtype (built from its h5json type descriptor via createDataType(),
+    which always produces a packed, no-padding layout) can otherwise fail a strict numpy
+    dtype equality check against an array read from an actual HDF5 file, whose compound
+    types may carry C-struct alignment padding between fields - same logical type, different
+    field offsets/itemsize. """
+    if dt1.names is not None or dt2.names is not None:
+        if dt1.names is None or dt2.names is None or dt1.names != dt2.names:
+            return False
+        return all(
+            _dtypesStructurallyEqual(dt1.fields[name][0], dt2.fields[name][0])
+            for name in dt1.names
+        )
+    if dt1.subdtype is not None or dt2.subdtype is not None:
+        if dt1.subdtype is None or dt2.subdtype is None:
+            return False
+        base1, shape1 = dt1.subdtype
+        base2, shape2 = dt2.subdtype
+        return shape1 == shape2 and _dtypesStructurallyEqual(base1, base2)
+    return dt1 == dt2
 
 
 def _decode(item, encoding="ascii"):
@@ -136,12 +173,17 @@ class ChunkIterator:
             sel_slices.append(slice(s.start, s.stop, 1))
         self._sel = tuple(sel_slices)
 
+        # a 0-sized dimension (e.g. a not-yet-extended unlimited dataset) means
+        # the selection is legitimately empty - nothing to validate or iterate
+        self._empty = any(d == 0 for d in self._shape)
+
         self._chunk_index = []
-        for dim in range(rank):
-            s = self._sel[dim]
-            if s.start < 0 or s.stop > self._shape[dim] or s.stop <= s.start:
-                raise ValueError("Invalid selection - selection region must be within dataset space")
-            self._chunk_index.append(s.start // self._layout[dim])
+        if not self._empty:
+            for dim in range(rank):
+                s = self._sel[dim]
+                if s.start < 0 or s.stop > self._shape[dim] or s.stop <= s.start:
+                    raise ValueError("Invalid selection - selection region must be within dataset space")
+                self._chunk_index.append(s.start // self._layout[dim])
 
         self._current_sel = None
 
@@ -154,6 +196,8 @@ class ChunkIterator:
         return self
 
     def __next__(self):
+        if self._empty:
+            raise StopIteration()
         rank = len(self._shape)
         if self._chunk_index[0] * self._layout[0] >= self._sel[0].stop:
             # ran past the last chunk, end iteration
@@ -195,8 +239,10 @@ class ChunkIterator:
 class Hdf5db:
     """
     This class is used to manage id lookup tables for primary HDF objects (Groups, Datasets,
-    and Datatypes).  By default all data is held in-memory.  Initialize with h5_reader to read from
-    an HDF5 compatible storage pool, and or, h5_writer to write to an HDF5 compatible storage pool.
+    and Datatypes).  By default all data is held in-memory.  Initialize with a StoragePlugin
+    (or set the `plugin` property later) to read from and write to a storage medium - the same
+    plugin instance is used for both, so a read always reflects whatever that plugin has most
+    recently flushed.
     """
 
     @staticmethod
@@ -207,8 +253,7 @@ class Hdf5db:
 
     def __init__(
         self,
-        h5_reader: H5Reader = None,
-        h5_writer: H5Writer = None,
+        plugin: StoragePlugin = None,
         app_logger=None,
         auto_flush_memory=DEFAULT_AUTO_FLUSH_MEMORY,
         auto_flush_interval=DEFAULT_AUTO_FLUSH_INTERVAL,
@@ -236,17 +281,11 @@ class Hdf5db:
 
         self._root_id = None
 
-        if h5_reader:
-            self._reader = h5_reader
-            self._reader.set_db(self)
+        if plugin:
+            self._plugin = plugin
+            self._plugin.set_db(self)
         else:
-            self._reader = None
-
-        if h5_writer:
-            self._writer = h5_writer
-            self._writer.set_db(self)
-        else:
-            self._writer = None
+            self._plugin = None
 
     def _getDatasetUpdates(self, dset_id):
         """ Return list of updates for the given dataset id """
@@ -262,33 +301,19 @@ class Hdf5db:
         return self._db
 
     @property
-    def reader(self):
-        """ return reader instance """
-        return self._reader
+    def plugin(self):
+        """ return the storage plugin instance """
+        return self._plugin
 
-    @reader.setter
-    def reader(self, value: H5Reader):
-        """ set the reader """
-        if self._writer and not self._writer.isClosed():
+    @plugin.setter
+    def plugin(self, value: StoragePlugin):
+        """ set the storage plugin """
+        if self._plugin and not self._plugin.isClosed():
             self.flush()
-        if self._reader and not self._reader.isClosed():
-            self._reader.close()
-        self._reader = value
-        self._reader.set_db(self)
-
-    @property
-    def writer(self):
-        """ return writer instance """
-        return self._writer
-
-    @writer.setter
-    def writer(self, value: H5Writer):
-        """ set the writer """
-        if self._writer:
-            self._writer.close()
-        self._writer = value
-        if self._writer:
-            self._writer.set_db(self)
+            self._plugin.close()
+        self._plugin = value
+        if self._plugin:
+            self._plugin.set_db(self)
 
     @property
     def root_id(self):
@@ -367,11 +392,11 @@ class Hdf5db:
 
     def _maybeAutoFlush(self):
         """ Flush pending changes if either auto-flush threshold has been
-        crossed. No-op if no writer is set/open, or the writer is the
-        no-op H5NullWriter (which can't actually persist anything). """
-        if self._writer is None or self._writer.isClosed():
+        crossed. No-op if no plugin is set/open, or the plugin is the
+        no-op NullPlugin (which can't actually persist anything). """
+        if self._plugin is None or self._plugin.isClosed():
             return
-        if isinstance(self._writer, H5NullWriter):
+        if isinstance(self._plugin, NullPlugin):
             return
         if self._auto_flush_memory is not None and self.memory_usage >= self._auto_flush_memory:
             self.log.debug(f"auto-flush: memory_usage {self.memory_usage} >= {self._auto_flush_memory}")
@@ -400,10 +425,10 @@ class Hdf5db:
     def flush(self):
         """ write out any changes """
         self.log.debug("db.flush()")
-        self._checkWriter()
-        if not self.writer.flush():
+        self._checkPlugin()
+        if not self.plugin.flush():
             # flush not successful, don't clear dirty set
-            self.log.error("writer flush failed")
+            self.log.error("plugin flush failed")
             return False
         self.log.debug("clearing new, dirty, deleted sets")
         # reset new, dirty and deleted sets
@@ -417,7 +442,7 @@ class Hdf5db:
         return True
 
     def readAll(self):
-        """ read all meta data objects from reader and save to db """
+        """ read all meta data objects from the plugin's storage and save to db """
 
         self.log.debug("readAll")
         if self.closed:
@@ -438,73 +463,275 @@ class Hdf5db:
                         link_id = link_json["id"]
                         obj_ids.add(link_id)
 
+    def copy(self, other_db):
+        """ Write this db's current content into other_db, which must already be open with its
+        own plugin.  Used to convert between storage formats (e.g. h5tojson, jsontoh5) without a
+        single Hdf5db juggling two different plugin types at once: open a source db and a
+        destination db, each with its own plugin, then call source_db.copy(dest_db).
+
+        Object ids are minted fresh in other_db, so an internal id_map is used to translate any
+        embedded object/region reference values (which otherwise still refer to this db's ids)
+        as they're copied. If a source dataset uses a committed (named) datatype, the destination
+        dataset gets an equivalent inline (non-shared) dtype rather than a reference to a copied
+        committed type - so datasets that shared one committed type in the source will each get
+        their own independent (but structurally identical) type in the destination.
+        """
+        if other_db.closed:
+            raise IOError("other_db is not open")
+
+        id_map = {self.root_id: other_db.root_id}
+
+        def translate_id(old_id):
+            # normalize first: a reference element's embedded id may be a
+            # bare Schema 1 uuid (getHashTagForId() needs the "<collection>/"
+            # prefix intact to know which "g-"/"d-"/"t-" letter to apply),
+            # while id_map's keys are always the fully-qualified form.
+            old_id = getHashTagForId(old_id)
+            return id_map.get(old_id, old_id)
+
+        def translate_ref_element(val, ref):
+            if not val:
+                return val
+            if is_reference(ref):
+                is_bytes = isinstance(val, bytes)
+                text = val.decode("ascii") if is_bytes else val
+                if not text or text == "null":
+                    # "null" is the on-the-wire sentinel for an unset object
+                    # reference (distinct from Reference.tolist()'s own
+                    # empty-string convention) - nothing to translate
+                    return val
+                if "/" in text:
+                    collection = text.split("/", 1)[0]
+                    new_text = f"{collection}/{translate_id(text)}"
+                else:
+                    new_text = translate_id(text)
+                return new_text.encode("ascii") if is_bytes else new_text
+            elif is_regionreference(ref):
+                raw = val.item() if isinstance(val, np.ndarray) else val
+                if not raw:
+                    return val
+                region_ref = raw if isinstance(raw, RegionReference) else RegionReference.frombytes(raw)
+                if region_ref.id is None:
+                    return val
+                new_ref = RegionReference("datasets/" + translate_id(region_ref.id), region_ref.selection_bytes)
+                return new_ref.tobytes()
+            else:
+                raise TypeError(f"Unexpected ref type: {ref}")
+
+        def translate_refs(arr, dtype):
+            """ Return a copy of arr with any embedded object/region reference element rewritten
+            from this db's object ids to other_db's (via id_map), leaving non-reference data
+            unchanged. """
+            if not has_reference(dtype):
+                return arr
+            if len(dtype) > 0:
+                out = arr.copy()
+                for name in dtype.fields:
+                    out[name] = translate_refs(arr[name], dtype.fields[name][0])
+                return out
+            if dtype.metadata and "ref" in dtype.metadata:
+                ref = dtype.metadata["ref"]
+                out = arr.reshape(-1).copy()
+                src = arr.reshape(-1)
+                for i in range(src.shape[0]):
+                    out[i] = translate_ref_element(src[i], ref)
+                return out.reshape(arr.shape)
+            # vlen wrapping a reference (or reference-containing) base type -
+            # each element is itself a nested array of the base dtype
+            base_dt = dtype.metadata["vlen"]
+            out = arr.reshape(-1).copy()
+            src = arr.reshape(-1)
+            for i in range(src.shape[0]):
+                elem = src[i]
+                if elem is None or not isinstance(base_dt, np.dtype):
+                    continue
+                out[i] = translate_refs(np.asarray(elem), base_dt)
+            return out.reshape(arr.shape)
+
+        def copy_attributes(src_id, dst_id):
+            for name in self.getAttributes(src_id):
+                attr_json = self.getAttribute(src_id, name)
+                dtype = self.getDtype(attr_json)
+                shape_json = attr_json["shape"]
+                if shape_json["class"] == "H5S_NULL":
+                    other_db.createAttribute(dst_id, name, None, shape="H5S_NULL", dtype=dtype)
+                    continue
+                shape = () if shape_json["class"] == "H5S_SCALAR" else tuple(shape_json["dims"])
+                value = self.getAttributeValue(src_id, name)
+                if value is not None and has_reference(dtype):
+                    value = translate_refs(value, dtype)
+                other_db.createAttribute(dst_id, name, value, shape=shape, dtype=dtype)
+
+        def copy_dataset_values(src_id, dst_id, dtype, shape_json):
+            if shape_json["class"] == "H5S_NULL":
+                return  # nothing to copy
+            if shape_json["class"] == "H5S_SCALAR":
+                sel_all = selections.select((), ...)
+                arr = self.getDatasetValues(src_id, sel_all)
+                if arr is not None:
+                    if has_reference(dtype):
+                        arr = translate_refs(arr, dtype)
+                    other_db.setDatasetValues(dst_id, sel_all, arr)
+                return
+            # copy chunk by chunk so the whole dataset is never loaded into memory at once
+            chunk_iter = self.getChunkIterator(src_id)
+            for chunk_arr in chunk_iter:
+                if chunk_arr is None:
+                    continue  # no explicit value was ever set for this dataset
+                if has_reference(dtype):
+                    chunk_arr = translate_refs(chunk_arr, dtype)
+                other_db.setDatasetValues(dst_id, chunk_iter.sel, chunk_arr)
+
+        def create_shell(src_id):
+            """ Create the (empty, contentless) destination object for src_id and record it in
+            id_map - just enough that any OTHER object's reference to src_id can already be
+            translated, regardless of which order objects are processed in. """
+            if src_id in id_map:
+                return id_map[src_id]
+
+            collection = getCollectionForId(src_id)
+            src_json = self.getObjectById(src_id)
+            cpl = src_json.get("creationProperties")
+            if cpl and "filters" in cpl:
+                # some older fixtures omit a filter's "name" key (deriving it
+                # from "class") - validateFilters() (called by createDataset()
+                # below) requires it, unlike the low-level h5py write path,
+                # which tolerates and just skips a malformed filter entry
+                cpl = dict(cpl)
+                cpl["filters"] = [_withFilterName(f) for f in cpl["filters"]]
+
+            if collection == "groups":
+                dst_id = other_db.createGroup(cpl=cpl)
+            elif collection == "datatypes":
+                dtype = self.getDtype(src_json)
+                dst_id = other_db.createCommittedType(dtype, cpl=cpl)
+            elif collection == "datasets":
+                shape_json = src_json["shape"]
+                dtype = self.getDtype(src_json)
+                if shape_json["class"] == "H5S_NULL":
+                    shape, maxdims = None, None
+                elif shape_json["class"] == "H5S_SCALAR":
+                    shape, maxdims = (), None
+                else:
+                    shape = tuple(shape_json["dims"])
+                    # createDataset() requires H5D_CHUNKED layout for any
+                    # maxdims - some fixtures declare maxdims equal to dims
+                    # (not usefully resizable) alongside a non-chunked
+                    # layout, which would otherwise fail that check
+                    if "maxdims" in shape_json and getDatasetLayoutClass(src_json) == "H5D_CHUNKED":
+                        maxdims = tuple(shape_json["maxdims"])
+                    else:
+                        maxdims = None
+                dst_id = other_db.createDataset(shape=shape, maxdims=maxdims, dtype=dtype, cpl=cpl)
+            else:
+                raise TypeError(f"unexpected collection: {collection}")
+
+            id_map[src_id] = dst_id
+            return dst_id
+
+        def copy_content(src_id):
+            """ Copy src_id's attributes and (for a dataset) values into its already-created
+            destination counterpart. Reference-valued data can only be safely translated once
+            EVERY object has a destination id, so this must run after ALL shells exist. """
+            dst_id = id_map[src_id]
+            copy_attributes(src_id, dst_id)
+            if getCollectionForId(src_id) == "datasets":
+                src_json = self.getObjectById(src_id)
+                dtype = self.getDtype(src_json)
+                copy_dataset_values(src_id, dst_id, dtype, src_json["shape"])
+
+        def create_links(src_grp_id):
+            dst_grp_id = id_map[src_grp_id]
+            for name in self.getLinks(src_grp_id):
+                link_json = self.getLink(src_grp_id, name)
+                link_class = link_json["class"]
+                if link_class == "H5L_TYPE_HARD":
+                    tgt_dst_id = id_map[link_json["id"]]
+                    other_db.createHardLink(dst_grp_id, name, tgt_dst_id)
+                elif link_class == "H5L_TYPE_SOFT":
+                    other_db.createSoftLink(dst_grp_id, name, link_json["h5path"])
+                elif link_class == "H5L_TYPE_EXTERNAL":
+                    other_db.createExternalLink(dst_grp_id, name, link_json["h5path"], link_json["file"])
+                else:
+                    other_db.createCustomLink(dst_grp_id, name, dict(link_json))
+
+        # pass 1: discover and create every object reachable from root (without
+        # attributes/values/links yet), so any reference to it can already be
+        # translated, and so a hard link's target is always already known -
+        # this also correctly handles circular group references
+        visited = set()
+        obj_ids = [self.root_id]
+        create_shell(self.root_id)
+        while obj_ids:
+            src_grp_id = obj_ids.pop()
+            if src_grp_id in visited:
+                continue
+            visited.add(src_grp_id)
+            for name in self.getLinks(src_grp_id):
+                link_json = self.getLink(src_grp_id, name)
+                if link_json["class"] != "H5L_TYPE_HARD":
+                    continue
+                tgt_id = link_json["id"]
+                create_shell(tgt_id)
+                if getCollectionForId(tgt_id) == "groups":
+                    obj_ids.append(tgt_id)
+
+        # pass 2: copy attributes and dataset values now that every object
+        # (and therefore every possible reference target) has a destination id
+        for src_id in list(id_map):
+            copy_content(src_id)
+
+        # pass 3: wire up all links now that every target object exists
+        for src_grp_id in visited:
+            create_links(src_grp_id)
+
     def open(self):
-        """ open reader and writer if set """
+        """ open the storage plugin, installing a NullPlugin if none is set """
         self.log.debug("db.open()")
 
-        if self.reader is None:
-            self.reader = H5NullReader(None, app_logger=self.log)
-            self._reader.set_db(self)
+        if self.plugin is None:
+            self.plugin = NullPlugin(None, app_logger=self.log)
 
-        if self.writer is None:
-            self.writer = H5NullWriter(None, app_logger=self.log)
-            self._writer.set_db(self)
-
-        if not self.reader.isClosed():
+        if not self.plugin.isClosed():
             self.log.debug("db is already opened")
             raise IOError("db is already opened")
 
-        if self.writer.append:
-            # append mode for the writer, first open writer and get the root id
-            self.log.debug("db.open, write append, getting root_id from writer")
-            writer_root_id = self.writer.open()
-            if self._root_id:
-                if writer_root_id != self._root_id:
-                    raise IOError("writer root id does not match reader root id")
-            else:
-                self._root_id = writer_root_id
-
-            # now open reader
-            reader_root_id = self.reader.open()
-            if reader_root_id != self._root_id:
-                raise IOError("db root id does not match reader root id")
-
+        plugin_root_id = self.plugin.open()
+        self.log.debug(f"got plugin root_id: {plugin_root_id}")
+        if self._root_id:
+            if plugin_root_id != self._root_id:
+                raise IOError("plugin root id does not match db root id")
         else:
-            # open reader first and get root id
-            reader_root_id = self.reader.open()
-            self.log.debug(f"got reader root_id:  {reader_root_id}")
+            self._root_id = plugin_root_id
 
-            if self._root_id:
-                if reader_root_id != self._root_id:
-                    raise IOError("reader root id does not match reader root id")
-            else:
-                self._root_id = reader_root_id
-            self.log.debug("open writer")
-            # now open writer
-            writer_root_id = self.writer.open()
-            self.log.debug(f"got writer root_id: {writer_root_id}")
-            if writer_root_id != self._root_id:
-                raise IOError("writer root id does not match reader root id")
+        if self._root_id not in self.db:
+            # a brand new, empty store (e.g. a fresh H5JsonPlugin) has nothing
+            # to report for the root yet, so synthesize one directly - but
+            # otherwise leave the root object unfetched, exactly like any
+            # other object, so it's loaded lazily (via getObjectById()) on
+            # first access rather than always eagerly pulled in by open()
+            obj_json = self.plugin.getObjectById(self._root_id)
+            if obj_json is None:
+                self.db[self._root_id] = {"links": {}, "attributes": {}, "cpl": {}}
 
         self.log.debug(f"db.open() - returning root_id: {self._root_id}")
         return self._root_id
 
     def close(self):
-        """ close reader and writer handles """
+        """ close the storage plugin's handle """
         self.log.info("Hdf5db __close")
 
-        if self.writer and not isinstance(self.writer, H5NullWriter):
-            self.flush()
-            self.writer.close()
-        if self.reader:
-            self.reader.close()
+        if self.plugin:
+            if not isinstance(self.plugin, NullPlugin):
+                # a NullPlugin can never persist anything - flushing it always
+                # "fails" by design, so skip the (spurious) error log
+                self.flush()
+            self.plugin.close()
 
     @property
     def closed(self):
-        if self.reader:
-            return self.reader.isClosed()
-        elif self.writer:
-            return self.writer.isClosed()
+        if self.plugin:
+            return self.plugin.isClosed()
         elif self._root_id:
             return True
         else:
@@ -520,28 +747,21 @@ class Hdf5db:
         self.log.info("Hdf5db __exit")
         self.close()
 
-    def _checkReader(self):
-        """ check the reader is set and open """
-        if self.reader is None:
-            raise IOError("reader not set")
-        if self.reader.isClosed():
-            raise IOError("reader is closed")
-
-    def _checkWriter(self):
-        """ check the writer is set and open """
-        if self.writer is None:
-            raise IOError("writer not set")
-        if self.writer.isClosed():
-            raise IOError("writer is closed")
+    def _checkPlugin(self):
+        """ check the storage plugin is set and open """
+        if self.plugin is None:
+            raise IOError("plugin not set")
+        if self.plugin.isClosed():
+            raise IOError("plugin is closed")
 
     def getObjectById(self, obj_id, refresh=False):
         """ return object with given id """
-        self._checkReader()
+        self._checkPlugin()
         obj_id = getHashTagForId(obj_id)
         if obj_id not in self.db or (refresh and not self.is_new(obj_id) and not self.is_dirty(obj_id)):
-            # load the obj from the reader
-            self.log.debug(f"getObjectById - fetching {obj_id} from reader")
-            obj_json = self.reader.getObjectById(obj_id)
+            # load the obj from the plugin
+            self.log.debug(f"getObjectById - fetching {obj_id} from plugin")
+            obj_json = self.plugin.getObjectById(obj_id)
             self.db[obj_id] = obj_json
         obj_json = self.db[obj_id]
 
@@ -692,7 +912,9 @@ class Hdf5db:
         """
 
         obj_json = self.getObjectById(obj_id)
-        attrs = obj_json["attributes"]
+        # some plugins (e.g. H5JsonPlugin, reading an on-disk file that omits
+        # empty attribute lists) don't always include the "attributes" key
+        attrs = obj_json.get("attributes", {})
         names = []
 
         for name in attrs:
@@ -924,7 +1146,12 @@ class Hdf5db:
             arr = np.zeros(arr_shape, dtype=rdtype)
             if "fillValue" in cpl:
                 fillValue = cpl["fillValue"]
-                # TBD: fix for compound types
+                if len(rdtype) > 0 and isinstance(fillValue, list):
+                    # for a compound dtype, a plain list fillValue (one value
+                    # per field) must be a tuple for numpy to broadcast it as
+                    # a single record value - assigning the list as-is instead
+                    # broadcasts each element as a separate scalar attempt
+                    fillValue = tuple(fillValue)
                 arr[...] = fillValue
             return arr
 
@@ -966,8 +1193,8 @@ class Hdf5db:
             elif dset_id in self._new_objects:
                 arr = init_arr(rdtype, cpl)
             else:
-                # fetch from the server
-                arr = self.reader.getDatasetValues(dset_id, sel, dtype=dtype)
+                # fetch from the plugin
+                arr = self.plugin.getDatasetValues(dset_id, sel, dtype=dtype)
                 if arr is None:
                     raise KeyError(f"Data for dataset {dset_id} not returned")
                 arr = _extract_fields(arr, sel.fields, rdtype)
@@ -978,8 +1205,8 @@ class Hdf5db:
         arr = None
         fetch = True
 
-        # determine if we need to get data from the reader
-        if isinstance(self._reader, H5NullReader) or dset_id in self._new_objects:
+        # determine if we need to get data from the plugin
+        if isinstance(self._plugin, NullPlugin) or dset_id in self._new_objects:
             fetch = False
         else:
             for (update_sel, update_val) in updates:
@@ -993,8 +1220,8 @@ class Hdf5db:
                     fetch = False
                     break
         if fetch:
-            # get last saved version of the data from the reader
-            arr = self.reader.getDatasetValues(dset_id, sel, dtype=dtype)
+            # get last saved version of the data from the plugin
+            arr = self.plugin.getDatasetValues(dset_id, sel, dtype=dtype)
             arr = _extract_fields(arr, sel.fields, rdtype)
         else:
             # initialize an array with fill value if given
@@ -1123,8 +1350,8 @@ class Hdf5db:
         dtype = self.getDtype(dset_json)
         updates = self._getDatasetUpdates(dset_id)
 
-        # Delegate query to the reader when it has relevant, not-superseded data
-        query_fetch = not (isinstance(self._reader, H5NullReader) or dset_id in self._new_objects)
+        # Delegate query to the plugin when it has relevant, not-superseded data
+        query_fetch = not (isinstance(self._plugin, NullPlugin) or dset_id in self._new_objects)
         if query_fetch:
             for (update_sel, _) in updates:
                 if selections.contained(sel, update_sel):
@@ -1133,7 +1360,7 @@ class Hdf5db:
 
         if query_fetch:
             try:
-                result = self.reader.getDatasetValues(dset_id, sel, dtype=dtype, query=query)
+                result = self.plugin.getDatasetValues(dset_id, sel, dtype=dtype, query=query)
             except NotImplementedError:
                 result = None
             if result is not None:
@@ -1189,52 +1416,12 @@ class Hdf5db:
         Return a numpy array of indices for the elements that match the query
         """
 
-        def queryReader(dset_id, query, sel=None, limit=0):
+        def queryPlugin(dset_id, query, sel=None, limit=0, update_value=None):
             result = None
             try:
-                result = self.reader.queryDataset(dset_id, query, sel=sel, limit=limit)
+                result = self.plugin.queryDataset(dset_id, query, sel=sel, limit=limit, update_value=update_value)
             except NotImplementedError:
-                # This reader doesn't support queryDataset
-                pass
-
-            if result is not None:
-                return result
-
-            rank = len(sel.shape)
-            try:
-                chunk_iter = ChunkIterator(self, dset_id, sel=sel)
-            except ValueError:
-                # ChunkIterator doesn't support this selection (e.g. a fancy/point
-                # selection, or a scalar dataset) - fall back to querying the
-                # entire selection at once
-                arr = self.getDatasetValues(dset_id, sel)
-                result = arrayQuery(query, arr, limit=limit)
-                return _query_rel_to_abs(sel, result, rank)
-
-            # query the dataset chunk by chunk so the whole selection is never
-            # loaded into memory at once
-            hits = []
-            nhits = 0
-            for chunk_arr in chunk_iter:
-                chunk_rel = arrayQuery(query, chunk_arr)
-                if len(chunk_rel) == 0:
-                    continue
-                hits.append(_query_rel_to_abs(chunk_iter.sel, chunk_rel, rank))
-                nhits += len(chunk_rel)
-                if limit > 0 and nhits >= limit:
-                    break
-
-            result = np.concatenate(hits, axis=0) if hits else np.zeros((0, rank), dtype='int64')
-            if limit > 0 and len(result) > limit:
-                result = result[:limit]
-            return result
-
-        def queryWriter(dset_id, query, sel=None, limit=0, update_value=None):
-            result = None
-            try:
-                result = self.writer.queryDataset(dset_id, query, sel=sel, limit=limit, update_value=update_value)
-            except NotImplementedError:
-                # This reader doesn't support queryDataset
+                # This plugin doesn't support queryDataset
                 pass
 
             if result is None:
@@ -1315,9 +1502,9 @@ class Hdf5db:
             sel = selections.select(dims, ...)
 
         if update_value is not None:
-            # do flush so we can be sure to do an atomic operation if the writer supports it
+            # do flush so we can be sure to do an atomic operation if the plugin supports it
             self.flush()
-            results = queryWriter(dset_id, query, sel=sel, limit=limit, update_value=update_value)
+            results = queryPlugin(dset_id, query, sel=sel, limit=limit, update_value=update_value)
             return results
 
         updates = self._getDatasetUpdates(dset_id)
@@ -1328,8 +1515,8 @@ class Hdf5db:
         full_shape = sel.shape
         rank = len(full_shape)
 
-        # Delegate query to the reader when it has relevant data
-        query_fetch = not (isinstance(self._reader, H5NullReader) or dset_id in self._new_objects)
+        # Delegate query to the plugin when it has relevant data
+        query_fetch = not (isinstance(self._plugin, NullPlugin) or dset_id in self._new_objects)
         if query_fetch:
             for (update_sel, _) in updates:
                 if selections.contained(sel, update_sel):
@@ -1338,7 +1525,7 @@ class Hdf5db:
 
         result_mask = np.zeros(full_shape, dtype=bool)
         if query_fetch:
-            fetched = queryReader(dset_id, query, sel=sel, limit=limit)
+            fetched = queryPlugin(dset_id, query, sel=sel, limit=limit)
             if len(fetched) > 0:
                 result_mask[tuple(fetched[:, d].astype(int) for d in range(rank))] = True
 
@@ -1400,6 +1587,8 @@ class Hdf5db:
 
         updates = self._getDatasetUpdates(dset_id)
 
+        tgt_dt = self.getDtype(dset_json)
+
         if shape_class == "H5S_SCALAR":
             if sel.select_type != selections.H5S_SEL_ALL:
                 # TBD: support other selection types
@@ -1407,10 +1596,13 @@ class Hdf5db:
             if sel.shape != ():
                 raise ValueError("Selection shape does not match dataset shape")
 
-            if arr.shape != ():
+            # for an H5T_ARRAY (subarray) dtype, the subarray dims are absorbed
+            # directly into arr's shape (see array_util.jsonToArray), so a
+            # scalar dataset of e.g. a (3, 2) array type expects arr.shape == (3, 2)
+            expected_shape = tgt_dt.subdtype[1] if tgt_dt.subdtype is not None else ()
+            if arr.shape != expected_shape:
                 raise ValueError("Expected scalar array for scalar dataset")
 
-        tgt_dt = self.getDtype(dset_json)
         if sel.fields is not None and len(tgt_dt) > 0:
             # Field-restricted write: check arr against the selected field dtype.
             ordered = [f for f in tgt_dt.names if f in sel.fields]
@@ -1424,7 +1616,11 @@ class Hdf5db:
         else:
             expected_dt = tgt_dt
         src_dt = arr.dtype
-        if src_dt != expected_dt:
+        # for an H5T_ARRAY (subarray) dtype, the subarray dims are absorbed
+        # directly into arr's shape (see array_util.jsonToArray), so arr's
+        # own dtype is just the base scalar type, not the subarray descriptor
+        cmp_dt = expected_dt.subdtype[0] if expected_dt.subdtype is not None else expected_dt
+        if not _dtypesStructurallyEqual(src_dt, cmp_dt):
             raise TypeError(f"arr.dtype {src_dt} doesn't match expected dtype {expected_dt}")
 
         if sel.select_type == selections.H5S_SEL_POINTS:
@@ -1446,22 +1642,34 @@ class Hdf5db:
             # Allow scalar arrays when writing a field-restricted selection
             # (the scalar will be broadcast to all selected positions).
             if arr.shape != ():
-                if 0 < arr.ndim < len(dims):
+                # for an H5T_ARRAY (subarray) dtype, arr's shape has the
+                # subarray dims appended as a suffix (see array_util.jsonToArray)
+                # - compare/broadcast against just the logical (dataset-rank)
+                # prefix, then restore the suffix when reshaping.
+                subarray_dims = expected_dt.subdtype[1] if expected_dt.subdtype is not None else ()
+                if subarray_dims:
+                    if arr.shape[len(arr.shape) - len(subarray_dims):] != subarray_dims:
+                        raise TypeError(
+                            f"Array shape {arr.shape} doesn't match subarray dtype dims {subarray_dims}")
+                    arr_shape = arr.shape[:len(arr.shape) - len(subarray_dims)]
+                else:
+                    arr_shape = arr.shape
+                if 0 < len(arr_shape) < len(dims):
                     # arr has fewer dims than the dataset rank (e.g. a 1-D array
                     # written to a slice of a 3-D dataset).  Validate against
                     # sel.mshape (the effective shape after scalar-indexed axes
                     # are removed), then reshape to sel.count so the stored array
                     # has the full dataset rank with size-1 scalar-axis dims.
-                    if arr.shape != sel.mshape:
+                    if arr_shape != sel.mshape:
                         raise TypeError(
-                            f"Array shape {arr.shape} doesn't match "
+                            f"Array shape {arr_shape} doesn't match "
                             f"selection mshape {sel.mshape}")
-                    arr = arr.reshape(sel.count)
-                elif len(arr.shape) != len(dims):
+                    arr = arr.reshape(sel.count + subarray_dims)
+                elif len(arr_shape) != len(dims):
                     raise TypeError("Array shape does not match dataset shape")
                 else:
                     try:
-                        sel.broadcast(arr.shape)
+                        sel.broadcast(arr_shape)
                     except TypeError:
                         raise
         else:
@@ -1545,7 +1753,13 @@ class Hdf5db:
         """ Get the links for the given group """
         grp_json = self.getObjectById(grp_id)
         if "links" not in grp_json:
-            raise KeyError(f"No links - {grp_id} not a group?")
+            # some plugins (e.g. H5JsonPlugin, reading an on-disk file that
+            # omits an empty links list) don't always include the "links"
+            # key for a group with zero links - only raise if this really
+            # isn't a group at all
+            if getCollectionForId(grp_id) != "groups":
+                raise KeyError(f"No links - {grp_id} not a group?")
+            return []
         links = grp_json["links"]
         names = []
         for name in links:
@@ -1680,8 +1894,8 @@ class Hdf5db:
         dset_json = {"shape": shape_json, "type": type_json, "attributes": {}}
         if cpl:
             if "filters" in cpl:
-                if self.writer:
-                    supported_filters = self.writer.getFilters()
+                if self.plugin:
+                    supported_filters = self.plugin.getFilters()
                 else:
                     supported_filters = ()
                 # validate and normalize supplied filter property list
