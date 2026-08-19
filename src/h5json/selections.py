@@ -666,7 +666,7 @@ def _fancy_contained(s1, s2):
                 slice(sel.start[d], sel.start[d] + sel.count[d] * sel.step[d], sel.step[d])
                 for d in range(rank)
             ]
-        else:  # H5S_SEL_FANCY
+        else:  # H5S_SEL_FANCY or H5S_SEL_POINTS
             return list(sel.slices)
 
     s1_dims = get_dims(s1)
@@ -713,7 +713,7 @@ def contained(s1, s2):
 
     t1 = s1.select_type
     t2 = s2.select_type
-    fancy_types = (H5S_SEL_FANCY,)
+    fancy_types = (H5S_SEL_FANCY, H5S_SEL_POINTS)
     hyperslab_types = (H5S_SEL_HYPERSLABS, H5S_SEL_ALL)
 
     if t1 in fancy_types or t2 in fancy_types:
