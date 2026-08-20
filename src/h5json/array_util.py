@@ -611,7 +611,10 @@ def encodeData(data, encoding="base64"):
     if encoding != "base64":
         raise ValueError("only base64 encoding is supported")
     if isinstance(data, str):
-        data = data.encode("utf8", "surrogateescape")
+        try:
+            data = data.encode("utf8")
+        except UnicodeEncodeError:
+            raise ValueError("can not encode string value")
     if not isinstance(data, bytes):
         msg = "Expected str or bytes type to encodeData, "
         msg += f"but got: {type(data)}"
