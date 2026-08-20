@@ -13,6 +13,7 @@ import unittest
 import time
 import logging
 import os
+import json
 
 import h5py
 import numpy as np
@@ -342,6 +343,48 @@ class H5pyTest(unittest.TestCase):
             for elem in dset3[...]:
                 self.assertEqual(elem.shape, (0,))
 
+    def testConvertGzipDatasetH5ToJson(self):
+        # reproduces `h5tojson data/hdf5/h5ex_d_gzip.h5` - a regression test
+        # for H5pyPlugin._getDataset() reporting a dataset's creation
+        # properties (filters, layout, allocTime, fillTime) under the key
+        # "cpl" instead of "creationProperties" (a stale name from before
+        # the schema was renamed). Hdf5db.copy()'s create_shell() and
+        # H5JsonPlugin's dumpDataset() both only ever look for
+        # "creationProperties", so a dataset's compression filter, chunk
+        # layout, and alloc/fill time policy were silently dropped on every
+        # h5tojson conversion, with no error - they just never appeared in
+        # the output JSON.
+        filepath = "test/unit/out/h5py_test_testConvertGzipDatasetH5ToJson.json"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+
+        src_db = Hdf5db(app_logger=self.log)
+        src_db.plugin = H5pyPlugin("data/hdf5/h5ex_d_gzip.h5", read_only=True, app_logger=self.log)
+        src_db.open()
+
+        dst_db = Hdf5db(app_logger=self.log)
+        dst_db.plugin = H5JsonPlugin(filepath, app_logger=self.log)
+        dst_db.open()
+
+        src_db.copy(dst_db)
+        dst_db.close()
+        src_db.close()
+
+        with open(filepath) as f:
+            data = json.load(f)
+
+        datasets = data["datasets"]
+        self.assertEqual(len(datasets), 1)
+        dset_json = next(iter(datasets.values()))
+        self.assertIn("creationProperties", dset_json)
+        cpl = dset_json["creationProperties"]
+        self.assertEqual(cpl["allocTime"], "H5D_ALLOC_TIME_INCR")
+        self.assertEqual(cpl["fillTime"], "H5D_FILL_TIME_IFSET")
+        self.assertEqual(cpl["layout"]["class"], "H5D_CHUNKED")
+        self.assertEqual(cpl["layout"]["dims"], [4, 8])
+        filter_classes = [f["class"] for f in cpl["filters"]]
+        self.assertIn("H5Z_FILTER_DEFLATE", filter_classes)
+
     def testReadRegionReferenceAttribute(self):
         # reads a real HDF5 file with region-reference attributes.  h5py can
         # resolve which dataset a region reference points to, but there's no
@@ -613,6 +656,100 @@ class H5pyTest(unittest.TestCase):
                     else:
                         expected = i * j
                     self.assertEqual(dset[i, j], expected)
+
+    def testCreateGroupWithTrackTimes(self):
+        # regression test for H5pyPlugin._createGroup() silently dropping a
+        # group's creationProperties entirely (it accepted grp_json but
+        # never looked at it). trackTimes is h5json's one clearly-defined,
+        # unambiguous group creation property with a direct h5py mapping
+        # (Group.create_group()'s own track_times kwarg) - h5py/HDF5 don't
+        # expose a reliable way to query a *created* group's track_times
+        # setting back out (get_create_plist().get_obj_track_times() always
+        # reports the library default, regardless of what was set at
+        # creation - the same reason dataset-level trackTimes has no
+        # read-side/round-trip test either), so this only exercises the
+        # write-side plumbing: the group gets created correctly either way,
+        # and a cpl with no opinion on trackTimes behaves exactly as before.
+        filepath = "test/unit/out/h5py_test_testCreateGroupWithTrackTimes.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+
+        db = Hdf5db(app_logger=self.log)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
+        root_id = db.open()
+
+        g_notrack_id = db.createGroup(cpl={"trackTimes": False})
+        db.createHardLink(root_id, "g_notrack", g_notrack_id)
+
+        g_track_id = db.createGroup(cpl={"trackTimes": True})
+        db.createHardLink(root_id, "g_track", g_track_id)
+
+        # no cpl at all - behaves exactly as before this change
+        g_plain_id = db.createGroup()
+        db.createHardLink(root_id, "g_plain", g_plain_id)
+        db.createAttribute(g_plain_id, "a1", "hello")
+        db.close()
+
+        with h5py.File(filepath) as f:
+            self.assertTrue("g_notrack" in f)
+            self.assertTrue("g_track" in f)
+            self.assertTrue("g_plain" in f)
+            self.assertTrue("a1" in f["g_plain"].attrs)
+
+    def testCreateGroupWithLinkCreationOrder(self):
+        # regression test for the other half of H5pyPlugin._createGroup()'s
+        # creationProperties gap: linkCreationOrder ("H5P_CRT_ORDER_TRACKED"
+        # vs "H5P_CRT_ORDER_INDEXED") needs the low-level GCPL API, since
+        # h5py's high-level track_order=True always sets both flags together
+        # and can't express "tracked but not indexed" alone. Unlike
+        # trackTimes, this property - and its effect on link iteration order
+        # - IS reliably queryable back from a real file, so this verifies a
+        # full write/close/reopen/read round trip, not just write-side
+        # plumbing.
+        filepath = "test/unit/out/h5py_test_testCreateGroupWithLinkCreationOrder.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+
+        db = Hdf5db(app_logger=self.log)
+        db.plugin = H5pyPlugin(filepath, no_data=False)
+        root_id = db.open()
+
+        g_indexed_id = db.createGroup(cpl={"linkCreationOrder": "H5P_CRT_ORDER_INDEXED"})
+        db.createHardLink(root_id, "g_indexed", g_indexed_id)
+        for name in ("zebra", "apple", "mango"):
+            db.createHardLink(g_indexed_id, name, db.createGroup())
+
+        g_tracked_id = db.createGroup(cpl={"linkCreationOrder": "H5P_CRT_ORDER_TRACKED"})
+        db.createHardLink(root_id, "g_tracked", g_tracked_id)
+
+        # no cpl at all - behaves exactly as before this change
+        g_plain_id = db.createGroup()
+        db.createHardLink(root_id, "g_plain", g_plain_id)
+        db.close()
+
+        rdb = Hdf5db(app_logger=self.log)
+        rdb.plugin = H5pyPlugin(filepath, read_only=True, app_logger=self.log)
+        rdb.open()
+
+        g_indexed_id2 = rdb.getObjectIdByPath("/g_indexed")
+        indexed_obj = rdb.getObjectById(g_indexed_id2)
+        self.assertEqual(
+            indexed_obj["creationProperties"], {"linkCreationOrder": "H5P_CRT_ORDER_INDEXED"}
+        )
+        # link creation order (not alphabetical) is preserved on read
+        self.assertEqual(rdb.getLinks(g_indexed_id2), ["zebra", "apple", "mango"])
+
+        g_tracked_id2 = rdb.getObjectIdByPath("/g_tracked")
+        tracked_obj = rdb.getObjectById(g_tracked_id2)
+        self.assertEqual(
+            tracked_obj["creationProperties"], {"linkCreationOrder": "H5P_CRT_ORDER_TRACKED"}
+        )
+
+        g_plain_id2 = rdb.getObjectIdByPath("/g_plain")
+        plain_obj = rdb.getObjectById(g_plain_id2)
+        self.assertNotIn("creationProperties", plain_obj)
+
+        rdb.close()
 
     def testResizableDataset(self):
         filepath = "test/unit/out/h5py_test_testResizableDataset.h5"

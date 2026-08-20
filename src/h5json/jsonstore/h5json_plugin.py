@@ -120,10 +120,9 @@ class H5JsonPlugin(StoragePlugin):
 
         resp = {}
         # selectively copy from the db dict
-        for k in json_obj:
-            for k in ("shape", "type", "cpl", "dcpl", "creationProperties", "encoding"):
-                if k in json_obj:
-                    resp[k] = json_obj[k]
+        for k in ("shape", "type", "creationProperties", "encoding"):
+            if k in json_obj:
+                resp[k] = json_obj[k]
         if include_attrs and "attributes" in json_obj:
             attrs = {}
             attr_list = json_obj["attributes"]
@@ -328,9 +327,7 @@ class H5JsonPlugin(StoragePlugin):
         alias = self.getAliasList(obj_id)
         response["alias"] = alias
 
-        if "cpl" in item:
-            response["creationProperties"] = item["cpl"]
-        elif "creationProperties" in item:
+        if "creationProperties" in item:
             response["creationProperties"] = item["creationProperties"]
         attributes = self.dumpAttributes(obj_id)
         if attributes:
@@ -397,8 +394,8 @@ class H5JsonPlugin(StoragePlugin):
             shape_rsp["maxdims"] = maxdims
         response["shape"] = shape_rsp
 
-        if "cpl" in item:
-            response["creationProperties"] = item["cpl"]
+        if "creationProperties" in item:
+            response["creationProperties"] = item["creationProperties"]
 
         attributes = self.dumpAttributes(obj_id)
         if attributes:
@@ -445,8 +442,8 @@ class H5JsonPlugin(StoragePlugin):
         alias = self.getAliasList(obj_id)
         response["alias"] = alias
         response["type"] = item["type"]
-        if "cpl" in item:
-            response["creationProperties"] = item["cpl"]
+        if "creationProperties" in item:
+            response["creationProperties"] = item["creationProperties"]
         attributes = self.dumpAttributes(obj_id)
         if attributes:
             response["attributes"] = attributes

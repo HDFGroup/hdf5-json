@@ -25,6 +25,7 @@ unit_tests = [
     "shape_util_test",
     "link_util_test",
     "time_util_test",
+    "track_util_test",
     "storage_plugin_test",
     "hdf5db_test",
     "h5json_reader_test",

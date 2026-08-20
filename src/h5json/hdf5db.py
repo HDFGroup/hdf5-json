@@ -733,7 +733,7 @@ class Hdf5db:
             # first access rather than always eagerly pulled in by open()
             obj_json = self.plugin.getObjectById(self._root_id)
             if obj_json is None:
-                self.db[self._root_id] = {"links": {}, "attributes": {}, "cpl": {}}
+                self.db[self._root_id] = {"links": {}, "attributes": {}, "creationProperties": {}}
 
         self.log.debug(f"db.open() - returning root_id: {self._root_id}")
         return self._root_id
@@ -948,7 +948,7 @@ class Hdf5db:
 
         return names
 
-    def getAttribute(self, obj_id, name, includeData=True):
+    def getAttribute(self, obj_id, name):
         """
         Get attribute given an object id and name
         returns: JSON object

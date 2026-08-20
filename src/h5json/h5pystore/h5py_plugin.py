@@ -411,8 +411,32 @@ class H5pyPlugin(StoragePlugin):
 
     def _createGroup(self, parent, grp_json, name=None):
         """ create the group and any links it contains """
-        grp = parent.create_group(name)
-        return grp
+        cpl = grp_json.get("creationProperties") or {}
+        track_times = getTrackTimes(grp_json)
+        link_creation_order = cpl.get("linkCreationOrder")
+
+        if track_times is None and link_creation_order is None:
+            # no relevant group-level creation properties - the common case
+            return parent.create_group(name)
+
+        # h5py's high-level create_group() only exposes a single track_order
+        # bool, which sets both CRT_ORDER_TRACKED and CRT_ORDER_INDEXED
+        # together - there's no way to request "tracked but not indexed"
+        # (H5P_CRT_ORDER_TRACKED alone) through it, so build the GCPL
+        # directly via the low-level API whenever either property is set
+        encoded_name, lcpl = parent._e(name, lcpl=True)
+        gcpl = h5py.h5p.create(h5py.h5p.GROUP_CREATE)
+        if track_times is not None:
+            gcpl.set_obj_track_times(track_times)
+        if link_creation_order == "H5P_CRT_ORDER_TRACKED":
+            gcpl.set_link_creation_order(h5py.h5p.CRT_ORDER_TRACKED)
+        elif link_creation_order == "H5P_CRT_ORDER_INDEXED":
+            gcpl.set_link_creation_order(h5py.h5p.CRT_ORDER_TRACKED | h5py.h5p.CRT_ORDER_INDEXED)
+        elif link_creation_order is not None:
+            raise ValueError(f"unexpected linkCreationOrder: {link_creation_order}")
+
+        gid = h5py.h5g.create(parent.id, encoded_name, lcpl=lcpl, gcpl=gcpl)
+        return h5py.Group(gid)
 
     def _createDataset(self, parent, dset_json, name=None):
         """ create a dataset object """
@@ -887,12 +911,20 @@ class H5pyPlugin(StoragePlugin):
 
         item = {"alias": grp.name}
 
+        # link creation order (unlike track_times) is reliably queryable back
+        # from an existing group's GCPL, so report it when set
+        order_flags = grp.id.get_create_plist().get_link_creation_order()
+        if order_flags & h5py.h5p.CRT_ORDER_INDEXED:
+            item["creationProperties"] = {"linkCreationOrder": "H5P_CRT_ORDER_INDEXED"}
+        elif order_flags & h5py.h5p.CRT_ORDER_TRACKED:
+            item["creationProperties"] = {"linkCreationOrder": "H5P_CRT_ORDER_TRACKED"}
+
         if include_links:
             links = self._getLinks(grp)
             item["links"] = links
         return item
 
-    def _getDatatype(self, ctype, include_attrs=True):
+    def _getDatatype(self, ctype):
         self.log.info(f"getDatatype alias: ]{ctype.name}")
         item = {"alias": ctype.name}
         item["type"] = getTypeItem(ctype.dtype)
@@ -1028,7 +1060,7 @@ class H5pyPlugin(StoragePlugin):
                 shape_item["maxdims"] = maxshape
         item["shape"] = shape_item
 
-        item["cpl"] = self._getHDF5DatasetCreationProperties(dset)
+        item["creationProperties"] = self._getHDF5DatasetCreationProperties(dset)
 
         return item
 

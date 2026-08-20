@@ -200,7 +200,7 @@ class NullPlugin(StoragePlugin):
             raise KeyError(f"{obj_id} not found")
 
         # create a root group with no links or attributes
-        group_json = {"links": {}, "attributes": {}, "cpl": {}}
+        group_json = {"links": {}, "attributes": {}, "creationProperties": {}}
         group_json["created"] = time.time()
 
         return group_json

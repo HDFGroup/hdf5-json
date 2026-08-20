@@ -103,7 +103,7 @@ class StoragePluginTest(unittest.TestCase):
         root_json = plugin.getObjectById(None)
         self.assertEqual(root_json["links"], {})
         self.assertEqual(root_json["attributes"], {})
-        self.assertEqual(root_json["cpl"], {})
+        self.assertEqual(root_json["creationProperties"], {})
         self.assertTrue("created" in root_json)
 
         with self.assertRaises(KeyError):
