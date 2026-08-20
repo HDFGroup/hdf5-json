@@ -13,7 +13,7 @@
 import numpy as np
 import logging
 from .hdf5dtype import getTypeItem, createDataType, Reference, special_dtype, isOpaqueDtype
-from .hdf5dtype import numpy_integer_types, numpy_float_types
+from .hdf5dtype import numpy_integer_types, numpy_float_types, isVlen, vlenBaseType
 from .hdf5dtype import RegionReference, is_reference, is_regionreference, has_reference
 from .array_util import jsonToArray, bytesArrayToList
 from .query_util import arrayQuery
@@ -92,6 +92,27 @@ def _dtypesStructurallyEqual(dt1, dt2):
         base2, shape2 = dt2.subdtype
         return shape1 == shape2 and _dtypesStructurallyEqual(base1, base2)
     return dt1 == dt2
+
+
+def _initVlenDefaults(arr, dt):
+    """ Replace numpy's default fill for any vlen (object-kind) field of dt within arr.
+
+    np.zeros() on an object-dtype array fills each slot with the Python int 0,
+    not a sensible "no data written yet" placeholder - this walks dt (recursing
+    into compound fields) and assigns an appropriately-typed empty value
+    (an empty array for a numeric/array vlen base type, or an empty str/bytes)
+    to every vlen slot instead. """
+    if len(dt) > 0:
+        for name in dt.names:
+            _initVlenDefaults(arr[name], dt[name])
+    elif isVlen(dt):
+        base_dt = vlenBaseType(dt)
+        # assign per-element (rather than a single arr[...] = value) since a
+        # non-scalar fill value (an empty ndarray) would otherwise have its
+        # own shape broadcast against arr's shape, rather than being placed
+        # as a single object in every slot
+        for idx in np.ndindex(arr.shape):
+            arr[idx] = base_dt() if base_dt in (bytes, str) else np.zeros((0,), dtype=base_dt)
 
 
 def _decode(item, encoding="ascii"):
@@ -1144,6 +1165,8 @@ class Hdf5db:
             else:
                 arr_shape = (sel.nselect,)
             arr = np.zeros(arr_shape, dtype=rdtype)
+            if isVlen(rdtype):
+                _initVlenDefaults(arr, rdtype)
             if "fillValue" in cpl:
                 fillValue = cpl["fillValue"]
                 if len(rdtype) > 0 and isinstance(fillValue, list):
