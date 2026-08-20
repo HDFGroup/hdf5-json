@@ -1014,7 +1014,26 @@ class Hdf5db:
                 raise ValueError("Dtype must be set for Null space attributes")
             else:
                 dtype = np.dtype(dtype)
+            original_dtype = dtype
         else:
+            if dtype is not None:
+                dtype = np.dtype(dtype)  # In case a string, e.g. 'i8' is passed
+            original_dtype = dtype  # full (possibly top-level array) dtype, for type_json below
+
+            # Where a top-level array type is requested, unwrap it to the
+            # element dtype *before* converting value - np.asarray(value,
+            # dtype=<array dtype>) silently broadcasts a matching-shape
+            # array rather than reinterpreting it as one scalar element of
+            # the array type, so the conversion below must use the plain
+            # element dtype instead.
+            if dtype is not None and dtype.subdtype is not None:
+                subdtype, subshape = dtype.subdtype
+
+                # Make sure the subshape matches the last N axes' sizes.
+                if shape[-len(subshape):] != subshape:
+                    raise ValueError(f"Array dtype shape {subshape} is incompatible with data shape {shape}")
+                dtype = subdtype
+
             try:
                 value = np.asarray(value, dtype=dtype, order='C')
             except ValueError:
@@ -1025,36 +1044,29 @@ class Hdf5db:
                 value = jsonToArray(shape, dtype, value)
             if dtype is None:
                 dtype = value.dtype
-            else:
-                dtype = np.dtype(dtype)  # In case a string, e.g. 'i8' is passed
+                original_dtype = dtype
 
-        # Where a top-level array type is requested, we have to do some
-        # fiddling around to present the data as a smaller array of
-        # sub-arrays.
+        # Make sure the number of elements is compatible with the given
+        # shape, and reshape if needed. (For a top-level array type, shape
+        # still includes the subarray dims here - e.g. (3,) for one (3,)i
+        # scalar attribute - matching value's own shape after the plain
+        # element-dtype conversion above.)
         if value is not None:
-            if dtype.subdtype is not None:
-                subdtype, subshape = dtype.subdtype
+            if isinstance(shape, tuple):
+                if np.prod(shape) != np.prod(value.shape):
+                    raise ValueError("Shape of new attribute conflicts with shape of data")
 
-                # Make sure the subshape matches the last N axes' sizes.
-                if shape[-len(subshape):] != subshape:
-                    raise ValueError(f"Array dtype shape {subshape} is incompatible with data shape {shape}")
+                if shape != value.shape:
+                    value = value.reshape(shape)
 
-                # New "advertised" shape and dtype
+            # We need this to handle special string types.
+            value = np.asarray(value, dtype=dtype)
+
+            if original_dtype is not None and original_dtype.subdtype is not None:
+                # New "advertised" shape, now that value/shape have the
+                # subarray dims folded in as expected
+                subshape = original_dtype.subdtype[1]
                 shape = shape[0:len(shape) - len(subshape)]
-                dtype = subdtype
-
-            # Not an array type; make sure to check the number of elements
-            # is compatible, and reshape if needed.
-            else:
-                if isinstance(shape, tuple):
-                    if np.prod(shape) != np.prod(value.shape):
-                        raise ValueError("Shape of new attribute conflicts with shape of data")
-
-                    if shape != value.shape:
-                        value = value.reshape(shape)
-
-                # We need this to handle special string types.
-                value = np.asarray(value, dtype=dtype)
 
             value_json = bytesArrayToList(value)
 
@@ -1073,7 +1085,7 @@ class Hdf5db:
 
         obj_json = self.getObjectById(obj_id)
         attrs_json = obj_json["attributes"]
-        type_json = getTypeItem(dtype)
+        type_json = getTypeItem(original_dtype)
         # finally put it all together...
         attr_json = {"shape": shape_json, "type": type_json}
         if shape != "H5S_NULL":
@@ -1866,7 +1878,7 @@ class Hdf5db:
             group_json["creationProperties"] = cpl
         else:
             group_json["creationProperties"] = {}
-        group_json["created"] = getNow()
+        group_json["created"] = group_json["lastModified"] = getNow()
         self.db[grp_id] = group_json
         self._new_objects.add(grp_id)
         self._maybeAutoFlush()
@@ -1892,7 +1904,7 @@ class Hdf5db:
         type_json = getTypeItem(dt)  # get canonical json description of datatype
 
         ctype_json = {"type": type_json, "attributes": {}, "creationProperties": cpl}
-        ctype_json["created"] = getNow()
+        ctype_json["created"] = ctype_json["lastModified"] = getNow()
         self.db[ctype_id] = ctype_json
         self._new_objects.add(ctype_id)
         self._maybeAutoFlush()
@@ -1945,7 +1957,7 @@ class Hdf5db:
 
         if maxdims and getDatasetLayoutClass(dset_json) != "H5D_CHUNKED":
             raise ValueError("Only datasets with 'H5D_CHUNKED' layout can be resizable")
-        dset_json["created"] = getNow()
+        dset_json["created"] = dset_json["lastModified"] = getNow()
 
         dset_id = createObjId("datasets", root_id=self.root_id)
         self.db[dset_id] = dset_json

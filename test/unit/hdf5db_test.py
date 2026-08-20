@@ -254,6 +254,49 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertEqual(value[()], 42)
         db.close()
 
+    def testArrayTypeAttribute(self):
+        # A top-level array-typed attribute (dtype.subdtype is not None) -
+        # one scalar attribute whose value is itself a fixed-size array.
+        #
+        # Regression test: createAttribute() used to convert the value via
+        # np.asarray(value, dtype=<array dtype>) *before* unwrapping the
+        # array type. numpy silently broadcasts in that case rather than
+        # reinterpreting a matching-shape array as a single array-typed
+        # element - e.g. np.asarray([0, 1, 2], dtype='(3,)i4') produces a
+        # (3, 3) broadcast, not the intended 3-element scalar. That also
+        # lost the array type itself: since the (already-broadcast) value's
+        # apparent shape no longer matched the expected shape, the "advertised"
+        # shape/dtype reduction that follows was skipped, so the stored type
+        # ended up as a plain H5T_INTEGER instead of H5T_ARRAY.
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dt = np.dtype("(3,)i4")
+        value = np.arange(3, dtype="i4")
+        db.createAttribute(root_id, "A1", value, shape=value.shape, dtype=dt)
+        item = db.getAttribute(root_id, "A1")
+
+        shape_json = item["shape"]
+        # the array's own shape (3,) is entirely absorbed into the type,
+        # so the attribute itself is a scalar
+        self.assertEqual(shape_json["class"], "H5S_SCALAR")
+
+        item_type = item["type"]
+        self.assertEqual(item_type["class"], "H5T_ARRAY")
+        self.assertEqual(item_type["dims"], (3,))
+        self.assertEqual(item_type["base"]["class"], "H5T_INTEGER")
+        self.assertEqual(item_type["base"]["base"], "H5T_STD_I32LE")
+
+        # the stored value must be the plain 3-element array, not a
+        # broadcast 3x3 result
+        self.assertEqual(item["value"], [0, 1, 2])
+
+        ret_value = db.getAttributeValue(root_id, "A1")
+        self.assertTrue(isinstance(ret_value, np.ndarray))
+        self.assertEqual(ret_value.shape, (3,))
+        self.assertEqual(ret_value.dtype, np.dtype("i4"))
+        self.assertTrue((ret_value == value).all())
+        db.close()
+
     def testFixedStringAttribute(self):
         db = Hdf5db(app_logger=self.log)
         root_id = db.open()
