@@ -120,6 +120,22 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertEqual(typeItem["charSet"], "H5T_CSET_UTF8")
         self.assertEqual(typeSize, "H5T_VARIABLE")
 
+    def testBaseStringDTypeTypeItem(self):
+        # numpy's StringDType (kind == "T") is accepted as a convenience
+        # input, but reported identically to the "O"-kind vlen str case -
+        # neither h5json's type descriptor nor HDF5 itself can distinguish
+        # the two, so there's nothing to preserve by treating them differently
+        if not hasattr(np, "dtypes") or not hasattr(np.dtypes, "StringDType"):
+            self.skipTest("numpy.dtypes.StringDType not available in this numpy version")
+        dt = np.dtypes.StringDType()
+        typeItem = hdf5dtype.getTypeItem(dt)
+        typeSize = hdf5dtype.getItemSize(typeItem)
+        self.assertEqual(typeItem["class"], "H5T_STRING")
+        self.assertEqual(typeItem["length"], "H5T_VARIABLE")
+        self.assertEqual(typeItem["strPad"], "H5T_STR_NULLTERM")
+        self.assertEqual(typeItem["charSet"], "H5T_CSET_UTF8")
+        self.assertEqual(typeSize, "H5T_VARIABLE")
+
     def testBaseEnumTypeItem(self):
         mapping = {"RED": 0, "GREEN": 1, "BLUE": 2}
         dt = special_dtype(enum=(np.int8, mapping))

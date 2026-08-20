@@ -591,6 +591,16 @@ def getTypeItem(dt, metadata=None):
                 raise TypeError("unexpected reference type")
         else:
             raise TypeError("unknown object type")
+    elif dt.kind == "T":
+        # numpy StringDType - accepted as a convenience input, but reported
+        # identically to the "O"-kind vlen str case above: h5json's type
+        # descriptor has no way to distinguish the two (and neither does
+        # HDF5 itself), so there's nothing to preserve by treating it
+        # differently
+        type_info["class"] = "H5T_STRING"
+        type_info["length"] = "H5T_VARIABLE"
+        type_info["charSet"] = "H5T_CSET_UTF8"
+        type_info["strPad"] = "H5T_STR_NULLTERM"
     elif dt.kind == "V":
         # void type - the only state h5json tracks for opaque data is its
         # size; "tag" is an optional, arbitrary HDF5 description string with
