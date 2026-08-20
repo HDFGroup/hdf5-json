@@ -200,6 +200,7 @@ def getFilterItem(name, options={}):
             if level_val < 0 or level_val > 9:
                 msg = "Deflate filter level must be between 0 and 9"
                 raise ValueError(msg)
+            filter_json["level"] = level_val
     elif filter_class == "H5Z_FILTER_LZ4HC":
         pass  # no options
     elif filter_class == "H5Z_FILTER_BITSHUFFLE":
