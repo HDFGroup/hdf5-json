@@ -11,6 +11,7 @@
 ##############################################################################
 import unittest
 import time
+import os
 from os.path import getsize
 from os import stat
 import logging
@@ -21,6 +22,11 @@ from h5json.jsonstore.h5json_plugin import H5JsonPlugin
 from h5json.hdf5dtype import special_dtype, Reference, RegionReference
 from h5json.objid import getUuidFromId
 from h5json import selections
+
+# fixture/output paths below are relative to the repo root - normalize cwd so
+# this file runs correctly whether invoked from the repo root or from within
+# test/unit itself
+os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
 
 class H5JsonWriterTest(unittest.TestCase):

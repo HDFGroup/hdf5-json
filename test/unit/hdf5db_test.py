@@ -13,6 +13,7 @@ import unittest
 import time
 import logging
 import math
+import os
 import numpy as np
 from h5json import Hdf5db
 from h5json import selections
@@ -21,6 +22,11 @@ from h5json.objid import isRootObjId, isValidUuid, isSchema2Id
 from h5json.hdf5dtype import special_dtype, Reference, RegionReference
 from h5json.storage_plugin import NullPlugin
 from h5json.jsonstore.h5json_plugin import H5JsonPlugin
+
+# fixture/output paths below are relative to the repo root - normalize cwd so
+# this file runs correctly whether invoked from the repo root or from within
+# test/unit itself
+os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
 
 class Hdf5dbTest(unittest.TestCase):

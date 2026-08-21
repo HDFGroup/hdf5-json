@@ -19,6 +19,11 @@ from h5json.hdf5dtype import special_dtype, RegionReference
 from h5json.objid import getUuidFromId
 from h5json import selections
 
+# fixture/output paths below are relative to the repo root - normalize cwd so
+# this file runs correctly whether invoked from the repo root or from within
+# test/unit itself
+os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+
 
 class H5pyReaderTest(unittest.TestCase):
     def __init__(self, *args, **kwargs):
