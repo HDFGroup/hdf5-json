@@ -12,6 +12,7 @@
 import unittest
 import time
 import os
+import json
 from os.path import getsize
 from os import stat
 import logging
@@ -203,6 +204,32 @@ class H5JsonWriterTest(unittest.TestCase):
         now = int(time.time())
         self.assertTrue(item["created"] > now - 1)
         db.close()
+
+    def testVlenUtf8AttributeInvalidUtf8(self):
+        # createAttribute() fails fast (via array_util.validateUtf8()) on a
+        # UTF8-charset string value that can't actually be encoded as valid
+        # UTF-8 (a lone surrogate here) - confirms this is enforced on the
+        # H5JsonPlugin backend too, not just via NullPlugin. Nothing gets
+        # written to the file at all.
+        filepath = "test/unit/out/h5json_writer_testVlenUtf8AttributeInvalidUtf8.json"
+        if os.path.isfile(filepath):
+            os.remove(filepath)
+
+        db = Hdf5db(app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        dt = special_dtype(vlen=str)
+        with self.assertRaises(UnicodeEncodeError):
+            db.createAttribute(root_id, "A1", "\udc80abc", dtype=dt)
+
+        self.assertIsNone(db.getAttribute(root_id, "A1"))
+        db.close()
+
+        with open(filepath) as f:
+            data = json.load(f)
+        root_json = data["groups"][data["root"]]
+        self.assertNotIn("attributes", root_json)
 
     def testIntAttribute(self):
         filepath = "test/unit/out/h5json_writer_testIntAttribute.json"

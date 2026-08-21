@@ -15,7 +15,7 @@ import logging
 from .hdf5dtype import getTypeItem, createDataType, Reference, special_dtype, isOpaqueDtype
 from .hdf5dtype import numpy_integer_types, numpy_float_types, isVlen, vlenBaseType
 from .hdf5dtype import RegionReference, is_reference, is_regionreference, has_reference
-from .array_util import jsonToArray, bytesArrayToList
+from .array_util import jsonToArray, bytesArrayToList, validateUtf8
 from .query_util import arrayQuery
 from .dset_util import resize_dataset, getDatasetLayoutClass, getChunkDims
 from .shape_util import getShapeClass, getShapeDims, getShapeJson
@@ -1062,6 +1062,11 @@ class Hdf5db:
             # We need this to handle special string types.
             value = np.asarray(value, dtype=dtype)
 
+            # fail fast on a non-UTF8-encodable string value, rather than
+            # silently storing it and deferring the failure to a later
+            # getAttributeValue() call - numpy itself doesn't validate this
+            validateUtf8(value, dtype)
+
             if original_dtype is not None and original_dtype.subdtype is not None:
                 # New "advertised" shape, now that value/shape have the
                 # subarray dims folded in as expected
@@ -1657,6 +1662,11 @@ class Hdf5db:
         cmp_dt = expected_dt.subdtype[0] if expected_dt.subdtype is not None else expected_dt
         if not _dtypesStructurallyEqual(src_dt, cmp_dt):
             raise TypeError(f"arr.dtype {src_dt} doesn't match expected dtype {expected_dt}")
+
+        # fail fast on a non-UTF8-encodable string value, rather than
+        # silently storing it and deferring the failure to a later
+        # getDatasetValues() call - numpy itself doesn't validate this
+        validateUtf8(arr, cmp_dt)
 
         if sel.select_type == selections.H5S_SEL_POINTS:
             if arr.shape == ():

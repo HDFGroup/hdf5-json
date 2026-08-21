@@ -386,6 +386,25 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertTrue(item["created"] > now - 1)
         db.close()
 
+    def testVlenUtf8AttributeInvalidUtf8(self):
+        # createAttribute() fails fast (via array_util.validateUtf8()) on a
+        # UTF8-charset string value that can't actually be encoded as valid
+        # UTF-8 (a lone surrogate here), rather than silently storing it and
+        # deferring the failure to a later getAttributeValue() call. A
+        # client that legitimately has non-UTF8 text/binary data should
+        # store it as base64-encoded bytes and read it back as bytes instead.
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        dt = special_dtype(vlen=str)
+        with self.assertRaises(UnicodeEncodeError):
+            db.createAttribute(root_id, "A1", "\udc80abc", dtype=dt)
+
+        # the attribute was never actually created
+        self.assertIsNone(db.getAttribute(root_id, "A1"))
+
+        db.close()
+
     def testIntAttribute(self):
         db = Hdf5db(app_logger=self.log)
         root_id = db.open()

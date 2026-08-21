@@ -127,6 +127,34 @@ def _opaqueJsonToArray(data_shape, data_dtype, data_json):
     return arr
 
 
+def validateUtf8(arr, dtype):
+    """
+    Raise UnicodeEncodeError if any UTF8-charset string element (vlen str, or
+    fixed-length numpy "U" unicode) in arr can't actually be encoded as valid
+    UTF-8. numpy doesn't validate this itself - an object- or "U"-dtype array
+    happily holds a python str containing e.g. a lone surrogate - so callers
+    that want to catch this at creation time, rather than deferring the
+    failure to a later read, need to check explicitly.
+    """
+    if len(dtype) > 0:
+        for name in dtype.names:
+            validateUtf8(arr[name], dtype[name])
+        return
+
+    if dtype.shape:
+        # H5T_ARRAY (subarray) dtype - dims are already absorbed into arr's
+        # own shape, so just re-check against the base (element) dtype
+        validateUtf8(arr, dtype.base)
+        return
+
+    if not ((isVlen(dtype) and vlenBaseType(dtype) is str) or dtype.kind == "U"):
+        return  # nothing to validate for this dtype
+
+    for e in np.asarray(arr).reshape(-1):
+        if isinstance(e, str):
+            e.encode("utf-8")  # raises UnicodeEncodeError if not valid UTF-8
+
+
 def bytesArrayToList(data):
     """
     Convert list that may contain bytes type elements to list of string elements
@@ -165,11 +193,10 @@ def bytesArrayToList(data):
             except ValueError as err:
                 raise err
     elif type(data) is bytes:
-        # surrogateescape preserves any non-UTF8-encodable byte exactly
-        # (round-trips via str.encode("utf-8", "surrogateescape")) so that a
-        # value HDF5 never validated the encoding of can still be represented
-        # as JSON text, rather than raising and losing the value entirely
-        out = data.decode("utf-8", errors="surrogateescape")
+        try:
+            out = data.decode("utf-8")
+        except UnicodeDecodeError as err:
+            raise ValueError(err)
     else:
         out = data
 
@@ -188,7 +215,7 @@ def toTuple(rank, data, encoding=None):
             return tuple(toTuple(rank - 1, x) for x in data)
     else:
         if encoding:
-            data = data.encode(encoding, "surrogateescape")
+            data = data.encode(encoding)
         return data
 
 
@@ -228,7 +255,9 @@ def jsonToArray(data_shape, data_dtype, data_json):
         try:
             arr = np.array(data, dtype=dtype)
         except UnicodeEncodeError:
-            # Unable to encode data, encode as utf8 with surrogate escaping
+            # numpy couldn't infer a fixed-width dtype straight from the str
+            # elements (e.g. mixed-length/non-ascii text) - pre-encode each
+            # element to utf-8 bytes ourselves so np.array() can size it
             data = toTuple(rank, data, encoding="utf8")
             arr = np.array(data, dtype=dtype)
         return arr
@@ -247,7 +276,7 @@ def jsonToArray(data_shape, data_dtype, data_json):
                     if isVlen(compound_dtype):
                         base_dt = vlenBaseType(compound_dtype)
                         if base_dt is str and isinstance(compound_data, bytes):
-                            compound_data = compound_data.decode('utf8', 'surrogateescape')
+                            compound_data = compound_data.decode('utf8')
                         if base_dt in (str, bytes):
                             arr_element.append(compound_data)
                         else:
@@ -260,7 +289,7 @@ def jsonToArray(data_shape, data_dtype, data_json):
                 base_dt = vlenBaseType(arr.dtype)
                 element_data = data[i]
                 if base_dt is str and isinstance(element_data, bytes):
-                    element_data = element_data.decode('utf8', 'surrogateescape')
+                    element_data = element_data.decode('utf8')
                 if base_dt in (str, bytes):
                     arr[index] = element_data
                 else:
@@ -291,7 +320,7 @@ def jsonToArray(data_shape, data_dtype, data_json):
         data_json = converted_data
     else:
         if isinstance(data_json, str):
-            data_json = data_json.encode("utf8", "surrogateescape")
+            data_json = data_json.encode("utf8")
         data_json = [data_json,]  # listify
 
     if isVlen(data_dtype):
@@ -373,7 +402,7 @@ def getElementSize(e, dt):
         elif isinstance(e, bytes):
             count = len(e) + 4
         elif isinstance(e, str):
-            count = len(e.encode("utf-8", "surrogateescape")) + 4
+            count = len(e.encode("utf-8")) + 4
         elif isinstance(e, np.ndarray):
             nElements = math.prod(e.shape)
             if e.dtype.kind != "O":
@@ -464,7 +493,7 @@ def copyElement(e, dt, buffer, offset):
             offset = copyBuffer(count.tobytes(), buffer, offset)
             offset = copyBuffer(e, buffer, offset)
         elif isinstance(e, str):
-            text = e.encode("utf-8", "surrogateescape")
+            text = e.encode("utf-8")
             count = np.int32(len(text))
             if count > MAX_VLEN_ELEMENT:
                 raise ValueError("vlen element too large")
@@ -582,12 +611,7 @@ def readElement(buffer, offset, arr, index, dt):
                     e_buffer = buffer[n:m]
                     offset += count
                     if vlenBaseType is str:
-                        # HDF5 doesn't enforce that the declared charset matches
-                        # what's actually stored - surrogateescape preserves any
-                        # non-UTF8-encodable byte exactly (round-trips via
-                        # str.encode("utf-8", "surrogateescape")) instead of
-                        # raising and losing the value entirely
-                        e_buffer = e_buffer.decode("utf-8", errors="surrogateescape")
+                        e_buffer = e_buffer.decode("utf-8")
                     arr[index] = e_buffer
                 else:
                     if vlenBaseType is str:
@@ -855,9 +879,9 @@ def ndarray_compare(arr1, arr2):
                 return True
             # compare str and bytes by encoding/decoding
             if isinstance(arr1, str) and isinstance(arr2, bytes):
-                return arr1.encode("utf-8", "surrogateescape") == arr2
+                return arr1.encode("utf-8") == arr2
             if isinstance(arr1, bytes) and isinstance(arr2, str):
-                return arr1 == arr2.encode("utf-8", "surrogateescape")
+                return arr1 == arr2.encode("utf-8")
             return arr1 == arr2
         if isinstance(arr1, np.void) and not isinstance(arr2, np.void):
             if arr1.size == 0 and not arr2:

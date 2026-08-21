@@ -62,6 +62,14 @@ class ArrayUtilTest(unittest.TestCase):
             # will throw TypeError if not able to convert
             json.dumps(json_data)
 
+    def testByteArrayToListInvalidUtf8(self):
+        # bytesArrayToList wraps the UnicodeDecodeError from a byte sequence
+        # that isn't valid UTF-8 (which HDF5 itself never validates) as a
+        # ValueError, rather than silently substituting a surrogate-escaped
+        # string
+        with self.assertRaises(ValueError):
+            bytesArrayToList(b"\x80invalid")
+
     def testByteArrayToListRegionReference(self):
         # matches the format used in data/json/regionref_dset.json /
         # regionref_attr.json: {"id": <bare uuid>, "select_type": ..., "selection": [...]}
@@ -281,6 +289,12 @@ class ArrayUtilTest(unittest.TestCase):
         data = [[[4, 8, 12], "four"], [[5, 10, 15], "five"]]
         out = toTuple(1, data)
         self.assertEqual([((4, 8, 12), 'four'), ((5, 10, 15), 'five')], out)
+
+    def testToTupleEncodingInvalidUtf8(self):
+        # with an encoding given, toTuple() encodes leaf str values - a lone
+        # surrogate can't be encoded as valid UTF-8
+        with self.assertRaises(UnicodeEncodeError):
+            toTuple(0, "\udc80abc", encoding="utf8")
 
     def testGetNumElements(self):
         shape = (4,)
@@ -666,6 +680,24 @@ class ArrayUtilTest(unittest.TestCase):
         e1b = e1[1]
         self.assertEqual(e1b, b"five")
 
+    def testJsonToArrayInvalidUtf8Scalar(self):
+        # a vlen str element whose json value is a byte sequence that isn't
+        # valid UTF-8 (which HDF5 itself never validates) raises
+        # UnicodeDecodeError, rather than silently substituting a
+        # surrogate-escaped string
+        dt = special_dtype(vlen=str)
+        with self.assertRaises(UnicodeDecodeError):
+            jsonToArray((1,), dt, [b"\x80invalid"])
+
+    def testJsonToArrayInvalidUtf8Compound(self):
+        # same as testJsonToArrayInvalidUtf8Scalar, but for the compound-field
+        # decode branch inside jsonToArray's fillVlenArray() helper
+        dt_str = special_dtype(vlen=str)
+        dt = np.dtype([("a", "i4"), ("b", dt_str)])
+        data = [[4, b"\x80invalid"]]
+        with self.assertRaises(UnicodeDecodeError):
+            jsonToArray([1, ], dt, data)
+
     def testJsonToArrayH5T_ARRAY(self):
         # an H5T_ARRAY (subarray) dtype's dims get absorbed directly into
         # the numpy array's shape - e.g. a (4,) dataset of dtype
@@ -1028,6 +1060,25 @@ class ArrayUtilTest(unittest.TestCase):
             e_copy = arr_copy[i]
             self.assertTrue(np.array_equal(e, e_copy))
 
+    def testArrayToBytesInvalidUtf8String(self):
+        # a vlen str element containing a lone surrogate can't be encoded as
+        # valid UTF-8 - exercises getElementSize()/copyElement()'s
+        # str.encode("utf-8") calls
+        dt = special_dtype(vlen=str)
+        arr = np.zeros((1,), dtype=dt)
+        arr[0] = "\udc80abc"
+        with self.assertRaises(UnicodeEncodeError):
+            arrayToBytes(arr)
+
+    def testBytesToArrayInvalidUtf8Buffer(self):
+        # exercises readElement()'s str.decode("utf-8") call when the raw
+        # buffer contains a byte sequence that isn't valid UTF-8 (which HDF5
+        # itself never validates)
+        dt = special_dtype(vlen=str)
+        buffer = np.int32(1).tobytes() + b"\x80"  # length-prefixed single invalid byte
+        with self.assertRaises(UnicodeDecodeError):
+            bytesToArray(buffer, dt, (1,))
+
     def testArrToBytesBase64(self):
         # Simple array
         dt = np.dtype("<i4")
@@ -1197,6 +1248,13 @@ class ArrayUtilTest(unittest.TestCase):
             self.assertTrue(ndarray_compare(arr1, arr2))
         arr2[123, 456] = e2
         self.assertFalse(ndarray_compare(arr1, arr2))
+
+    def testArrayCompareInvalidUtf8String(self):
+        # exercises ndarray_compare()'s str.encode("utf-8") calls when
+        # comparing a str against a bytes value - a lone surrogate can't be
+        # encoded as valid UTF-8
+        with self.assertRaises(UnicodeEncodeError):
+            ndarray_compare("\udc80abc", b"\x80abc")
 
     def testJsonToBytes(self):
         #
