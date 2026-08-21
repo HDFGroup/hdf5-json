@@ -239,7 +239,7 @@ class H5JsonPlugin(StoragePlugin):
         json_value = json_obj["value"]
         shape_json = json_obj["shape"]
         if shape_json["class"] == "H5S_NULL":
-            self.log.warning("getDatasetValues called for null space object: {obj_id}")
+            self.log.warning(f"getDatasetValues called for null space object: {obj_id}")
             return None
         elif shape_json["class"] == "H5S_SCALAR":
             dims = ()

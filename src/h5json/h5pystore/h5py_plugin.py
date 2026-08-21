@@ -584,7 +584,7 @@ class H5pyPlugin(StoragePlugin):
                 filename = link_json["file"]
                 parent[title] = h5py.ExternalLink(filename, h5path)
             elif link_class == "H5L_TYPE_USER_DEFINED" and title not in parent:
-                self.log.warning("unable to create user-defined link: {title}")
+                self.log.warning(f"unable to create user-defined link: {title}")
             elif link_class == "H5L_TYPE_HARD":
                 tgt_id = link_json["id"]
 
@@ -1095,7 +1095,7 @@ class H5pyPlugin(StoragePlugin):
                         self.log.debug(f"h5py_plugin> adding obj for {obj_id} to id_map")
                         self._id_map[obj_id] = obj
                     else:
-                        self.log.debug("h5py_plugin> obj {obj_id} already in id_map")
+                        self.log.debug(f"h5py_plugin> obj {obj_id} already in id_map")
 
     def getObjectById(self, obj_id, include_attrs=True, include_links=True):
         """ return object with given id """

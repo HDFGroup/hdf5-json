@@ -739,7 +739,7 @@ def getNumpyValue(value, dt=None, encoding=None):
         try:
             data = base64.decodebytes(value.encode("utf-8"))
         except binascii.Error:
-            msg = "Unable to decode base64 string: {value}"
+            msg = f"Unable to decode base64 string: {value}"
             # log.warn(msg)
             raise ValueError(msg)
         arr = bytesToArray(data, dt, dt.shape)

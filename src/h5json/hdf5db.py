@@ -805,7 +805,7 @@ class Hdf5db:
         obj_json = self.getObjectById(parent_id)
         if obj_json is None:
             self.log.warning("getObjectIdDByPath - parent_id not found")
-            raise KeyError("parent_id: {parent_id} not found")
+            raise KeyError(f"parent_id: {parent_id} not found")
 
         obj_id = parent_id
 
@@ -876,7 +876,7 @@ class Hdf5db:
         obj_json = self.getObjectById(parent_id)
         if obj_json is None:
             self.log.warning("getPathsForObjectId - parent_id not found")
-            raise KeyError("parent_id: {parent_id} not found")
+            raise KeyError(f"parent_id: {parent_id} not found")
 
         paths = []
         obj_id = getHashTagForId(obj_id)
