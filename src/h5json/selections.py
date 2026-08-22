@@ -152,15 +152,39 @@ def select(obj, args, fields=None):
 
         elif isinstance(arg, np.ndarray) or isinstance(arg, list):
             return SimpleSelection(obj_shape, _points_to_paired(obj_shape, arg), fields=fields)
-        """
-        #todo - RegionReference
-        elif isinstance(arg, h5r.RegionReference):
-            sid = h5r.get_region(arg, dsid)
-            if shape != sid.shape:
-                raise TypeError("Reference shape does not match dataset shape")
 
-            return Selection(shape, spaceid=sid)
-        """
+        elif arg.__class__.__name__ == "RegionReference":
+            if arg.id is None:
+                raise ValueError("Cannot select using a null region reference")
+            obj_id = getattr(getattr(obj, "id", None), "uuid", None)
+            if obj_id is not None:
+                from .objid import getHashTagForId
+                if getHashTagForId(arg.id) != getHashTagForId(obj_id):
+                    raise TypeError("Region reference must point to this dataset")
+            if arg.selection_bytes is None:
+                # no selection was bound - the whole dataset is referenced
+                return SimpleSelection(obj_shape, fields=fields)
+            ref_sel = Selection.frombytes(arg.selection_bytes)
+            if ref_sel.shape != obj_shape:
+                # A region reference that round-tripped through the JSON
+                # attribute representation (RegionReference.from_json() ->
+                # from_region_json()) only recovers the *minimal* bounding
+                # shape of its selection, not the true dataset shape (see
+                # from_region_json()'s docstring) - a region reference that
+                # round-tripped through raw bytes (a dataset element) always
+                # has the exact original shape. The per-dimension slices/
+                # coordinates are still valid absolute indices either way,
+                # so rebuild against the real shape instead of rejecting a
+                # reference just because it came from an attribute.
+                if len(ref_sel.shape) != len(obj_shape) or any(
+                    r > o for r, o in zip(ref_sel.shape, obj_shape)
+                ):
+                    raise TypeError("Region reference shape does not match dataset shape")
+                ref_sel = SimpleSelection(obj_shape, ref_sel.slices, fields=ref_sel.fields)
+            if fields is not None:
+                ref_sel._fields = set(fields)
+            return ref_sel
+
     sel = SimpleSelection(obj_shape, args, fields=fields)
     return sel
 

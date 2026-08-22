@@ -911,6 +911,27 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertTrue("VALUE3" in dt.fields.keys())
         self.assertEqual(typeSize, hdf5dtype.getDtypeItemSize(dt))
 
+    def testGetDtypeItemSizeRegionReference(self):
+        # Regression test: getDtypeItemSize() used to only recognize the
+        # "vlen" metadata key, so a RegionReference-tagged dtype (metadata
+        # key "ref", not "vlen") fell through to the plain dtype.itemsize
+        # branch, reporting a fixed 8 bytes instead of "H5T_VARIABLE".  HSDS
+        # uses this function to size a dataset's chunk layout, so a region
+        # reference dataset's stored value got silently truncated to the
+        # object-pointer itemsize rather than the actual (much larger)
+        # serialized RegionReference.tobytes() blob.
+        dt = special_dtype(ref=RegionReference)
+        self.assertEqual(hdf5dtype.getDtypeItemSize(dt), "H5T_VARIABLE")
+
+        # a plain object Reference is a fixed-format id string, not a
+        # length-prefixed blob, so it's unaffected by this fix
+        dt_ref = special_dtype(ref=Reference)
+        self.assertEqual(hdf5dtype.getDtypeItemSize(dt_ref), dt_ref.itemsize)
+
+        # also check a RegionReference nested in a compound field
+        dt_compound = np.dtype([("a", "i4"), ("b", dt)])
+        self.assertEqual(hdf5dtype.getDtypeItemSize(dt_compound), "H5T_VARIABLE")
+
     def testFindItemType(self):
         # simple scalar python types
         self.assertEqual(hdf5dtype.find_item_type(5), int)

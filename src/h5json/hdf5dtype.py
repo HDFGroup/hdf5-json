@@ -894,7 +894,12 @@ def getDtypeItemSize(dtype):
                 nelements = np.prod(dtype.shape)
                 item_size = base_size * nelements
         else:
-            if dtype.metadata and "vlen" in dtype.metadata:
+            if dtype.metadata and (
+                "vlen" in dtype.metadata or dtype.metadata.get("ref") is RegionReference
+            ):
+                # RegionReference is stored as a length-prefixed opaque byte
+                # blob (see array_util._isVlenLike()/RegionReference.tobytes()),
+                # unlike a plain object Reference (a fixed-format id string).
                 item_size = "H5T_VARIABLE"
             else:
                 item_size = dtype.itemsize
