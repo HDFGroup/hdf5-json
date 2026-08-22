@@ -621,7 +621,10 @@ class ArrayUtilTest(unittest.TestCase):
         e1 = out[0]
         self.assertEqual(e1[0], 42)
 
-        # compound with VLEN element
+        # compound with VLEN element - h5py always returns bytes for a vlen
+        # string nested in a compound (regardless of the declared
+        # ascii/utf8 charset); only a top-level vlen string attribute gets
+        # decoded to str (verified against real h5py).
 
         dt_str = special_dtype(vlen=str)
         dt = np.dtype([("a", "i4"), ("b", dt_str)])
@@ -631,7 +634,7 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertTrue(isinstance(out, np.ndarray))
         self.assertEqual(out.shape, (2,))
         e0 = out[0].tolist()
-        self.assertEqual(e0, (4, "four"))
+        self.assertEqual(e0, (4, b"four"))
 
         shape = [1, ]
         data = [[6, "six"],]
@@ -639,7 +642,7 @@ class ArrayUtilTest(unittest.TestCase):
         self.assertTrue(isinstance(out, np.ndarray))
         self.assertEqual(out.shape, (1,))
         e0 = out[0].tolist()
-        self.assertEqual(e0, (6, "six"))
+        self.assertEqual(e0, (6, b"six"))
 
         shape = []
         data = [7, "seven",]
@@ -649,7 +652,7 @@ class ArrayUtilTest(unittest.TestCase):
         e0 = out[()]
         self.assertEqual(len(e0), 2)
         self.assertEqual(e0[0], 7)
-        self.assertEqual(e0[1], "seven")
+        self.assertEqual(e0[1], b"seven")
 
         # compound type with array field
         dt = np.dtype([("a", ("i4", 3)), ("b", "S5")])
@@ -690,13 +693,100 @@ class ArrayUtilTest(unittest.TestCase):
             jsonToArray((1,), dt, [b"\x80invalid"])
 
     def testJsonToArrayInvalidUtf8Compound(self):
-        # same as testJsonToArrayInvalidUtf8Scalar, but for the compound-field
-        # decode branch inside jsonToArray's fillVlenArray() helper
+        # a vlen str/bytes field nested in a compound is always returned as
+        # bytes (matching h5py - see testJsonToArray's "compound with VLEN
+        # element" case), so a byte sequence that isn't valid UTF-8 (which
+        # HDF5 itself never validates) round-trips exactly rather than
+        # raising - unlike the top-level vlen str case in
+        # testJsonToArrayInvalidUtf8Scalar, there's no decode attempted here.
         dt_str = special_dtype(vlen=str)
         dt = np.dtype([("a", "i4"), ("b", dt_str)])
         data = [[4, b"\x80invalid"]]
-        with self.assertRaises(UnicodeDecodeError):
-            jsonToArray([1, ], dt, data)
+        out = jsonToArray([1, ], dt, data)
+        self.assertEqual(out[0].tolist(), (4, b"\x80invalid"))
+
+    def testCreateDataTypeVlenOfCompound(self):
+        # Regression test: createBaseDataType()'s H5T_VLEN branch used to
+        # recurse into createBaseDataType() for the base type instead of
+        # createDataType() - since createBaseDataType() has no H5T_COMPOUND
+        # case (only createDataType() dispatches compound types), a vlen
+        # whose base is itself a compound (e.g. a compound field holding a
+        # vlen array of records) raised "TypeError: Invalid type class".
+        # The H5T_ARRAY branch already did this correctly - see
+        # testJsonToArrayH5T_ARRAY below for the analogous array case.
+        inner_type_json = {
+            "class": "H5T_COMPOUND",
+            "fields": [
+                {"name": "a", "type": {"class": "H5T_VLEN", "size": "H5T_VARIABLE",
+                                        "base": {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"}}},
+                {"name": "b", "type": {"class": "H5T_VLEN", "size": "H5T_VARIABLE",
+                                        "base": {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"}}},
+            ],
+        }
+        vlen_of_compound_type_json = {
+            "class": "H5T_VLEN", "size": "H5T_VARIABLE", "base": inner_type_json,
+        }
+
+        # used bare (a vlen-of-compound dataset/attribute type)
+        dt = createDataType(vlen_of_compound_type_json)
+        self.assertEqual(check_dtype(vlen=dt), createDataType(inner_type_json))
+
+        # and nested as a compound field (the case that actually triggered
+        # the original bug, via the field-recursion path in createDataType)
+        outer_type_json = {
+            "class": "H5T_COMPOUND",
+            "fields": [
+                {"name": "f1", "type": vlen_of_compound_type_json},
+                {"name": "f2", "type": {"class": "H5T_INTEGER", "base": "H5T_STD_I64LE"}},
+            ],
+        }
+        dt = createDataType(outer_type_json)
+        self.assertEqual(dt.names, ("f1", "f2"))
+        self.assertEqual(check_dtype(vlen=dt["f1"]), createDataType(inner_type_json))
+
+    def testJsonToArrayVlenOfCompoundField(self):
+        # Regression test: jsonToArray's fillVlenArray() used to build a
+        # vlen-of-compound field's sub-array via np.array(records, dtype=
+        # compound_dt), which is ambiguous when the record count happens to
+        # equal the compound's field count (numpy reads it as a single
+        # scalar record instead of an array of records) - here the vlen
+        # field holds 2 records of a 2-field compound. _vlenBaseToArray()
+        # now builds it element-by-element instead to avoid the ambiguity.
+        inner_type_json = {
+            "class": "H5T_COMPOUND",
+            "fields": [
+                {"name": "a", "type": {"class": "H5T_VLEN", "size": "H5T_VARIABLE",
+                                        "base": {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"}}},
+                {"name": "b", "type": {"class": "H5T_VLEN", "size": "H5T_VARIABLE",
+                                        "base": {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"}}},
+            ],
+        }
+        outer_type_json = {
+            "class": "H5T_COMPOUND",
+            "fields": [
+                {"name": "f1", "type": {"class": "H5T_VLEN", "size": "H5T_VARIABLE", "base": inner_type_json}},
+                {"name": "f2", "type": {"class": "H5T_INTEGER", "base": "H5T_STD_I64LE"}},
+            ],
+        }
+        dt = createDataType(outer_type_json)
+
+        # two dt_inner records - the record count (2) equals dt_inner's
+        # field count (2), which is what triggered numpy's ambiguity
+        data = [[[[1, 2], [6, 7, 8]], [[10, 11, 12, 13], [16, 17, 18, 19]]], 2]
+        arr = jsonToArray((), dt, data)
+        self.assertEqual(arr.shape, ())
+        v = arr[()]
+
+        f1 = v["f1"]
+        self.assertEqual(f1.shape, (2,))
+        self.assertEqual(f1[0]["a"].tolist(), [1, 2])
+        self.assertEqual(f1[0]["b"].tolist(), [6, 7, 8])
+        self.assertEqual(f1[1]["a"].tolist(), [10, 11, 12, 13])
+        self.assertEqual(f1[1]["b"].tolist(), [16, 17, 18, 19])
+        self.assertEqual(v["f2"], 2)
+
+        # and round-trips back to the same JSON via bytesArrayToList
+        self.assertEqual(bytesArrayToList(v), data)
 
     def testJsonToArrayH5T_ARRAY(self):
         # an H5T_ARRAY (subarray) dtype's dims get absorbed directly into
@@ -1327,8 +1417,10 @@ class ArrayUtilTest(unittest.TestCase):
         data = [[42, "Hello"], [0, 0], [0, 0], [84, "Bye"]]
         arr = jsonToArray(shape, dt, data)
         self.assertTrue(isinstance(arr, np.ndarray))
-        self.assertEqual(tuple(arr[0]), (42, 'Hello'))
-        self.assertEqual(tuple(arr[3]), (84, 'Bye'))
+        # a vlen str field nested in a compound is always returned as bytes
+        # (matching h5py)
+        self.assertEqual(tuple(arr[0]), (42, b'Hello'))
+        self.assertEqual(tuple(arr[3]), (84, b'Bye'))
         buffer = arrayToBytes(arr)
         self.assertEqual(len(buffer), 40)
 

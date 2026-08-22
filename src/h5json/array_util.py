@@ -245,6 +245,46 @@ def getNumElements(dims):
     return num_elements
 
 
+def _vlenBaseToArray(data, dt):
+    """
+    Convert a vlen element's raw (JSON-derived) value into an array of the
+    given base dtype.
+
+    Can't just do np.array(data, dtype=dt) when dt is itself compound: if
+    the record sequence happens to have the same length as dt has fields
+    (e.g. 2 records of a 2-field compound), numpy reads it as a single
+    scalar record instead of an array of records. Build it element-by-
+    element instead, recursing for any vlen (e.g. vlen string, or nested
+    vlen compound) fields.
+    """
+    if len(dt) == 0:
+        return np.array(data, dt)
+
+    arr = np.zeros((len(data),), dtype=dt)
+    for k in range(len(data)):
+        record = data[k]
+        values = []
+        for j in range(len(dt)):
+            field_dt = dt[j]
+            field_val = record[j]
+            if isVlen(field_dt):
+                base_dt = vlenBaseType(field_dt)
+                if base_dt in (str, bytes):
+                    # h5py always returns bytes for a vlen string nested in a
+                    # compound (regardless of the declared ascii/utf8
+                    # charset) - only a *top-level* vlen string attribute
+                    # gets decoded to str (see attrs.py).
+                    if isinstance(field_val, str):
+                        field_val = field_val.encode("utf-8", errors="surrogateescape")
+                    values.append(field_val)
+                else:
+                    values.append(_vlenBaseToArray(field_val, base_dt))
+            else:
+                values.append(field_val)
+        arr[k] = tuple(values)
+    return arr
+
+
 def jsonToArray(data_shape, data_dtype, data_json):
     """
     Return numpy array from the given json array.
@@ -275,12 +315,17 @@ def jsonToArray(data_shape, data_dtype, data_json):
                     compound_dtype = arr.dtype[j]
                     if isVlen(compound_dtype):
                         base_dt = vlenBaseType(compound_dtype)
-                        if base_dt is str and isinstance(compound_data, bytes):
-                            compound_data = compound_data.decode('utf8')
                         if base_dt in (str, bytes):
+                            # h5py always returns bytes for a vlen string
+                            # nested in a compound (regardless of the
+                            # declared ascii/utf8 charset) - only a
+                            # *top-level* vlen string attribute gets
+                            # decoded to str (see attrs.py).
+                            if isinstance(compound_data, str):
+                                compound_data = compound_data.encode("utf-8", errors="surrogateescape")
                             arr_element.append(compound_data)
                         else:
-                            arr_element.append(np.array(compound_data, base_dt))
+                            arr_element.append(_vlenBaseToArray(compound_data, base_dt))
                     else:
                         arr_element.append(compound_data)
                 arr[i] = tuple(arr_element)
@@ -293,7 +338,7 @@ def jsonToArray(data_shape, data_dtype, data_json):
                 if base_dt in (str, bytes):
                     arr[index] = element_data
                 else:
-                    arr[index] = np.array(element_data, base_dt)
+                    arr[index] = _vlenBaseToArray(element_data, base_dt)
                 index += 1
         return index
 

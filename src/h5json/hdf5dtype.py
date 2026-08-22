@@ -1017,7 +1017,10 @@ def createBaseDataType(typeItem):
             raise TypeError(msg)
         if "base" not in typeItem:
             raise KeyError("'base' not provided")
-        baseType = createBaseDataType(typeItem["base"])
+        # base may itself be a compound (or other non-base) type, which
+        # only createDataType() knows how to dispatch - mirrors the
+        # H5T_ARRAY branch below.
+        baseType = createDataType(typeItem["base"])
         dtRet = special_dtype(vlen=np.dtype(baseType))
     elif typeClass == "H5T_OPAQUE":
         if dims:
