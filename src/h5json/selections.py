@@ -191,7 +191,6 @@ def select(obj, args, fields=None):
 
 def _check_bool_args(s1, s2):
     """ verify argument for boolean operations """
-    # TBD: this is currently only working for simple selections with stride 1
     valid_s1_types = (H5S_SEL_HYPERSLABS, H5S_SEL_POINTS, H5S_SEL_ALL)
     valid_s2_types = (H5S_SEL_HYPERSLABS, H5S_SEL_POINTS, H5S_SEL_ALL)
 
@@ -442,6 +441,83 @@ def from_query_result(shape, indices):
     return select(shape, coords)
 
 
+def _slice_to_ap(s):
+    """Return (start, step, count) for a slice with concrete (non-None)
+    int start/stop/step, as produced by Selection.slices."""
+    if s.stop <= s.start:
+        return s.start, s.step, 0
+    return s.start, s.step, 1 + (s.stop - s.start - 1) // s.step
+
+
+def _ap_to_slice(start, step, count):
+    """Inverse of _slice_to_ap(): build a slice from (start, step, count)."""
+    if count <= 0:
+        return slice(start, start, 1)
+    return slice(start, start + (count - 1) * step + 1, step)
+
+
+def _extended_gcd(a, b):
+    """Return (g, x, y) such that a*x + b*y == g == gcd(a, b)."""
+    old_r, r = a, b
+    old_s, s = 1, 0
+    while r != 0:
+        q = old_r // r
+        old_r, r = r, old_r - q * r
+        old_s, s = s, old_s - q * s
+    return old_r, old_s, (old_r - a * old_s) // b if b else 0
+
+
+def _intersect_stepped_range(a1, d1, n1, a2, d2, n2):
+    """Return (start, step, count) describing the intersection of the two
+    arithmetic progressions {a1 + i*d1 : 0 <= i < n1} and
+    {a2 + j*d2 : 0 <= j < n2} (each representing one dimension of a
+    hyperslab selection), or None if they don't intersect at all.
+
+    The intersection of two arithmetic progressions is itself an arithmetic
+    progression (or empty) - found via the Chinese Remainder Theorem: solve
+    x = a1 (mod d1), x = a2 (mod d2) for the common step (lcm(d1, d2)), then
+    clip to the overlap of the two progressions' own ranges.
+    """
+    if n1 <= 0 or n2 <= 0:
+        return None
+    end1 = a1 + (n1 - 1) * d1
+    end2 = a2 + (n2 - 1) * d2
+    lo = max(a1, a2)
+    hi = min(end1, end2)
+    if lo > hi:
+        return None
+
+    g, p, _ = _extended_gcd(d1, d2)
+    diff = a2 - a1
+    if diff % g != 0:
+        return None  # progressions never share a common value
+
+    lcm = d1 // g * d2
+    remainder = (a1 + d1 * ((diff // g) * p)) % lcm
+
+    # smallest x >= lo with x % lcm == remainder
+    start = lo + ((remainder - lo) % lcm)
+    if start > hi:
+        return None
+    count = (hi - start) // lcm + 1
+    return start, lcm, count
+
+
+def _ap_is_subset(a1, d1, n1, a2, d2, n2):
+    """Return True if every value of AP1 = {a1 + i*d1 : 0 <= i < n1} is also
+    a value of AP2 = {a2 + j*d2 : 0 <= j < n2}."""
+    if n1 <= 0:
+        return True  # vacuously true - nothing to contain
+    if n1 == 1:
+        # a single point - its own step doesn't matter
+        return a2 <= a1 <= a2 + (n2 - 1) * d2 and (a1 - a2) % d2 == 0
+    if d1 % d2 != 0 or (a1 - a2) % d2 != 0:
+        return False
+    end1 = a1 + (n1 - 1) * d1
+    end2 = a2 + (n2 - 1) * d2
+    return a1 >= a2 and end1 <= end2
+
+
 def _intersect_paired_fancy(s1, s2):
     """Return the intersection of two paired-coordinate fancy selections."""
     if not _bboxes_overlap(s1, s2):
@@ -485,14 +561,16 @@ def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
 
     if len(list_dims) > 1:
         # Paired-coordinate selection: check slice dims first, then filter pairs.
+        slice_inter = {}
         for dim in range(rank):
             s = slices[dim]
             hs, hc, hst = h_start[dim], h_count[dim], h_step[dim]
             if isinstance(s, slice):
-                if s.step > 1 or hst > 1:
-                    raise ValueError("stepped slices not currently supported")
-                if min(s.stop, hs + hc) <= max(s.start, hs):
+                s_start, s_step, s_count = _slice_to_ap(s)
+                inter = _intersect_stepped_range(s_start, s_step, s_count, hs, hst, hc)
+                if inter is None:
                     return _empty_paired_sel(fancy_sel.shape)
+                slice_inter[dim] = inter
             elif isinstance(s, int):
                 if not _pt_in_hyperslab(s, hs, hc, hst):
                     return _empty_paired_sel(fancy_sel.shape)
@@ -512,8 +590,7 @@ def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
             if isinstance(s, list):
                 new_slices.append([s[i] for i in keep])
             elif isinstance(s, slice):
-                hs, hc = h_start[dim], h_count[dim]
-                new_slices.append(slice(max(s.start, hs), min(s.stop, hs + hc), 1))
+                new_slices.append(_ap_to_slice(*slice_inter[dim]))
             else:  # int: already validated above, keep as-is
                 new_slices.append(s)
         return SimpleSelection(fancy_sel.shape, new_slices)
@@ -527,13 +604,11 @@ def _intersect_fancy_hyperslab(fancy_sel, hyper_sel):
         hst = h_step[dim]
 
         if isinstance(s, slice):
-            if s.step > 1 or hst > 1:
-                raise ValueError("stepped slices not currently supported")
-            new_start = max(s.start, hs)
-            new_stop = min(s.stop, hs + hc)
-            if new_stop <= new_start:
+            s_start, s_step, s_count = _slice_to_ap(s)
+            inter = _intersect_stepped_range(s_start, s_step, s_count, hs, hst, hc)
+            if inter is None:
                 return _empty_paired_sel(fancy_sel.shape)
-            new_slices.append(slice(new_start, new_stop, 1))
+            new_slices.append(_ap_to_slice(*inter))
         elif isinstance(s, list):
             if hst == 1:
                 filtered = [x for x in s if hs <= x < hs + hc]
@@ -589,13 +664,14 @@ def intersect(s1, s2):
         slices = []
         rank = len(s1.shape)
         for dim in range(rank):
-            start = max(s1.start[dim], s2.start[dim])
-            stop = min(s1.start[dim] + s1.count[dim], s2.start[dim] + s2.count[dim])
-            if s1.step[dim] > 1 or s2.step[dim] > 1:
-                raise ValueError("stepped slices not currently supported")
-            if start > stop:
-                stop = start
-            slices.append(slice(start, stop, 1))
+            inter = _intersect_stepped_range(
+                s1.start[dim], s1.step[dim], s1.count[dim],
+                s2.start[dim], s2.step[dim], s2.count[dim],
+            )
+            if inter is None:
+                slices.append(slice(0, 0, 1))
+            else:
+                slices.append(_ap_to_slice(*inter))
         result = select(s1.shape, tuple(slices))
         result._fields = result_fields
         return result
@@ -624,48 +700,49 @@ def intersect(s1, s2):
     raise TypeError(f"Unsupported selection types for intersection: {t1}, {t2}")
 
 
+def _dim_ap(dim):
+    """Normalise a slice to (start, step, count) - defaulting an unset
+    start/step to 0/1, as _dim_contained's caller (_fancy_contained) may
+    pass a slice built directly from raw args rather than via .slices."""
+    start = dim.start if dim.start is not None else 0
+    step = dim.step if dim.step is not None else 1
+    stop = dim.stop
+    count = 0 if stop <= start else 1 + (stop - start - 1) // step
+    return start, step, count
+
+
 def _dim_contained(s1_dim, s2_dim):
     """Return True if every value represented by s1_dim is also in s2_dim.
 
     Each argument is a per-dimension component: a slice, list of ints, or int.
-    Stepped slices are handled conservatively (return False).
     """
-    # Normalise s1 to either a contiguous range or an explicit set.
+    # Normalise s1 to either an arithmetic progression or an explicit set.
     if isinstance(s1_dim, int):
-        s1_start, s1_stop = s1_dim, s1_dim + 1
-        s1_contiguous = True
+        s1_ap, s1_set = (s1_dim, 1, 1), None
     elif isinstance(s1_dim, list):
-        s1_set = set(s1_dim)
-        s1_contiguous = False
+        s1_ap, s1_set = None, set(s1_dim)
     elif isinstance(s1_dim, slice):
-        s1_start = s1_dim.start if s1_dim.start is not None else 0
-        s1_stop = s1_dim.stop
-        s1_step = s1_dim.step if s1_dim.step is not None else 1
-        if s1_step > 1:
-            return False  # conservative for stepped slices
-        s1_contiguous = True
+        s1_ap, s1_set = _dim_ap(s1_dim), None
     else:
         return False
 
     if isinstance(s2_dim, slice):
-        s2_start = s2_dim.start if s2_dim.start is not None else 0
-        s2_stop = s2_dim.stop
-        s2_step = s2_dim.step if s2_dim.step is not None else 1
-        if s2_step > 1:
-            return False
-        if s1_contiguous:
-            return s1_start >= s2_start and s1_stop <= s2_stop
+        s2_ap = _dim_ap(s2_dim)
+        if s1_ap is not None:
+            return _ap_is_subset(*s1_ap, *s2_ap)
         else:
-            return all(s2_start <= x < s2_stop for x in s1_set)
+            return all(_ap_is_subset(x, 1, 1, *s2_ap) for x in s1_set)
     elif isinstance(s2_dim, list):
         s2_set = set(s2_dim)
-        if s1_contiguous:
-            return all(x in s2_set for x in range(s1_start, s1_stop))
+        if s1_ap is not None:
+            start, step, count = s1_ap
+            return all((start + i * step) in s2_set for i in range(count))
         else:
             return s1_set <= s2_set
     elif isinstance(s2_dim, int):
-        if s1_contiguous:
-            return s1_start == s2_dim and s1_stop == s2_dim + 1
+        if s1_ap is not None:
+            start, _, count = s1_ap
+            return count <= 1 and (count == 0 or start == s2_dim)
         else:
             return s1_set == {s2_dim}
     else:
@@ -753,15 +830,8 @@ def contained(s1, s2):
     is_contained = True
     rank = len(s1.shape)
     for dim in range(rank):
-        if s1.step[dim] > 1 or s2.step[dim] > 1:
-            # TBD: do the right thing for stepped selections
-            # for now just return False
-            is_contained = False
-            break
-        if s1.start[dim] < s2.start[dim]:
-            is_contained = False
-            break
-        if s1.start[dim] + s1.count[dim] > s2.start[dim] + s2.count[dim]:
+        if not _ap_is_subset(s1.start[dim], s1.step[dim], s1.count[dim],
+                              s2.start[dim], s2.step[dim], s2.count[dim]):
             is_contained = False
             break
     return is_contained
@@ -893,9 +963,15 @@ def translate(s1, s2):
     args = []
     if s2.select_type == H5S_SEL_HYPERSLABS:
         for dim in range(rank):
-            start = s2.start[dim] - s1.start[dim]
-            count = s2.count[dim]
-            args.append(slice(start, start + count, 1))
+            # s2 (contained in s1) is expressed in s1's own *dense* selected-
+            # index frame, not raw absolute offset - e.g. if s1 is
+            # start=1,step=3 (selecting 1,4,7,...), s1's local index 0 is
+            # absolute position 1, local index 1 is absolute position 4, and
+            # so on - so both the offset and s2's step need dividing by
+            # s1's step to land on the right dense index.
+            s1_step = s1.step[dim]
+            offset = s2.start[dim] - s1.start[dim]
+            args.append(_ap_to_slice(offset // s1_step, s2.step[dim] // s1_step, s2.count[dim]))
     else:
         raise TypeError("translate - unsupported selection type for s2")
     return select(s1.shape, tuple(args))

@@ -23,6 +23,8 @@ from h5json.selections import (
     Selection,
     SimpleSelection,
 )
+from h5json.hdf5dtype import RegionReference
+from h5json.objid import createObjId
 
 # Kept as aliases so tests can reference them for clarity.
 PointSelection = SimpleSelection
@@ -440,6 +442,127 @@ class FancySelectionTest(unittest.TestCase):
         self.assertIn("SimpleSelection", repr(sel))
 
 
+class SelectRegionReferenceTest(unittest.TestCase):
+    """ select()'s dispatch for a RegionReference argument - creating a
+    Selection to actually read/write through an existing region reference
+    (as opposed to _RegionProxy, which creates a *new* one from slice args
+    - that's exercised at the h5pyd level, in test_dataset.TestRegionRefs).
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(SelectRegionReferenceTest, self).__init__(*args, **kwargs)
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.WARNING)
+
+    def _dset_id(self):
+        root_id = createObjId("groups")
+        return createObjId("datasets", root_id=root_id)
+
+    def _fake_dataset(self, dset_id, shape):
+        """ A minimal stand-in for a Dataset - select() only ever reads
+        obj.shape and obj.id.uuid off of it. """
+        class FakeId:
+            uuid = dset_id
+
+        class FakeDataset:
+            id = FakeId()
+
+        FakeDataset.shape = shape
+        return FakeDataset()
+
+    def testCreateFromRegionReference(self):
+        shape = (10, 10)
+        dset_id = self._dset_id()
+        sel = selections.select(shape, (slice(2, 5), slice(2, 5)))
+        ref = RegionReference()
+        ref.bind(dset_id, sel)
+
+        obj = self._fake_dataset(dset_id, shape)
+        result = selections.select(obj, ref)
+        self.assertIsInstance(result, SimpleSelection)
+        self.assertEqual(result.shape, shape)
+        self.assertEqual(result.start, (2, 2))
+        self.assertEqual(result.count, (3, 3))
+
+    def testCreateFromUnboundRegionReference(self):
+        # no selection was ever bound - the whole dataset is referenced
+        shape = (5, 5)
+        dset_id = self._dset_id()
+        ref = RegionReference()
+        ref.bind(dset_id)
+
+        obj = self._fake_dataset(dset_id, shape)
+        result = selections.select(obj, ref)
+        self.assertEqual(result.select_type, H5S_SEL_ALL)
+        self.assertEqual(result.shape, shape)
+
+    def testNullRegionReferenceRaises(self):
+        ref = RegionReference()
+        with self.assertRaises(ValueError):
+            selections.select((10, 10), ref)
+
+    def testWrongDatasetRaises(self):
+        shape = (10, 10)
+        dset_id = self._dset_id()
+        other_id = self._dset_id()
+        sel = selections.select(shape, (slice(2, 5), slice(2, 5)))
+        ref = RegionReference()
+        ref.bind(dset_id, sel)
+
+        obj = self._fake_dataset(other_id, shape)
+        with self.assertRaises(TypeError):
+            selections.select(obj, ref)
+
+    def testIncompatibleShapeRaises(self):
+        # different rank - unambiguously incompatible, unlike a same-rank
+        # shape that's merely smaller (which could be the JSON-lossy
+        # minimal-bounding-box case handled by testRebuildsFromLossyJsonShape)
+        dset_id = self._dset_id()
+        sel = selections.select((10,), slice(2, 5))
+        ref = RegionReference()
+        ref.bind(dset_id, sel)
+
+        obj = self._fake_dataset(dset_id, (10, 10))
+        with self.assertRaises(TypeError):
+            selections.select(obj, ref)
+
+    def testRebuildsFromLossyJsonShape(self):
+        # Regression test: a region reference reconstructed via from_json()
+        # (the attribute JSON representation) only recovers the minimal
+        # bounding shape of its selection, not the true dataset shape (see
+        # from_region_json()'s docstring) - the per-dimension slices are
+        # still valid absolute indices, so select() must rebuild against the
+        # real dataset shape rather than reject the reference outright.
+        shape = (10, 10)
+        dset_id = self._dset_id()
+        sel = selections.select(shape, (slice(2, 5), slice(2, 5)))
+        ref = RegionReference()
+        ref.bind(dset_id, sel)
+        # round-trip through the JSON representation - this is what shrinks
+        # the recovered shape down to the selection's own bounding box
+        json_ref = RegionReference.from_json(ref.to_json())
+        self.assertNotEqual(Selection.frombytes(json_ref.selection_bytes).shape, shape)
+
+        obj = self._fake_dataset(dset_id, shape)
+        result = selections.select(obj, json_ref)
+        self.assertEqual(result.shape, shape)
+        self.assertEqual(result.start, (2, 2))
+        self.assertEqual(result.count, (3, 3))
+
+    def testToleratesPlainShapeWithNoId(self):
+        # obj may be a bare shape tuple (no .id) - id validation is then
+        # simply skipped
+        shape = (10, 10)
+        dset_id = self._dset_id()
+        sel = selections.select(shape, (slice(2, 5), slice(2, 5)))
+        ref = RegionReference()
+        ref.bind(dset_id, sel)
+
+        result = selections.select(shape, ref)
+        self.assertEqual(result.start, (2, 2))
+        self.assertEqual(result.count, (3, 3))
+
+
 class IntersectHyperslabTest(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(IntersectHyperslabTest, self).__init__(*args, **kwargs)
@@ -489,12 +612,57 @@ class IntersectHyperslabTest(unittest.TestCase):
         self.assertEqual(result.nselect, 4)
         self.assertEqual(result.start, (3,))
 
-    def testSteppedSliceRaises(self):
+    def testSteppedSliceSameStep(self):
         shape = (10,)
         s1 = selections.select(shape, slice(0, 10, 2))
         s2 = selections.select(shape, slice(0, 10, 2))
-        with self.assertRaises(ValueError):
-            selections.intersect(s1, s2)
+        result = selections.intersect(s1, s2)
+        self.assertEqual(result.nselect, 5)
+        self.assertEqual(result.start, (0,))
+        self.assertEqual(result.step, (2,))
+        self.assertEqual(result.count, (5,))
+
+    def testSteppedSliceDifferentSteps(self):
+        # {0,2,4,6,8} intersect {0,3,6,9} == {0,6} - step lcm(2,3) == 6
+        shape = (10,)
+        s1 = selections.select(shape, slice(0, 10, 2))
+        s2 = selections.select(shape, slice(0, 10, 3))
+        result = selections.intersect(s1, s2)
+        self.assertEqual(result.nselect, 2)
+        self.assertEqual(result.start, (0,))
+        self.assertEqual(result.step, (6,))
+        self.assertEqual(result.count, (2,))
+
+    def testSteppedSliceOffsetDifferentSteps(self):
+        # {1,3,5,7,9} intersect {0,3,6,9} == {3,9}
+        shape = (10,)
+        s1 = selections.select(shape, slice(1, 10, 2))
+        s2 = selections.select(shape, slice(0, 10, 3))
+        result = selections.intersect(s1, s2)
+        self.assertEqual(result.nselect, 2)
+        self.assertEqual(result.start, (3,))
+        self.assertEqual(result.step, (6,))
+        self.assertEqual(result.count, (2,))
+
+    def testSteppedSliceNoCommonResidue(self):
+        # evens vs odds never coincide, regardless of range overlap
+        shape = (10,)
+        s1 = selections.select(shape, slice(0, 10, 2))
+        s2 = selections.select(shape, slice(1, 10, 2))
+        result = selections.intersect(s1, s2)
+        self.assertEqual(result.nselect, 0)
+
+    def testSteppedSliceOneSideUnstepped(self):
+        # a plain (step 1) selection intersected with a stepped one just
+        # clips the stepped selection's own range
+        shape = (10,)
+        s1 = selections.select(shape, slice(0, 10, 3))  # {0,3,6,9}
+        s2 = selections.select(shape, slice(2, 8))       # {2..7}
+        result = selections.intersect(s1, s2)
+        self.assertEqual(result.nselect, 2)
+        self.assertEqual(result.start, (3,))
+        self.assertEqual(result.step, (3,))
+        self.assertEqual(result.count, (2,))
 
     def testShapeMismatchRaises(self):
         s1 = selections.select((10,), slice(0, 5))
@@ -756,6 +924,18 @@ class IntersectFancyHyperslabTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             selections.intersect(fancy1, fancy2)
 
+    def testFancySteppedSliceDimIntersectHyperslab(self):
+        # the fancy selection's slice dim is itself stepped ({0,2,4,6,8}),
+        # intersected against a plain hyperslab row range - should clip to
+        # {2,4,6} while keeping the step
+        shape = (10, 10)
+        fancy = selections.select(shape, (slice(0, 10, 2), [1, 3, 7, 9]))
+        hyp = selections.select(shape, (slice(2, 8), slice(2, 8)))
+        result = selections.intersect(fancy, hyp)
+        self.assertEqual(result.slices[0], slice(2, 7, 2))
+        self.assertEqual(result.slices[1], [3, 7])
+        self.assertEqual(result.nselect, 6)  # 3 rows x 2 columns
+
 
 class ContainedTest(unittest.TestCase):
     def __init__(self, *args, **kwargs):
@@ -786,6 +966,41 @@ class ContainedTest(unittest.TestCase):
         outer = selections.select(shape, (slice(0, 10), slice(0, 10)))
         self.assertTrue(selections.contained(inner, outer))
         self.assertFalse(selections.contained(outer, inner))
+
+    def testContainedSteppedSameStep(self):
+        shape = (10,)
+        s1 = selections.select(shape, slice(2, 6, 2))   # {2,4}
+        s2 = selections.select(shape, slice(0, 10, 2))  # {0,2,4,6,8}
+        self.assertTrue(selections.contained(s1, s2))
+
+    def testContainedSteppedMultipleOfOuterStep(self):
+        shape = (20,)
+        s1 = selections.select(shape, slice(2, 8, 4))   # {2,6}
+        s2 = selections.select(shape, slice(0, 20, 2))  # {0,2,4,...,18}
+        self.assertTrue(selections.contained(s1, s2))
+
+    def testContainedSteppedWrongResidue(self):
+        shape = (10,)
+        s1 = selections.select(shape, slice(1, 6, 2))   # {1,3,5}
+        s2 = selections.select(shape, slice(0, 10, 2))  # {0,2,4,6,8}
+        self.assertFalse(selections.contained(s1, s2))
+
+    def testContainedSteppedOuterNotUnstepped(self):
+        # s1's step isn't a multiple of s2's step, so it can't be contained
+        shape = (12,)
+        s1 = selections.select(shape, slice(0, 12, 2))
+        s2 = selections.select(shape, slice(0, 12, 4))
+        self.assertFalse(selections.contained(s1, s2))
+
+    def testContainedSinglePointInSteppedSelection(self):
+        # a single-point (step-1, count-1) selection has no meaningful step
+        # of its own, so it's contained as long as the point itself matches
+        shape = (10,)
+        s1 = selections.select(shape, slice(4, 5))      # {4}
+        s2 = selections.select(shape, slice(0, 10, 2))  # {0,2,4,6,8}
+        self.assertTrue(selections.contained(s1, s2))
+        s3 = selections.select(shape, slice(5, 6))      # {5}
+        self.assertFalse(selections.contained(s3, s2))
 
 
 class ContainedFancyTest(unittest.TestCase):
@@ -919,6 +1134,46 @@ class TranslateTest(unittest.TestCase):
         result = selections.translate(s1, s2)
         self.assertEqual(result.select_type, H5S_SEL_HYPERSLABS)
         self.assertEqual(result.start, (2,))
+        self.assertEqual(result.count, (3,))
+
+    def testTranslate1DSteppedS2(self):
+        # Regression test: translate() used to hardcode step=1 for its
+        # result, silently discarding s2's own step.
+        shape = (10,)
+        s1 = selections.select(shape, slice(0, 10))
+        s2 = selections.select(shape, slice(2, 8, 2))  # {2,4,6}
+        result = selections.translate(s1, s2)
+        self.assertEqual(result.select_type, H5S_SEL_HYPERSLABS)
+        self.assertEqual(result.start, (2,))
+        self.assertEqual(result.step, (2,))
+        self.assertEqual(result.count, (3,))
+
+    def testTranslate1DSteppedS1(self):
+        # Regression test: when s1 (the container) is itself stepped,
+        # translate() used to express s2 in s1's absolute-offset frame
+        # rather than s1's own dense selected-index frame - e.g. for
+        # s1 = {1,4,7,...} (start=1, step=3), s1's own local index 0 is
+        # absolute position 1, local index 1 is absolute position 4, etc.
+        # This is what Hdf5db.getDatasetValues() relies on to place a
+        # value into the (densely-indexed) output array for a stepped read.
+        shape = (10,)
+        s1 = selections.select(shape, slice(1, 7, 3))  # {1,4}
+        s2 = s1  # s2 == s1 exactly, as when merging a full-coverage update
+        result = selections.translate(s1, s2)
+        self.assertEqual(result.select_type, H5S_SEL_HYPERSLABS)
+        self.assertEqual(result.start, (0,))
+        self.assertEqual(result.step, (1,))
+        self.assertEqual(result.count, (2,))
+
+    def testTranslate1DSteppedS1PartialS2(self):
+        shape = (20,)
+        s1 = selections.select(shape, slice(1, 19, 3))   # {1,4,7,10,13,16}
+        s2 = selections.select(shape, slice(4, 17, 6))   # {4,10,16}
+        result = selections.translate(s1, s2)
+        self.assertEqual(result.select_type, H5S_SEL_HYPERSLABS)
+        # s2's points are s1's local indices 1, 3, 5
+        self.assertEqual(result.start, (1,))
+        self.assertEqual(result.step, (2,))
         self.assertEqual(result.count, (3,))
 
     def testTranslate2D(self):
