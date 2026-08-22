@@ -562,6 +562,26 @@ class SelectRegionReferenceTest(unittest.TestCase):
         self.assertEqual(result.start, (2, 2))
         self.assertEqual(result.count, (3, 3))
 
+    def testScalarDataspaceRegionReference(self):
+        # Regression test: select()'s scalar-shape early return used to
+        # come *before* the "special indexing objects" dispatch, so a
+        # RegionReference argument against a scalar dataset never reached
+        # its own dispatch branch at all - it fell straight through to
+        # SimpleSelection(shape, (ref,)), which doesn't know what a
+        # RegionReference is.
+        shape = ()
+        dset_id = self._dset_id()
+        sel = selections.select(shape, ...)
+        ref = RegionReference()
+        ref.bind(dset_id, sel)
+
+        obj = self._fake_dataset(dset_id, shape)
+        result = selections.select(obj, ref)
+        self.assertIsInstance(result, SimpleSelection)
+        self.assertEqual(result.shape, shape)
+        self.assertEqual(result.select_type, H5S_SEL_ALL)
+        self.assertEqual(result.nselect, 1)
+
 
 class IntersectHyperslabTest(unittest.TestCase):
     def __init__(self, *args, **kwargs):

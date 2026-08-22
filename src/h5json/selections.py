@@ -123,12 +123,10 @@ def select(obj, args, fields=None):
     elif not isinstance(args, tuple):
         args = (args,)
 
-    if len(obj_shape) == 0:
-        # scalar object - handled by SimpleSelection like any other shape;
-        # it has exactly one point, so any valid args (Ellipsis, ()) select it.
-        return SimpleSelection(obj_shape, args, fields=fields)
-
-    # "Special" indexing objects
+    # "Special" indexing objects - checked before the scalar-shape early
+    # return below, since a RegionReference (or an existing Selection) can
+    # legitimately be created against a scalar dataspace too (e.g. a
+    # select_none() vs select_all() region reference on a scalar dataset).
     if len(args) == 1:
 
         arg = args[0]
