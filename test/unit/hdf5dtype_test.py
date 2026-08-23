@@ -481,6 +481,9 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertEqual(dt.kind, "S")
         self.assertEqual(typeSize, 6)
         self.assertFalse(isVlen(dt))
+        # an ASCII-declared fixed string has no h5py_encoding metadata -
+        # it's the "plain" numpy 'S' dtype h5py itself would produce
+        self.assertFalse(dt.metadata)
 
     def testCreateBaseUnicodeType(self):
         typeItem = {"class": "H5T_STRING", "charSet": "H5T_CSET_UTF8", "length": 6}
@@ -492,6 +495,36 @@ class Hdf5dtypeTest(unittest.TestCase):
         self.assertEqual(dt.kind, "S")  # uses byte
         self.assertEqual(typeSize, 6)
         self.assertFalse(isVlen(dt))
+        # Regression test: a fixed UTF8-declared string dtype used to be
+        # reconstructed with no metadata at all, indistinguishable from an
+        # ASCII-declared one - h5py itself tags a fixed-length UTF8 string
+        # dtype via this metadata key (see h5type.string_dtype()), and
+        # without it, writing a plain Python str to the dataset raised
+        # UnicodeEncodeError (numpy's str -> 'S' conversion is ASCII-only)
+        # instead of encoding it as UTF-8.
+        self.assertEqual(dt.metadata, {"h5py_encoding": "utf-8"})
+
+    def testGetTypeItemFixedUtf8String(self):
+        # the other direction of testCreateBaseUnicodeType's regression:
+        # getTypeItem() must report H5T_CSET_UTF8 for a dtype carrying the
+        # h5py_encoding metadata, and H5T_CSET_ASCII without it.
+        dt_ascii = np.dtype("S5")
+        type_item = hdf5dtype.getTypeItem(dt_ascii)
+        self.assertEqual(type_item["class"], "H5T_STRING")
+        self.assertEqual(type_item["charSet"], "H5T_CSET_ASCII")
+
+        dt_utf8 = np.dtype("S5", metadata={"h5py_encoding": "utf-8"})
+        type_item = hdf5dtype.getTypeItem(dt_utf8)
+        self.assertEqual(type_item["class"], "H5T_STRING")
+        self.assertEqual(type_item["charSet"], "H5T_CSET_UTF8")
+        self.assertEqual(type_item["length"], 5)
+
+    def testFixedUtf8StringRoundTrip(self):
+        dt = np.dtype("S5", metadata={"h5py_encoding": "utf-8"})
+        type_item = hdf5dtype.getTypeItem(dt)
+        dt2 = hdf5dtype.createDataType(type_item)
+        self.assertEqual(dt2, dt)
+        self.assertEqual(dt2.metadata, {"h5py_encoding": "utf-8"})
 
     def testCreateNullTermStringType(self):
         typeItem = {

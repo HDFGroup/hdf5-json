@@ -630,7 +630,14 @@ def getTypeItem(dt, metadata=None):
             # Fixed length string type
             type_info["class"] = "H5T_STRING"
             type_info["length"] = dt.itemsize
-        type_info["charSet"] = "H5T_CSET_ASCII"
+        if ref_check is None and metadata and metadata.get("h5py_encoding") == "utf-8":
+            # h5py tags a fixed-length string dtype's desired charset via
+            # this metadata key (see string_dtype()) - numpy's 'S' dtype
+            # itself has no notion of charset, so this is the only place
+            # that information survives to be read back here.
+            type_info["charSet"] = "H5T_CSET_UTF8"
+        else:
+            type_info["charSet"] = "H5T_CSET_ASCII"
         type_info["strPad"] = "H5T_STR_NULLPAD"
     elif dt.base.kind == "U":
         # Fixed length unicode type
@@ -1005,17 +1012,18 @@ def createBaseDataType(typeItem):
             nStrSize = typeItem["length"]
             if not isinstance(nStrSize, int):
                 raise TypeError("expecting integer value for 'length'")
-            type_code = None
-            if typeItem["charSet"] == "H5T_CSET_ASCII":
-                type_code = "S"
-            elif typeItem["charSet"] == "H5T_CSET_UTF8":
-                # use the same type_code as ascii strings
-                # (otherwise, numpy will reserve bytes for UTF32 representation)
-                type_code = "S"
-            else:
+            # a fixed size string - use the "S" type code regardless of
+            # declared charset (otherwise numpy would reserve bytes for a
+            # UTF32 representation)
+            dtRet = np.dtype(dims + "S" + str(nStrSize))
+            if typeItem["charSet"] == "H5T_CSET_UTF8":
+                # h5py tags a fixed-length UTF8-declared string dtype via
+                # this metadata key (see h5type.string_dtype()) - numpy's
+                # 'S' dtype has no charset of its own, so this is the only
+                # way it survives a round trip through JSON.
+                dtRet = np.dtype(dtRet, metadata={"h5py_encoding": "utf-8"})
+            elif typeItem["charSet"] != "H5T_CSET_ASCII":
                 raise TypeError("unexpected 'charSet' value")
-            # a fixed size string
-            dtRet = np.dtype(dims + type_code + str(nStrSize))
     elif typeClass == "H5T_VLEN":
         if dims:
             msg = "ArrayType is not supported for variable len types"
