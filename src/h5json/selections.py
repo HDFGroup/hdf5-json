@@ -1369,6 +1369,16 @@ class SimpleSelection(Selection):
         return self._sel[2]
 
     @property
+    def scalar(self):
+        """ Per-dimension flags: True where that dimension was indexed by a
+        bare integer (and so is excluded from mshape - see numpy's basic
+        indexing rules). Only meaningful for a plain hyperslab selection
+        (select_type H5S_SEL_ALL or H5S_SEL_HYPERSLABS) - a fancy/points
+        selection's mshape already has integer-indexed dimensions removed,
+        with nothing left for a caller to additionally drop. """
+        return self._sel[3]
+
+    @property
     def slices(self):
         """ Per-dimension slice/list/int components of the selection. """
         if self._select_type in (H5S_SEL_FANCY, H5S_SEL_POINTS):
@@ -1390,6 +1400,14 @@ class SimpleSelection(Selection):
             self._mshape = self._shape
             self._select_type = H5S_SEL_ALL
             return
+
+        if any(a is Ellipsis for a in hyperslab):
+            # _handle_simple() (the non-fancy path below) expands Ellipsis
+            # internally, but the fancy path's own rank check runs before
+            # that - so a fancy arg combined with Ellipsis (e.g. [0], ...)
+            # needs it expanded here too, or the raw (unexpanded) length
+            # mismatches the dataset rank.
+            hyperslab = tuple(_expand_ellipsis(hyperslab, rank))
 
         def _is_fancy_arg(arg):
             if isinstance(arg, (slice, type(Ellipsis))):
