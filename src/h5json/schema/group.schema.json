@@ -43,7 +43,7 @@
                         "creationProperties": {
                             "type": "object",
                             "properties": {
-                                "track_times": {
+                                "trackTimes": {
                                     "type": "boolean"
                                 },
                                 "localHeapSizeHint": {

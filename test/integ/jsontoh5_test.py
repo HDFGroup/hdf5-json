@@ -24,8 +24,8 @@ data_dir = os.path.join(top_dir, "data", "json")
 out_dir = os.path.join(top_dir, "test", "integ", "h5_out")
 
 test_files = (
-    # "array_dset.json",
-    # "arraytype.json",
+    "array_dset.json",
+    "arraytype.json",
     # bitfields not supported yet
     # "bitfield_attr.json",
     # "bitfield_dset.json",
@@ -33,16 +33,16 @@ test_files = (
     "bool_dset.json",
     "committed_type.json",
     "compound.json",
-    # "compound_array.json",
-    # "compound_array_attr.json",
-    # "compound_array_dset.json",
-    "compound_array_vlen_string.json",
+    "compound_array.json",
+    "compound_array_attr.json",
+    "compound_array_dset.json",
+    "compound_array_vlen_string.json",  # regression
     "compound_attr.json",
     "compound_committed.json",
     "dim_scale.json",
     "dim_scale_data.json",
     "dset_creationprop.json",
-    # "dset_gzip.json",
+    "dset_gzip.json",
     "empty.json",
     "enum_attr.json",
     "enum_dset.json",
@@ -58,28 +58,28 @@ test_files = (
     "h5ex_d_nbit.json",
     "h5ex_d_rdwr.json",
     "h5ex_d_shuffle.json",
-    # "h5ex_d_sofloat.json",
-    # "h5ex_d_soint.json",
+    "h5ex_d_sofloat.json",
+    "h5ex_d_soint.json",
     "h5ex_d_transform.json",
     "h5ex_d_unlimadd.json",
     "h5ex_d_unlimgzip.json",
-    # "h5ex_d_unlimmod.json",
+    "h5ex_d_unlimmod.json",
     "namedtype.json",
-    # "null_objref_dset.json",
-    # "objref_dset.json",
-    # "opaque_attr.json",
-    # "opaque_dset.json",
-    # "regionref_dset.json",
+    "null_objref_dset.json",
+    "objref_dset.json",
+    "opaque_attr.json",
+    "opaque_dset.json",
+    "regionref_dset.json",
     "resizable.json",
-    # "sample.json",
+    "sample.json",
     "scalar.json",
-    # "scalar_attr.json",
-    # "scalar_array_dset.json",
+    "scalar_attr.json",
+    "scalar_array_dset.json",
     "tall.json",
     "tall_with_udlink.json",
     "tgroup.json",
-    # "tref.json",
-    # "tstr.json",
+    "tref.json",
+    "tstr.json",
     "types_attr.json",
     "types_dset.json",
     "zerodim.json",
@@ -93,7 +93,7 @@ test_files_latest = (
     "null_space_dset.json",
     "objref_attr.json",
     "regionref_attr.json",
-    # "regionref_dset.json",
+    "regionref_dset.json",
     "scalar_attr.json",
     "vlen_attr.json",
     "vlen_dset.json",
@@ -115,11 +115,9 @@ for out_file in os.listdir(out_dir):
     if split_ext[1] == ".h5":
         os.unlink(os.path.join(out_dir, out_file))
 
-if hdf5_version_tuple[1] > 8 or (
-    hdf5_version_tuple[1] == 8 and hdf5_version_tuple[2] > 14
-):
+if hdf5_version_tuple >= (1, 8, 15):
     # add in additional test files
-    print("adding library version dependendent files")
+    print("adding library version dependent files")
     test_files = list(test_files)
     for filename in test_files_latest:
         test_files.append(filename)
@@ -131,7 +129,7 @@ for test_file in test_files:
     out_file = os.path.join(out_dir, split_ext[0] + ".h5")
     if not os.path.exists(file_path):
         sys.exit("file: " + file_path + " not found")
-    cmd = "python ../../src/h5json/jsontoh5/jsontoh5.py " + file_path + " " + out_file
+    cmd = "python ../../src/h5json/apps/jsontoh5.py " + file_path + " " + out_file
     print("cmd:", cmd)
     rc = os.system(cmd)
     if rc != 0:

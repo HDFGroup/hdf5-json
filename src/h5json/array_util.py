@@ -1,0 +1,1007 @@
+##############################################################################
+# Copyright by The HDF Group.                                                #
+# All rights reserved.                                                       #
+#                                                                            #
+# This file is part of HSDS (HDF5 Scalable Data Service), Libraries and      #
+# Utilities.  The full HSDS copyright notice, including                      #
+# terms governing use, modification, and redistribution, is contained in     #
+# the file COPYING, which can be found at the root of the source code        #
+# distribution tree.  If you do not have access to this file, you may        #
+# request a copy from help@hdfgroup.org.                                     #
+##############################################################################
+
+import math
+import base64
+import binascii
+import numpy as np
+
+from .hdf5dtype import isVlen, is_float16_dtype, guess_dtype, vlenBaseType, RegionReference, isOpaqueDtype
+
+MAX_VLEN_ELEMENT = 1_000_000  # restrict largest vlen element to one million
+
+
+def _isVlenLike(dt):
+    """ True for vlen types, and for RegionReference-tagged object dtypes.
+    RegionReference elements are also variable-length raw bytes (produced by
+    RegionReference.tobytes()/frombytes()), just tagged with 'ref' metadata
+    instead of 'vlen', so they serialize the same length-prefixed way. """
+    if isVlen(dt):
+        return True
+    base = dt.base
+    return bool(base.metadata) and base.metadata.get("ref") is RegionReference
+
+
+def _regionRefElementToJson(raw):
+    """ Convert one RegionReference dataset/attribute element (as produced by
+    RegionReference.tobytes(), or a RegionReference instance itself) to its
+    h5json JSON representation.  A null/unset reference (empty bytes) is
+    reported as None. """
+    if not raw:
+        return None
+    ref = raw if isinstance(raw, RegionReference) else RegionReference.frombytes(raw)
+    return ref.to_json()
+
+
+def _regionRefArrayToList(data):
+    """ Recursively convert an ndarray of RegionReference elements to nested
+    lists of {"id", "select_type", "selection"} JSON dicts/None.
+
+    Indexing an object-dtype ndarray unwraps to the raw element (not a 0-d
+    ndarray) once the last dimension is reached, so a non-ndarray value at
+    any recursion depth is treated as a leaf.
+    """
+    if not isinstance(data, np.ndarray):
+        return _regionRefElementToJson(data)
+    if data.ndim == 0:
+        return _regionRefElementToJson(data.item())
+    return [_regionRefArrayToList(data[i]) for i in range(data.shape[0])]
+
+
+def _regionRefJsonToArray(data_shape, data_dtype, data_json):
+    """ Inverse of _regionRefArrayToList(): convert nested JSON region-reference
+    dicts (or None for null/unset elements) into an ndarray of
+    RegionReference.tobytes()-encoded bytes elements. """
+    shape = tuple(data_shape)
+    arr = np.empty(shape, dtype=data_dtype)
+
+    def fill(data, index):
+        # a leaf is always None or a dict (the region ref JSON representation);
+        # only lists/tuples represent additional array dimensions. Checking the
+        # value's type - rather than comparing index depth to len(shape) - keeps
+        # this correct even for a scalar value passed in unwrapped against a
+        # shape of (1,) (the convention callers use for H5S_SCALAR attributes).
+        if data is None or isinstance(data, dict):
+            arr[index] = b'' if data is None else RegionReference.from_json(data).tobytes()
+        else:
+            for i, item in enumerate(data):
+                fill(item, index + (i,))
+
+    fill(data_json, ())
+    return arr
+
+
+def _opaqueElementToJson(raw):
+    """ Convert one opaque (numpy void) element to its h5json JSON
+    representation: a base64-encoded string, or "" for an all-zero element
+    (matches data/json/opaque_dset.json / opaque_attr.json). Opaque data is
+    an arbitrary binary blob with no canonical text representation, so
+    (unlike fixed/vlen strings) it's never decoded as UTF-8 text. """
+    raw_bytes = raw.tobytes()
+    if not any(raw_bytes):
+        return ""
+    return base64.b64encode(raw_bytes).decode("ascii")
+
+
+def _opaqueArrayToList(data):
+    """ Recursively convert an ndarray of opaque (numpy void) elements to
+    nested lists of base64-encoded strings/"". A numpy void scalar (a fully
+    indexed element, or a 0-d array) has ndim == 0 same as a 0-d ndarray, so
+    that's used as the leaf check rather than isinstance(data, np.ndarray). """
+    if data.ndim == 0:
+        return _opaqueElementToJson(data)
+    return [_opaqueArrayToList(data[i]) for i in range(data.shape[0])]
+
+
+def _opaqueJsonToArray(data_shape, data_dtype, data_json):
+    """ Inverse of _opaqueArrayToList(): convert nested JSON base64 strings
+    (or "" for an all-zero element) into an ndarray of opaque (numpy void)
+    elements. Assigning a shorter-than-itemsize bytes value (including b""
+    for "") zero-pads the remainder, so "" naturally reconstructs as
+    all-zero without special-casing it. """
+    shape = tuple(data_shape)
+    arr = np.zeros(shape, dtype=data_dtype)
+
+    def fill(data, index):
+        # a leaf is always a (possibly empty) base64 string; only
+        # lists/tuples represent additional array dimensions - checking the
+        # value's type, rather than comparing index depth to len(shape),
+        # keeps this correct even for a scalar value passed in unwrapped
+        # against a shape of (1,) (the convention used for H5S_SCALAR attrs).
+        if isinstance(data, str):
+            arr[index] = base64.b64decode(data) if data else b""
+        else:
+            for i, item in enumerate(data):
+                fill(item, index + (i,))
+
+    fill(data_json, ())
+    return arr
+
+
+def validateUtf8(arr, dtype):
+    """
+    Raise UnicodeEncodeError if any UTF8-charset string element (vlen str, or
+    fixed-length numpy "U" unicode) in arr can't actually be encoded as valid
+    UTF-8. numpy doesn't validate this itself - an object- or "U"-dtype array
+    happily holds a python str containing e.g. a lone surrogate - so callers
+    that want to catch this at creation time, rather than deferring the
+    failure to a later read, need to check explicitly.
+    """
+    if len(dtype) > 0:
+        for name in dtype.names:
+            validateUtf8(arr[name], dtype[name])
+        return
+
+    if dtype.shape:
+        # H5T_ARRAY (subarray) dtype - dims are already absorbed into arr's
+        # own shape, so just re-check against the base (element) dtype
+        validateUtf8(arr, dtype.base)
+        return
+
+    if not ((isVlen(dtype) and vlenBaseType(dtype) is str) or dtype.kind == "U"):
+        return  # nothing to validate for this dtype
+
+    for e in np.asarray(arr).reshape(-1):
+        if isinstance(e, str):
+            e.encode("utf-8")  # raises UnicodeEncodeError if not valid UTF-8
+
+
+def bytesArrayToList(data):
+    """
+    Convert list that may contain bytes type elements to list of string elements
+
+    TBD: Need to deal with non-string byte data (hexencode?)
+    """
+    if isinstance(data, (np.ndarray, np.generic)) and data.dtype.metadata and \
+            data.dtype.metadata.get("ref") is RegionReference:
+        return _regionRefArrayToList(data)
+
+    if isinstance(data, (np.ndarray, np.generic)) and isOpaqueDtype(data.dtype):
+        return _opaqueArrayToList(data)
+
+    if type(data) in (bytes, str):
+        is_list = False
+    elif isinstance(data, (np.ndarray, np.generic)):
+        if len(data.shape) == 0:
+            is_list = False
+            data = data.tolist()  # tolist will return a scalar in this case
+            if type(data) in (list, tuple, np.ndarray):
+                is_list = True
+            else:
+                is_list = False
+        else:
+            is_list = True
+    elif type(data) in (list, tuple):
+        is_list = True
+    else:
+        is_list = False
+    if is_list:
+        out = []
+        for item in data:
+            try:
+                rec_item = bytesArrayToList(item)  # recursive call
+                out.append(rec_item)
+            except ValueError as err:
+                raise err
+    elif type(data) is bytes:
+        try:
+            out = data.decode("utf-8")
+        except UnicodeDecodeError as err:
+            raise ValueError(err)
+    else:
+        out = data
+
+    return out
+
+
+def toTuple(rank, data, encoding=None):
+    """
+    Convert a list to a tuple, recursively.
+    Example. [[1,2],[3,4]] -> ((1,2),(3,4))
+    """
+    if type(data) in (list, tuple):
+        if rank > 0:
+            return list(toTuple(rank - 1, x) for x in data)
+        else:
+            return tuple(toTuple(rank - 1, x) for x in data)
+    else:
+        if encoding:
+            data = data.encode(encoding)
+        return data
+
+
+def getArraySize(arr):
+    """
+    Get size in bytes of a numpy array.
+    """
+    nbytes = arr.dtype.itemsize
+    for n in arr.shape:
+        nbytes *= n
+    return nbytes
+
+
+def getNumElements(dims):
+    """
+    Get num elements defined by a shape
+    """
+    num_elements = 0
+    if isinstance(dims, int):
+        num_elements = dims
+    elif isinstance(dims, (list, tuple)):
+        num_elements = 1
+        for dim in dims:
+            num_elements *= dim
+    else:
+        raise ValueError("Unexpected argument")
+    return num_elements
+
+
+def _vlenBaseToArray(data, dt):
+    """
+    Convert a vlen element's raw (JSON-derived) value into an array of the
+    given base dtype.
+
+    Can't just do np.array(data, dtype=dt) when dt is itself compound: if
+    the record sequence happens to have the same length as dt has fields
+    (e.g. 2 records of a 2-field compound), numpy reads it as a single
+    scalar record instead of an array of records. Build it element-by-
+    element instead, recursing for any vlen (e.g. vlen string, or nested
+    vlen compound) fields.
+    """
+    if len(dt) == 0:
+        return np.array(data, dt)
+
+    arr = np.zeros((len(data),), dtype=dt)
+    for k in range(len(data)):
+        record = data[k]
+        values = []
+        for j in range(len(dt)):
+            field_dt = dt[j]
+            field_val = record[j]
+            if isVlen(field_dt):
+                base_dt = vlenBaseType(field_dt)
+                if base_dt in (str, bytes):
+                    # h5py always returns bytes for a vlen string nested in a
+                    # compound (regardless of the declared ascii/utf8
+                    # charset) - only a *top-level* vlen string attribute
+                    # gets decoded to str (see attrs.py).
+                    if isinstance(field_val, str):
+                        field_val = field_val.encode("utf-8", errors="surrogateescape")
+                    values.append(field_val)
+                else:
+                    values.append(_vlenBaseToArray(field_val, base_dt))
+            else:
+                values.append(field_val)
+        arr[k] = tuple(values)
+    return arr
+
+
+def jsonToArray(data_shape, data_dtype, data_json):
+    """
+    Return numpy array from the given json array.
+    """
+
+    def get_array(data, rank, dtype):
+        # helper function to create an array with encoding if needed
+        try:
+            arr = np.array(data, dtype=dtype)
+        except UnicodeEncodeError:
+            # numpy couldn't infer a fixed-width dtype straight from the str
+            # elements (e.g. mixed-length/non-ascii text) - pre-encode each
+            # element to utf-8 bytes ourselves so np.array() can size it
+            data = toTuple(rank, data, encoding="utf8")
+            arr = np.array(data, dtype=dtype)
+        return arr
+
+    def fillVlenArray(rank, data, arr, index):
+        for i in range(len(data)):
+            if rank > 1:
+                index = fillVlenArray(rank - 1, data[i], arr, index)
+            elif len(arr.dtype) > 0:
+                # deal with compound dtype
+                element_data = data[i]
+                arr_element = []
+                for j in range(len(arr.dtype)):
+                    compound_data = element_data[j]
+                    compound_dtype = arr.dtype[j]
+                    if isVlen(compound_dtype):
+                        base_dt = vlenBaseType(compound_dtype)
+                        if base_dt in (str, bytes):
+                            # h5py always returns bytes for a vlen string
+                            # nested in a compound (regardless of the
+                            # declared ascii/utf8 charset) - only a
+                            # *top-level* vlen string attribute gets
+                            # decoded to str (see attrs.py).
+                            if isinstance(compound_data, str):
+                                compound_data = compound_data.encode("utf-8", errors="surrogateescape")
+                            arr_element.append(compound_data)
+                        else:
+                            arr_element.append(_vlenBaseToArray(compound_data, base_dt))
+                    else:
+                        arr_element.append(compound_data)
+                arr[i] = tuple(arr_element)
+                index += 1
+            else:
+                base_dt = vlenBaseType(arr.dtype)
+                element_data = data[i]
+                if base_dt is str and isinstance(element_data, bytes):
+                    element_data = element_data.decode('utf8')
+                if base_dt in (str, bytes):
+                    arr[index] = element_data
+                else:
+                    arr[index] = _vlenBaseToArray(element_data, base_dt)
+                index += 1
+        return index
+
+    if data_json is None:
+        return np.array(data_shape).astype(data_dtype)
+
+    if data_dtype is not None and getattr(data_dtype, "metadata", None) and \
+            data_dtype.metadata.get("ref") is RegionReference:
+        return _regionRefJsonToArray(data_shape, data_dtype, data_json)
+
+    if data_dtype is not None and isOpaqueDtype(np.dtype(data_dtype)):
+        return _opaqueJsonToArray(data_shape, data_dtype, data_json)
+
+    npoints = getNumElements(data_shape)
+    np_shape_rank = len(data_shape)
+
+    was_list_input = type(data_json) in (list, tuple)
+    if was_list_input:
+        converted_data = []
+        if npoints == 1 and len(data_json) == len(data_dtype):
+            converted_data.append(toTuple(0, data_json))
+        else:
+            converted_data = toTuple(np_shape_rank, data_json)
+        data_json = converted_data
+    else:
+        if isinstance(data_json, str):
+            data_json = data_json.encode("utf8")
+        data_json = [data_json,]  # listify
+
+    if isVlen(data_dtype):
+        # For scalar vlen where input was a list with multiple items (e.g. ['ref1', 'ref2']
+        # for vlen refs), the items represent vlen contents for the single scalar, not
+        # separate array elements. Wrap so fillVlenArray sees one element.
+        # Skip wrapping if already has 1 element (e.g. [('foo', 'bar')] is already correct).
+        if np_shape_rank == 0 and len(data_dtype) == 0 and was_list_input and len(data_json) > 1:
+            data_json = [data_json]
+        # for vlen data we need to initialize a zero numpy array to ensure the right shape
+        arr = np.zeros((npoints,), dtype=data_dtype)
+        fillVlenArray(np_shape_rank, data_json, arr, 0)
+    elif all(e is None for e in data_json):
+        # just create a zero array
+        arr = np.zeros(data_shape, dtype=data_dtype)
+    else:
+        try:
+            arr = get_array(data_json, np_shape_rank, data_dtype)
+        except ValueError:
+            if npoints <= 1 and isinstance(data_json, list):
+                # try converting data to a tuple
+                arr = get_array(tuple(data_json), np_shape_rank, data_dtype)
+            else:
+                raise
+
+    # An H5T_ARRAY (subarray) dtype's dims get absorbed directly into the
+    # numpy array's shape/size (e.g. dtype (int64, (3, 5)) over a (4,)
+    # dataset produces an array of shape (4, 3, 5), size 60) - so the
+    # expected size/shape below must include them too, not just data_shape.
+    full_shape = tuple(data_shape)
+    expected_size = npoints
+    if data_dtype is not None and data_dtype.subdtype is not None:
+        _, subarray_dims = data_dtype.subdtype
+        full_shape += tuple(subarray_dims)
+        for d in subarray_dims:
+            expected_size *= d
+
+    # raise an exception of the array shape doesn't match the selection shape
+    # allow if the array is a scalar and the selection shape is one element,
+    # numpy is ok with this
+    if arr.size != expected_size:
+        msg = "Input data doesn't match selection number of elements"
+        msg += f" Expected {expected_size}, but received: {arr.size}"
+        # try adding an extra dimension to data_json
+        # for cases where e.g. compound types are not getting interpreted correctly
+        data_json = toTuple(np_shape_rank, [data_json, ])
+        arr = get_array(data_json, np_shape_rank, data_dtype)
+        if arr.size != expected_size:
+            # still no good, raise error
+            raise ValueError(msg)
+
+    if arr.shape != full_shape:
+        arr = arr.reshape(full_shape)
+
+    return arr
+
+
+def getElementSize(e, dt):
+    """
+    Get number of byte needed to given element as a bytestream
+    """
+    # print(f"getElementSize - e: {e}  dt: {dt} metadata: {dt.metadata}")
+    if len(dt) > 1:
+        count = 0
+        for name in dt.names:
+            field_dt = dt[name]
+            field_val = e[name]
+            count += getElementSize(field_val, field_dt)
+    elif not _isVlenLike(dt):
+        count = dt.itemsize  # fixed size element
+    else:
+        # variable length element
+        vlen = dt.base.metadata.get("vlen", bytes)
+        if isinstance(e, int):
+            if e == 0:
+                count = 4  # non-initialized element
+            else:
+                raise ValueError(f"Unexpected value: {e}")
+        elif isinstance(e, bytes):
+            count = len(e) + 4
+        elif isinstance(e, str):
+            count = len(e.encode("utf-8")) + 4
+        elif isinstance(e, np.ndarray):
+            nElements = math.prod(e.shape)
+            if e.dtype.kind != "O":
+                count = e.dtype.itemsize * nElements
+            else:
+                arr1d = e.reshape((nElements,))
+                count = 0
+                for item in arr1d:
+                    count += getElementSize(item, dt)
+            count += 4  # byte count
+        elif isinstance(e, list) or isinstance(e, tuple):
+            if not e:
+                # empty list, just add byte count
+                count = 4
+            else:
+                # not sure how to deal with this
+                count = len(e) * vlen.itemsize + 4  # +4 for byte count
+        else:
+            raise TypeError("unexpected type: {}".format(type(e)))
+    # print("getElementSize returning:", count)
+    return count
+
+
+def getByteArraySize(arr):
+    """
+    Get number of bytes needed to store given numpy array as a bytestream
+    """
+    if not _isVlenLike(arr.dtype):
+        return arr.itemsize * math.prod(arr.shape)
+    nElements = math.prod(arr.shape)
+    # reshape to 1d for easier iteration
+    arr1d = arr.reshape((nElements,))
+    dt = arr1d.dtype
+    count = 0
+    for e in arr1d:
+        count += getElementSize(e, dt)
+    return count
+
+
+def copyBuffer(src, des, offset):
+    """
+    Copy to buffer at given offset
+    """
+    # print(f"copyBuffer - src: {src} offset: {offset}")
+    # TBD: just do: des[offset:] = src[:]  ?
+    for i in range(len(src)):
+        des[i + offset] = src[i]
+
+    # print("returning:", offset + len(src))
+    return offset + len(src)
+
+
+def copyElement(e, dt, buffer, offset):
+    """
+    Copy element to bytearray
+    """
+
+    # print(f"copyElement - dt: {dt}  offset: {offset}")
+    if len(dt) > 1:
+        for name in dt.names:
+            field_dt = dt[name]
+            field_val = e[name]
+            offset = copyElement(field_val, field_dt, buffer, offset)
+    elif not _isVlenLike(dt):
+        # print(f"no vlen: {e} type: {type(e)} e.dtype: {e.dtype} itemsize: {dt.itemsize}")
+        e_buf = np.asarray(e, dtype=dt).tobytes()
+        if len(e_buf) < dt.itemsize:
+            # extend the buffer for fixed size strings
+            e_buf_ex = bytearray(dt.itemsize)
+            for i in range(len(e_buf)):
+                e_buf_ex[i] = e_buf[i]
+            e_buf = bytes(e_buf_ex)
+
+        offset = copyBuffer(e_buf, buffer, offset)
+    else:
+        # variable length element
+        vlen = dt.base.metadata.get("vlen", bytes)
+        if isinstance(e, int):
+            if e == 0:
+                # write 4-byte integer 0 to buffer
+                offset = copyBuffer(b"\x00\x00\x00\x00", buffer, offset)
+            else:
+                raise ValueError("Unexpected value: {}".format(e))
+        elif isinstance(e, bytes):
+            count = np.int32(len(e))
+            if count > MAX_VLEN_ELEMENT:
+                raise ValueError("vlen element too large")
+            offset = copyBuffer(count.tobytes(), buffer, offset)
+            offset = copyBuffer(e, buffer, offset)
+        elif isinstance(e, str):
+            text = e.encode("utf-8")
+            count = np.int32(len(text))
+            if count > MAX_VLEN_ELEMENT:
+                raise ValueError("vlen element too large")
+            offset = copyBuffer(count.tobytes(), buffer, offset)
+            offset = copyBuffer(text, buffer, offset)
+
+        elif isinstance(e, np.ndarray):
+            nElements = math.prod(e.shape)
+
+            if e.dtype.kind != "O":
+                count = np.int32(e.dtype.itemsize * nElements)
+                if count > MAX_VLEN_ELEMENT:
+                    raise ValueError("vlen element too large")
+                offset = copyBuffer(count.tobytes(), buffer, offset)
+                offset = copyBuffer(e.tobytes(), buffer, offset)
+            else:
+                arr1d = e.reshape((nElements,))
+                for item in arr1d:
+                    offset = copyElement(item, dt, buffer, offset)
+
+        elif isinstance(e, list) or isinstance(e, tuple):
+            # print("cooyBuffer list/tuple  vlen:", vlen, "e:", e)
+            count = np.int32(len(e) * vlen.itemsize)
+            offset = copyBuffer(count.tobytes(), buffer, offset)
+            if isinstance(e, np.ndarray):
+                arr = e
+            else:
+                arr = np.asarray(e, dtype=vlen)
+            offset = copyBuffer(arr.tobytes(), buffer, offset)
+
+        else:
+            raise TypeError("unexpected type: {}".format(type(e)))
+    return offset
+
+
+def getElementCount(buffer, offset=0):
+    """
+    Get the count value from persisted vlen array
+    """
+
+    n = offset
+    m = offset + 4
+    count_bytes = bytes(buffer[n:m])
+
+    try:
+        count = int(np.frombuffer(count_bytes, dtype="<i4")[0])
+    except TypeError as e:
+        msg = f"Unexpected error reading count value for varlen element: {e}"
+        raise TypeError(msg)
+    if count < 0:
+        # shouldn't be negative
+        raise ValueError(f"Unexpected count value for varlen element: {count}")
+    if count > MAX_VLEN_ELEMENT:
+        # expect variable length element to be between 0 and 1mb
+        raise ValueError("varlen element size expected to be less than 1MB")
+    return count
+
+
+def readElement(buffer, offset, arr, index, dt):
+    """
+    Read a single element from buffer into array.
+
+    Parameters:
+        buffer (bytearray): Byte array to read an element from.
+        offset (int): Starting offset in the buffer.
+        arr (numpy.ndarray): Array to store the element.
+        index (int): Index in 'arr' at which to store the element.
+        dt (numpy.dtype): Numpy datatype of the element.
+
+    Note: If the provided datatype is a variable-length sequence,
+    this function will read the byte count from the first 4 bytes
+    of the buffer, and then read the entire sequence.
+
+    Returns:
+        int: The updated offset value after reading the element.
+    """
+    # print("readElement, offset:", offset)
+    if len(dt) > 1:
+        e = arr[index]
+        for name in dt.names:
+            field_dt = dt[name]
+            offset = readElement(buffer, offset, e, name, field_dt)
+    elif not _isVlenLike(dt):
+        count = dt.itemsize
+        n = offset
+        m = offset + count
+        e_buffer = buffer[n:m]
+        offset += count
+        try:
+            e = np.frombuffer(bytes(e_buffer), dtype=dt)
+            arr[index] = e[0]
+
+        except ValueError:
+            # print(f"ValueError setting {e_buffer} and dtype: {dt}")
+            raise
+    else:
+        # variable length element
+        vlenBaseType = dt.base.metadata.get("vlen", bytes)
+        e = arr[index]
+
+        if isinstance(e, np.ndarray):
+            nelements = math.prod(dt.shape)
+            e.reshape((nelements,))
+            for i in range(nelements):
+                offset = readElement(buffer, offset, e, i, dt)
+            e.reshape(dt.shape)
+        else:
+            # total number of bytes in the vlen sequence/variable-length string
+            count = getElementCount(buffer, offset=offset)
+            offset += 4
+            n = offset
+            m = offset + count
+            if vlenBaseType is bytes or vlenBaseType is str:
+                if count > 0:
+                    e_buffer = buffer[n:m]
+                    offset += count
+                    if vlenBaseType is str:
+                        e_buffer = e_buffer.decode("utf-8")
+                    arr[index] = e_buffer
+                else:
+                    if vlenBaseType is str:
+                        arr[index] = ""
+                    else:
+                        arr[index] = b""
+            elif count > 0:
+                e_buffer = buffer[n:m]
+                offset += count
+                try:
+                    e = np.frombuffer(bytes(e_buffer), dtype=vlenBaseType)
+                except ValueError:
+                    msg = f"Failed to parse vlen data: {e_buffer} with dtype: {vlenBaseType}"
+                    raise ValueError(msg)
+                arr[index] = e
+    return offset
+
+
+def encodeData(data, encoding="base64"):
+    """ Encode given data """
+    if encoding != "base64":
+        raise ValueError("only base64 encoding is supported")
+    if isinstance(data, str):
+        try:
+            data = data.encode("utf8")
+        except UnicodeEncodeError:
+            raise ValueError("can not encode string value")
+    if not isinstance(data, bytes):
+        msg = "Expected str or bytes type to encodeData, "
+        msg += f"but got: {type(data)}"
+        raise TypeError(msg)
+    try:
+        encoded_data = base64.b64encode(data)
+    except Exception as e:
+        # TBD: what exceptions can be raised?
+        raise ValueError(f"Unable to encode: {e}")
+    return encoded_data
+
+
+def decodeData(data, encoding="base64"):
+    if encoding != "base64":
+        raise ValueError("only base64 decoding is supported")
+    try:
+        decoded_data = base64.b64decode(data)
+    except Exception as e:
+        # TBD: catch actual exception
+        raise ValueError(f"Unable to decode: {e}")
+    return decoded_data
+
+
+def arrayToBytes(arr, encoding=None):
+    """
+    Return byte representation of numpy array
+    """
+
+    if _isVlenLike(arr.dtype):
+        nSize = getByteArraySize(arr)
+        buffer = bytearray(nSize)
+        offset = 0
+        nElements = math.prod(arr.shape)
+        arr1d = arr.reshape((nElements,))
+        for e in arr1d:
+            offset = copyElement(e, arr1d.dtype, buffer, offset)
+        data = bytes(buffer)
+    else:
+        if arr.dtype.kind == "O":
+            # object array, can't convert to bytes
+            raise TypeError("Object arrays with no vlen  are not supported for arrayToBytes")
+        # fixed length type
+        data = arr.tobytes()
+
+    if encoding:
+        data = encodeData(data)
+    return data
+
+
+def array_for_new_object(data, specified_dtype=None):
+    """Prepare an array from data used to create a new dataset or attribute"""
+
+    # We mostly let HDF5 convert data as necessary when it's written.
+    # But if we are going to a float16 datatype, pre-convert in python
+    # to workaround a bug in the conversion.
+    # https://github.com/h5py/h5py/issues/819
+    if is_float16_dtype(specified_dtype):
+        as_dtype = specified_dtype
+    elif not isinstance(data, np.ndarray) and (specified_dtype is not None):
+        # If we need to convert e.g. a list to an array, don't leave numpy
+        # to guess a dtype we already know.
+        as_dtype = specified_dtype
+    else:
+        as_dtype = guess_dtype(data)
+
+    data = np.asarray(data, order="C", dtype=as_dtype)
+
+    # In most cases, this does nothing. But if data was already an array,
+    # and as_dtype is a tagged h5py dtype (e.g. for an object array of strings),
+    # asarray() doesn't replace its dtype object. This gives it the tagged dtype:
+    if as_dtype is not None:
+        data = data.view(dtype=as_dtype)
+
+    return data
+
+
+def bytesToArray(data, dt, shape, encoding=None):
+    """
+    Create numpy array based on byte representation
+    """
+    if encoding:
+        # decode the data
+        # will raise ValueError if non-decodable
+        data = decodeData(data)
+    if not _isVlenLike(dt):
+        # regular numpy from string
+        arr = np.frombuffer(data, dtype=dt)
+    else:
+        nElements = getNumElements(shape)
+
+        arr = np.zeros((nElements,), dtype=dt)
+        offset = 0
+        for index in range(nElements):
+            offset = readElement(data, offset, arr, index, dt)
+    if shape is not None:
+        arr = arr.reshape(shape)
+    # check that we can update the array if needed
+    # Note: this seems to have been required starting with numpuy v 1.17
+    # Setting the flag directly is not recommended.
+    # cf: https://github.com/numpy/numpy/issues/9440
+
+    if not arr.flags["WRITEABLE"]:
+        arr_copy = arr.copy()
+        arr = arr_copy
+
+    return arr
+
+
+def getNumpyValue(value, dt=None, encoding=None):
+    """
+    Return value as numpy type for given dtype and encoding
+    Encoding is expected to be one of None or "base64"
+    """
+    # create a scalar numpy array
+    arr = np.zeros((), dtype=dt)
+
+    if encoding and not isinstance(value, str):
+        msg = "Expected value to be string to use encoding"
+        raise ValueError(msg)
+
+    if encoding == "base64":
+        try:
+            data = base64.decodebytes(value.encode("utf-8"))
+        except binascii.Error:
+            msg = f"Unable to decode base64 string: {value}"
+            # log.warn(msg)
+            raise ValueError(msg)
+        arr = bytesToArray(data, dt, dt.shape)
+    else:
+        if isinstance(value, list):
+            # convert to tuple
+            value = tuple(value)
+        elif dt.kind == "f" and isinstance(value, str) and value == "nan":
+            value = np.nan
+        else:
+            # use as is
+            pass
+        arr = np.asarray(value, dtype=dt.base)
+    return arr[()]
+
+
+def squeezeArray(data):
+    """
+    Reduce dimensions by removing any 1-extent dimensions.
+    Just return input if no 1-extent dimensions
+
+    Note: only works with ndarrays (for now at least)
+    """
+    if not isinstance(data, np.ndarray):
+        raise TypeError("expected ndarray")
+    if len(data.shape) <= 1:
+        return data
+    can_reduce = False
+    for extent in data.shape:
+        if extent == 1:
+            can_reduce = True
+            break
+    if can_reduce:
+        data = data.squeeze()
+    return data
+
+
+class IndexIterator(object):
+    """
+    Class to iterate through list of chunks of a given dataset
+    """
+
+    def __init__(self, shape, sel=None):
+        self._shape = shape
+        self._rank = len(self._shape)
+        self._stop = False
+
+        if self._rank < 1:
+            raise ValueError("IndexIterator can not be used on arrays of zero rank")
+
+        if sel is None:
+            # select over entire dataset
+            slices = []
+            for dim in range(self._rank):
+                slices.append(slice(0, self._shape[dim]))
+            self._sel = tuple(slices)
+        else:
+            if isinstance(sel, slice):
+                self._sel = (sel,)
+            else:
+                self._sel = sel
+        if len(self._sel) != self._rank:
+            raise ValueError("Invalid selection - selection region must have same rank as shape")
+        self._index = []
+        for dim in range(self._rank):
+            s = self._sel[dim]
+            if s.start < 0 or s.stop > self._shape[dim] or s.stop <= s.start:
+                raise ValueError(
+                    "Invalid selection - selection region must be within dataset space"
+                )
+            self._index.append(s.start)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self._stop:
+            raise StopIteration()
+        # bump up the last index and carry forward if we run outside the selection
+        dim = self._rank - 1
+        ret_index = self._index.copy()
+        while True:
+            s = self._sel[dim]
+            if s.step:
+                step = s.step
+            else:
+                step = 1
+            self._index[dim] += step
+
+            if self._index[dim] < s.stop:
+                # we still have room to extend along this dimensions
+                break
+
+            # reset to the start and continue iterating with higher dimension
+            self._index[dim] = s.start
+            dim -= 1
+            if dim < 0:
+                # ran past last index, stop iteration on next run
+                self._stop = True
+
+        return tuple(ret_index)
+
+
+def ndarray_compare(arr1, arr2):
+    # compare two numpy arrays.
+    # return true if the same (exclusive of null vs. empty array)
+    # false otherwise
+    # TBD: this is slow for multi-megabyte vlen arrays, needs to be optimized
+    if not isinstance(arr1, np.ndarray) and not isinstance(arr2, np.ndarray):
+        if not isinstance(arr1, np.void) and not isinstance(arr2, np.void):
+            if not arr1 and not arr2:
+                # treat 0, b"", and "" as equivalent (uninitialized vlen)
+                return True
+            # compare str and bytes by encoding/decoding
+            if isinstance(arr1, str) and isinstance(arr2, bytes):
+                return arr1.encode("utf-8") == arr2
+            if isinstance(arr1, bytes) and isinstance(arr2, str):
+                return arr1 == arr2.encode("utf-8")
+            return arr1 == arr2
+        if isinstance(arr1, np.void) and not isinstance(arr2, np.void):
+            if arr1.size == 0 and not arr2:
+                return True
+            else:
+                return False
+        if not isinstance(arr1, np.void) and isinstance(arr2, np.void):
+            if not arr1 and arr2.size == 0:
+                return True
+            else:
+                return False
+        # both np.voids
+        if arr1.size != arr2.size:
+            return False
+
+        if len(arr1) != len(arr2):
+            return False
+
+        for i in range(len(arr1)):
+            if not ndarray_compare(arr1[i], arr2[i]):
+                return False
+        return True
+
+    if isinstance(arr1, np.ndarray) and not isinstance(arr2, np.ndarray):
+        # same only if arr1 is empty and arr2 is 0
+        if arr1.size == 0 and not arr2:
+            return True
+        else:
+            return False
+    if not isinstance(arr1, np.ndarray) and isinstance(arr2, np.ndarray):
+        # same only if arr1 is empty and arr2 size is 0
+        if not arr1 and arr2.size == 0:
+            return True
+        else:
+            return False
+
+    # two ndarrays...
+    if arr1.shape != arr2.shape:
+        return False
+    if arr2.dtype != arr2.dtype:
+        return False
+
+    if isVlen(arr1.dtype):
+        # need to compare element by element
+
+        nElements = np.prod(arr1.shape)
+        arr1 = arr1.reshape((nElements,))
+        arr2 = arr2.reshape((nElements,))
+        for i in range(nElements):
+            if not ndarray_compare(arr1[i], arr2[i]):
+                return False
+        return True
+    else:
+        # can just us np array_compare
+        return np.array_equal(arr1, arr2)
+
+
+def getBroadcastShape(mshape, element_count):
+    # if element_count is less than the number of elements
+    # defined by mshape, return a numpy compatible broadcast
+    # shape that contains element_count elements.
+    # If non exists return None
+
+    if np.prod(mshape) == element_count:
+        return None
+
+    if element_count == 1:
+        # this always works
+        return [1,]
+
+    bcshape = []
+    rank = len(mshape)
+    for n in range(rank - 1):
+        bcshape.insert(0, mshape[rank - n - 1])
+        if element_count == np.prod(bcshape):
+            return bcshape  # have a match
+
+    return None  # no broadcast found

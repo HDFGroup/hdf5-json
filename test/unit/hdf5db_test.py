@@ -10,42 +10,23 @@
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
 import unittest
-import os
 import time
-import errno
-import os.path as op
-import stat
 import logging
-import shutil
+import math
+import os
+import numpy as np
 from h5json import Hdf5db
+from h5json import selections
+from h5json.hdf5db import ChunkIterator
+from h5json.objid import isRootObjId, isValidUuid, isSchema2Id
+from h5json.hdf5dtype import special_dtype, Reference, RegionReference
+from h5json.storage_plugin import NullPlugin
+from h5json.jsonstore.h5json_plugin import H5JsonPlugin
 
-
-UUID_LEN = 36  # length for uuid strings
-
-
-def getFile(name, tgt, ro=False):
-    src = "data/hdf5/" + name
-    logging.info("copying file to this directory: " + src)
-
-    filepath = "./out/" + tgt
-
-    if op.isfile(filepath):
-        # make sure it's writable, before we copy over it
-        os.chmod(filepath, stat.S_IWRITE | stat.S_IREAD)
-    shutil.copyfile(src, filepath)
-    if ro:
-        logging.info("make read-only")
-        os.chmod(filepath, stat.S_IREAD)
-    return filepath
-
-
-def removeFile(name):
-    try:
-        os.stat(name)
-    except OSError:
-        return
-        # file does not exist
-    os.remove(name)
+# fixture/output paths below are relative to the repo root - normalize cwd so
+# this file runs correctly whether invoked from the repo root or from within
+# test/unit itself
+os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
 
 class Hdf5dbTest(unittest.TestCase):
@@ -59,7 +40,7 @@ class Hdf5dbTest(unittest.TestCase):
         else:
             lhStdout = None
 
-        self.log.setLevel(logging.INFO)
+        self.log.setLevel(logging.DEBUG)
         # create logger
 
         handler = logging.FileHandler("./hdf5dbtest.log")
@@ -71,1248 +52,1886 @@ class Hdf5dbTest(unittest.TestCase):
         # self.log.propagate = False  # prevent log out going to stdout
         self.log.info("init!")
 
-        # create directory for test output files
-        if not os.path.exists("./out"):
-            os.makedirs("./out")
+    def testOpen(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        self.assertTrue(isSchema2Id(root_id))
+        self.assertTrue(isRootObjId(root_id))
+        self.assertFalse(db.closed)
+        self.assertEqual(db.getObjectIdByPath("/"), root_id)
+        db.close()
+        self.assertTrue(db.closed)
+        obj_id = db.open()
+        self.assertEqual(obj_id, root_id)
+        root_json = db.getObjectById(root_id)
+        self.assertFalse("id" in root_json)
+        db.close()
 
-    def testInvalidPath(self):
-        filepath = "/tmp/thisisnotafile.h5"
+    def testWith(self):
+        with Hdf5db(app_logger=self.log) as db:
+            root_id = db.open()
+            self.assertTrue(isRootObjId(root_id))
+
+    def testGroup(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        paths = db.getPathsForObjectId(root_id)
+        self.assertEqual(paths, ["/"])
+
+        g1_id = db.createGroup()
+        self.assertTrue(isSchema2Id(g1_id))
+        self.assertFalse(isRootObjId(g1_id))
+        self.assertTrue(isValidUuid(g1_id, obj_class="groups"))
+        paths = db.getPathsForObjectId(g1_id)
+        self.assertEqual(paths, [])
+        db.createHardLink(root_id, "g1", g1_id)
+        paths = db.getPathsForObjectId(g1_id)
+        self.assertEqual(paths, ["/g1"])
+
+        g2_id = db.createGroup()
+        self.assertTrue(isSchema2Id(g2_id))
+        self.assertFalse(isRootObjId(g2_id))
+        self.assertTrue(isValidUuid(g2_id, obj_class="groups"))
+        db.createHardLink(root_id, "g2", g2_id)
+
+        root_obj = db.getObjectById(root_id)
+        self.assertTrue("links" in root_obj)
+        root_links = root_obj["links"]
+        self.assertTrue("g1" in root_links)
+        self.assertTrue("g2" in root_links)
+        self.assertEqual(len(root_links), 2)
+
+        g1_1_id = db.createGroup()
+        self.assertTrue(isSchema2Id(g1_1_id))
+        self.assertFalse(isRootObjId(g1_1_id))
+        self.assertTrue(isValidUuid(g1_1_id, obj_class="groups"))
+        db.createHardLink(g1_id, "g1.1", g1_1_id)
+        paths = db.getPathsForObjectId(g1_1_id)
+        self.assertEqual(paths, ["/g1/g1.1"])
+
+        self.assertEqual(db.getObjectIdByPath("g1"), g1_id)
+        self.assertEqual(db.getObjectIdByPath("/g1"), g1_id)
+        self.assertEqual(db.getObjectIdByPath("g1/"), g1_id)
+
+        self.assertEqual(db.getObjectIdByPath("g1/g1.1"), g1_1_id)
+        self.assertEqual(db.getObjectIdByPath("/g1/g1.1"), g1_1_id)
+        self.assertEqual(db.getObjectIdByPath("g1/g1.1/"), g1_1_id)
+
+        grp1_json = db.getObjectById(g1_id)
+        self.assertTrue("links" in grp1_json)
+        g1_links = grp1_json["links"]
+        self.assertTrue("g1.1" in g1_links)
+        g1_1_link = db.getLink(g1_id, "g1.1")
+        self.assertEqual(g1_1_link["class"], "H5L_TYPE_HARD")
+        self.assertEqual(g1_1_link["id"], g1_1_id)
+        self.assertTrue(g1_1_link["created"] > time.time() - 1.0)
+
+        db.createSoftLink(g2_id, "slink", "somewhere")
+        soft_link = db.getLink(g2_id, "slink")
+        self.assertEqual(soft_link["class"], "H5L_TYPE_SOFT")
+        self.assertEqual(soft_link["h5path"], "somewhere")
+        self.assertTrue(soft_link["created"] > time.time() - 1.0)
+
+        db.createExternalLink(g2_id, "extlink", "somewhere", "someplace")
+        ext_link = db.getLink(g2_id, "extlink")
+        self.assertEqual(ext_link["class"], "H5L_TYPE_EXTERNAL")
+        self.assertEqual(ext_link["h5path"], "somewhere")
+        self.assertEqual(ext_link["file"], "someplace")
+        self.assertTrue(ext_link["created"] > time.time() - 1.0)
+
+        db.createCustomLink(g2_id, "cust", {"foo": "bar"})
+        cust_link = db.getLink(g2_id, "cust")
+        self.assertEqual(cust_link["class"], "H5L_TYPE_USER_DEFINED")
+        self.assertEqual(cust_link["foo"], "bar")
+        self.assertTrue(cust_link["created"] > time.time() - 1.0)
+
+        links = db.getLinks(g2_id)
+        self.assertEqual(len(links), 3)
+        for title in "slink", "extlink", "cust":
+            self.assertTrue(title in links)
+
+        db.deleteLink(g2_id, "cust")
+        links = db.getLinks(g2_id)
+        self.assertEqual(len(links), 2)
+        for title in "slink", "extlink":
+            self.assertTrue(title in links)
+
         try:
-            with Hdf5db(filepath, app_logger=self.log) as db:
-                self.log.error(f"Unexpected Hdf5db ref: {db}")
-                self.assertTrue(False)  # shouldn't get here
-        except IOError as e:
-            self.assertEqual(e.errno, errno.ENXIO)
-            self.assertEqual(e.strerror, "file not found")
-
-    def testInvalidFile(self):
-        filepath = getFile("notahdf5file.h5", "notahdf5file.h5")
-        try:
-            with Hdf5db(filepath, app_logger=self.log) as db:
-                self.log.error(f"Unexpected Hdf5db ref: {db}")
-                self.assertTrue(False)  # shouldn't get here
-        except IOError as e:
-            self.assertEqual(e.errno, errno.EINVAL)
-            self.assertEqual(e.strerror, "not an HDF5 file")
-
-    def testGetUUIDByPath(self):
-        # get test file
-        g1Uuid = None
-        filepath = getFile("tall.h5", "getuuidbypath.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            g1Uuid = db.getUUIDByPath("/g1")
-            self.assertEqual(len(g1Uuid), UUID_LEN)
-            obj = db.getObjByPath("/g1")
-            self.assertEqual(obj.name, "/g1")
-            for name in obj:
-                g = obj[name]
-                self.log.debug(f"got obj: {g}")
-            g1links = db.getLinkItems(g1Uuid)
-            self.assertEqual(len(g1links), 2)
-            for item in g1links:
-                self.assertEqual(len(item["id"]), UUID_LEN)
-
-        # end of with will close file
-        # open again and verify we can get obj by name
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            obj = db.getGroupObjByUuid(g1Uuid)
-            g1 = db.getObjByPath("/g1")
-            self.assertEqual(obj, g1)
-
-    def testGetCounts(self):
-        filepath = getFile("tall.h5", "testgetcounts_tall.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            cnt = db.getNumberOfGroups()
-            self.assertEqual(cnt, 6)
-            cnt = db.getNumberOfDatasets()
-            self.assertEqual(cnt, 4)
-            cnt = db.getNumberOfDatatypes()
-            self.assertEqual(cnt, 0)
-
-        filepath = getFile("empty.h5", "testgetcounts_empty.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            cnt = db.getNumberOfGroups()
-            self.assertEqual(cnt, 1)
-            cnt = db.getNumberOfDatasets()
-            self.assertEqual(cnt, 0)
-            cnt = db.getNumberOfDatatypes()
-            self.assertEqual(cnt, 0)
-
-    def testGroupOperations(self):
-        # get test file
-        filepath = getFile("tall.h5", "tall_del_g11.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            rootuuid = db.getUUIDByPath("/")
-            root = db.getGroupObjByUuid(rootuuid)
-            self.assertEqual("/", root.name)
-            rootLinks = db.getLinkItems(rootuuid)
-            self.assertEqual(len(rootLinks), 2)
-            g1uuid = db.getUUIDByPath("/g1")
-            self.assertEqual(len(g1uuid), UUID_LEN)
-            g1Links = db.getLinkItems(g1uuid)
-            self.assertEqual(len(g1Links), 2)
-            g11uuid = db.getUUIDByPath("/g1/g1.1")
-            db.deleteObjectByUuid("group", g11uuid)
-
-    def testCreateGroup(self):
-        # get test file
-        filepath = getFile("tall.h5", "tall_newgrp.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            rootUuid = db.getUUIDByPath("/")
-            numRootChildren = len(db.getLinkItems(rootUuid))
-            self.assertEqual(numRootChildren, 2)
-            newGrpUuid = db.createGroup()
-            newGrp = db.getGroupObjByUuid(newGrpUuid)
-            self.assertNotEqual(newGrp, None)
-            db.linkObject(rootUuid, newGrpUuid, "g3")
-            numRootChildren = len(db.getLinkItems(rootUuid))
-            self.assertEqual(numRootChildren, 3)
-            # verify linkObject can be called idempotent-ly
-            db.linkObject(rootUuid, newGrpUuid, "g3")
-
-    def testGetLinkItemsBatch(self):
-        # get test file
-        filepath = getFile("group100.h5", "getlinkitemsbatch.h5")
-        marker = None
-        count = 0
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            rootUuid = db.getUUIDByPath("/")
-            while True:
-                # get items 13 at a time
-                batch = db.getLinkItems(rootUuid, marker=marker, limit=13)
-                if len(batch) == 0:
-                    break  # done!
-                count += len(batch)
-                lastItem = batch[len(batch) - 1]
-                marker = lastItem["title"]
-        self.assertEqual(count, 100)
-
-    def testGetItemHardLink(self):
-        filepath = getFile("tall.h5", "getitemhardlink.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            grpUuid = db.getUUIDByPath("/g1/g1.1")
-            item = db.getLinkItemByUuid(grpUuid, "dset1.1.1")
-            self.assertTrue("id" in item)
-            self.assertEqual(item["title"], "dset1.1.1")
-            self.assertEqual(item["class"], "H5L_TYPE_HARD")
-            self.assertEqual(item["collection"], "datasets")
-            self.assertTrue("target" not in item)
-            self.assertTrue("mtime" in item)
-            self.assertTrue("ctime" in item)
-
-    def testGetItemSoftLink(self):
-        filepath = getFile("tall.h5", "getitemsoftlink.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            grpUuid = db.getUUIDByPath("/g1/g1.2/g1.2.1")
-            item = db.getLinkItemByUuid(grpUuid, "slink")
-            self.assertTrue("id" not in item)
-            self.assertEqual(item["title"], "slink")
-            self.assertEqual(item["class"], "H5L_TYPE_SOFT")
-            self.assertEqual(item["h5path"], "somevalue")
-            self.assertTrue("mtime" in item)
-            self.assertTrue("ctime" in item)
-
-    def testGetItemExternalLink(self):
-        filepath = getFile("tall_with_udlink.h5", "getitemexternallink.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            grpUuid = db.getUUIDByPath("/g1/g1.2")
-            item = db.getLinkItemByUuid(grpUuid, "extlink")
-            self.assertTrue("uuid" not in item)
-            self.assertEqual(item["title"], "extlink")
-            self.assertEqual(item["class"], "H5L_TYPE_EXTERNAL")
-            self.assertEqual(item["h5path"], "somepath")
-            self.assertEqual(item["file"], "somefile")
-            self.assertTrue("mtime" in item)
-            self.assertTrue("ctime" in item)
-
-    def testGetItemUDLink(self):
-        filepath = getFile("tall_with_udlink.h5", "getitemudlink.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            grpUuid = db.getUUIDByPath("/g2")
-            item = db.getLinkItemByUuid(grpUuid, "udlink")
-            self.assertTrue("uuid" not in item)
-            self.assertEqual(item["title"], "udlink")
-            self.assertEqual(item["class"], "H5L_TYPE_USER_DEFINED")
-            self.assertTrue("h5path" not in item)
-            self.assertTrue("file" not in item)
-            self.assertTrue("mtime" in item)
-            self.assertTrue("ctime" in item)
-
-    def testGetNumLinks(self):
-        filepath = getFile("tall.h5", "getnumlinks.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            g1 = db.getObjByPath("/g1")
-            numLinks = db.getNumLinksToObject(g1)
-            self.assertEqual(numLinks, 1)
-
-    def testGetLinks(self):
-        g12_links = ("extlink", "g1.2.1")
-        hardLink = None
-        externalLink = None
-        filepath = getFile("tall_with_udlink.h5", "getlinks.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            grpUuid = db.getUUIDByPath("/g1/g1.2")
-            items = db.getLinkItems(grpUuid)
-            self.assertEqual(len(items), 2)
-            for item in items:
-                self.assertTrue(item["title"] in g12_links)
-                if item["class"] == "H5L_TYPE_HARD":
-                    hardLink = item
-                elif item["class"] == "H5L_TYPE_EXTERNAL":
-                    externalLink = item
-        self.assertEqual(hardLink["collection"], "groups")
-        self.assertTrue("id" in hardLink)
-        self.assertTrue("id" not in externalLink)
-        self.assertEqual(externalLink["h5path"], "somepath")
-        self.assertEqual(externalLink["file"], "somefile")
-
-    def testDeleteLink(self):
-        # get test file
-        filepath = getFile("tall.h5", "deletelink.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            rootUuid = db.getUUIDByPath("/")
-            numRootChildren = len(db.getLinkItems(rootUuid))
-            self.assertEqual(numRootChildren, 2)
-            db.unlinkItem(rootUuid, "g2")
-            numRootChildren = len(db.getLinkItems(rootUuid))
-            self.assertEqual(numRootChildren, 1)
-
-    def testDeleteUDLink(self):
-        # get test file
-        filepath = getFile("tall_with_udlink.h5", "deleteudlink.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            g2Uuid = db.getUUIDByPath("/g2")
-            numG2Children = len(db.getLinkItems(g2Uuid))
-            self.assertEqual(numG2Children, 3)
-            got_exception = False
-            try:
-                db.unlinkItem(g2Uuid, "udlink")
-            except IOError as ioe:
-                got_exception = True
-                self.assertEqual(ioe.errno, errno.EPERM)
-            self.assertTrue(got_exception)
-            numG2Children = len(db.getLinkItems(g2Uuid))
-            self.assertEqual(numG2Children, 3)
-
-    def testReadOnlyGetUUID(self):
-        # get test file
-        filepath = getFile("tall.h5", "readonlygetuuid.h5", ro=True)
-        # remove db file!
-        removeFile("./out/." + "readonlygetuuid.h5")
-        g1Uuid = None
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            g1Uuid = db.getUUIDByPath("/g1")
-            self.assertEqual(len(g1Uuid), UUID_LEN)
-            obj = db.getObjByPath("/g1")
-            self.assertEqual(obj.name, "/g1")
-
-        # end of with will close file
-        # open again and verify we can get obj by name
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            obj = db.getGroupObjByUuid(g1Uuid)
-            g1 = db.getObjByPath("/g1")
-            self.assertEqual(obj, g1)
-            g1links = db.getLinkItems(g1Uuid)
-            self.assertEqual(len(g1links), 2)
-            for item in g1links:
-                self.assertEqual(len(item["id"]), UUID_LEN)
-
-    def testReadDataset(self):
-        filepath = getFile("tall.h5", "readdataset.h5")
-        d111_values = None
-        d112_values = None
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            d111Uuid = db.getUUIDByPath("/g1/g1.1/dset1.1.1")
-            self.assertEqual(len(d111Uuid), UUID_LEN)
-            d111_values = db.getDatasetValuesByUuid(d111Uuid)
-            self.assertTrue(type(d111_values) is list)
-            self.assertEqual(len(d111_values), 10)
-            for i in range(10):
-                arr = d111_values[i]
-                self.assertEqual(len(arr), 10)
-                for j in range(10):
-                    self.assertEqual(arr[j], i * j)
-
-            d112Uuid = db.getUUIDByPath("/g1/g1.1/dset1.1.2")
-            self.assertEqual(len(d112Uuid), UUID_LEN)
-            d112_values = db.getDatasetValuesByUuid(d112Uuid)
-            self.assertTrue(type(d112_values) is list)
-            self.assertEqual(len(d112_values), 20)
-            for i in range(20):
-                self.assertEqual(d112_values[i], i)
-
-    def testReadDatasetBinary(self):
-        filepath = getFile("tall.h5", "readdatasetbinary.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            d111Uuid = db.getUUIDByPath("/g1/g1.1/dset1.1.1")
-            self.assertEqual(len(d111Uuid), UUID_LEN)
-            d111_data = db.getDatasetValuesByUuid(d111Uuid, format="binary")
-            self.assertTrue(type(d111_data) is bytes)
-            self.assertEqual(len(d111_data), 400)  # 10x10x(4 byte type)
-
-            d112Uuid = db.getUUIDByPath("/g1/g1.1/dset1.1.2")
-            self.assertEqual(len(d112Uuid), UUID_LEN)
-            d112_data = db.getDatasetValuesByUuid(d112Uuid, format="binary")
-            self.assertEqual(len(d112_data), 80)  # 20x(4 byte type)
-
-    def testReadCompoundDataset(self):
-        filepath = getFile("compound.h5", "readcompound.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            dset_uuid = db.getUUIDByPath("/dset")
-            self.assertEqual(len(dset_uuid), UUID_LEN)
-            dset_values = db.getDatasetValuesByUuid(dset_uuid)
-
-            self.assertEqual(len(dset_values), 72)
-            elem = dset_values[0]
-            self.assertEqual(elem[0], 24)
-            self.assertEqual(elem[1], "13:53")
-            self.assertEqual(elem[2], 63)
-            self.assertEqual(elem[3], 29.88)
-            self.assertEqual(elem[4], "SE 10")
-
-    def testReadDatasetCreationProp(self):
-        filepath = getFile("compound.h5", "readdatasetcreationprop.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            dset_uuid = db.getUUIDByPath("/dset")
-            self.assertEqual(len(dset_uuid), UUID_LEN)
-            dset_item = db.getDatasetItemByUuid(dset_uuid)
-            self.assertTrue("creationProperties" in dset_item)
-            creationProp = dset_item["creationProperties"]
-            self.assertTrue("fillValue" in creationProp)
-            fillValue = creationProp["fillValue"]
-
-            self.assertEqual(fillValue[0], 999)
-            self.assertEqual(fillValue[1], "99:90")
-            self.assertEqual(fillValue[2], 999)
-            self.assertEqual(fillValue[3], 999.0)
-            self.assertEqual(fillValue[4], "N")
-
-    def testCreateScalarDataset(self):
-        creation_props = {
-            "allocTime": "H5D_ALLOC_TIME_LATE",
-            "fillTime": "H5D_FILL_TIME_IFSET",
-            "fillValue": "",
-            "layout": {"class": "H5D_CONTIGUOUS"},
-        }
-        datatype = {
-            "charSet": "H5T_CSET_ASCII",
-            "class": "H5T_STRING",
-            "length": 1,
-            "strPad": "H5T_STR_NULLPAD",
-        }
-        filepath = getFile("empty.h5", "createscalardataset.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            dims = ()  # if no space in body, default to scalar
-            max_shape = None
-
-            db.createDataset(
-                datatype, dims, max_shape=max_shape, creation_props=creation_props
-            )
-
-    def testCreate1dDataset(self):
-        datatype = "H5T_STD_I64LE"
-        dims = (10,)
-        filepath = getFile("empty.h5", "create1ddataset.h5")
-        dset_uuid = None
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            rsp = db.createDataset(datatype, dims)
-
-            dset_uuid = rsp["id"]
-            item = db.getDatasetItemByUuid(dset_uuid)
-            self.assertEqual(item["attributeCount"], 0)
-            type_item = item["type"]
-            self.assertEqual(type_item["class"], "H5T_INTEGER")
-            self.assertEqual(type_item["base"], "H5T_STD_I64LE")
-            shape_item = item["shape"]
-            self.assertEqual(shape_item["class"], "H5S_SIMPLE")
-            self.assertEqual(shape_item["dims"], (10,))
-
-    def testCreate2dExtendableDataset(self):
-        datatype = "H5T_STD_I64LE"
-        dims = (10, 10)
-        max_shape = (None, 10)
-        filepath = getFile("empty.h5", "create2dextendabledataset.h5")
-        dset_uuid = None
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            rsp = db.createDataset(datatype, dims, max_shape=max_shape)
-            dset_uuid = rsp["id"]
-            item = db.getDatasetItemByUuid(dset_uuid)
-            self.assertEqual(item["attributeCount"], 0)
-            type_item = item["type"]
-            self.assertEqual(type_item["class"], "H5T_INTEGER")
-            self.assertEqual(type_item["base"], "H5T_STD_I64LE")
-            shape_item = item["shape"]
-            self.assertEqual(shape_item["class"], "H5S_SIMPLE")
-            self.assertEqual(shape_item["dims"], (10, 10))
-            self.assertTrue("maxdims" in shape_item)
-            self.assertEqual(shape_item["maxdims"], [0, 10])
-
-    def testCreateCommittedTypeDataset(self):
-        filepath = getFile("empty.h5", "createcommittedtypedataset.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            root_uuid = db.getUUIDByPath("/")
-            self.assertTrue(len(root_uuid) >= 36)
-
-            datatype = {
-                "charSet": "H5T_CSET_ASCII",
-                "class": "H5T_STRING",
-                "strPad": "H5T_STR_NULLTERM",
-                "length": 15,
-            }
-            item = db.createCommittedType(datatype)
-            type_uuid = item["id"]
-
-            dims = ()  # if no space in body, default to scalar
-            rsp = db.createDataset(type_uuid, dims, max_shape=None, creation_props=None)
-            dset_uuid = rsp["id"]
-            item = db.getDatasetItemByUuid(dset_uuid)
-            type_item = item["type"]
-            self.assertTrue("uuid" in type_item)
-            self.assertEqual(type_item["uuid"], type_uuid)
-
-    def testCreateCommittedCompoundTypeDataset(self):
-        filepath = getFile("empty.h5", "createcommittedcompoundtypedataset.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            root_uuid = db.getUUIDByPath("/")
-            self.assertTrue(len(root_uuid) >= 36)
-
-            datatype = {"class": "H5T_COMPOUND", "fields": []}
-
-            type_fields = []
-            type_fields.append({"name": "field_1", "type": "H5T_STD_I64BE"})
-            type_fields.append({"name": "field_2", "type": "H5T_IEEE_F64BE"})
-
-            datatype["fields"] = type_fields
-
-            creation_props = {"fillValue": [0, 0.0]}
-
-            item = db.createCommittedType(datatype)
-            type_uuid = item["id"]
-
-            dims = ()  # if no space in body, default to scalar
-            rsp = db.createDataset(
-                type_uuid, dims, max_shape=None, creation_props=creation_props
-            )
-            dset_uuid = rsp["id"]
-            item = db.getDatasetItemByUuid(dset_uuid)
-            type_item = item["type"]
-            self.assertTrue("uuid" in type_item)
-            self.assertEqual(type_item["uuid"], type_uuid)
-
-    def testReadZeroDimDataset(self):
-        filepath = getFile("zerodim.h5", "readzerodeimdataset.h5")
-
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            dsetUuid = db.getUUIDByPath("/dset")
-            self.assertEqual(len(dsetUuid), UUID_LEN)
-            dset_value = db.getDatasetValuesByUuid(dsetUuid)
-            self.assertEqual(dset_value, 42)
-
-    def testReadNullSpaceDataset(self):
-        filepath = getFile("null_space_dset.h5", "readnullspacedataset.h5")
-
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            dsetUuid = db.getUUIDByPath("/DS1")
-            self.assertEqual(len(dsetUuid), UUID_LEN)
-            obj = db.getDatasetObjByUuid(dsetUuid)
-            shape_item = db.getShapeItemByDsetObj(obj)
-            self.assertTrue("class" in shape_item)
-            self.assertEqual(shape_item["class"], "H5S_NULL")
-
-    def testReadScalarSpaceArrayDataset(self):
-        filepath = getFile("scalar_array_dset.h5", "readscalarspacearraydataset.h5")
-
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            dsetUuid = db.getUUIDByPath("/DS1")
-            self.assertEqual(len(dsetUuid), UUID_LEN)
-            obj = db.getDatasetObjByUuid(dsetUuid)
-            shape_item = db.getShapeItemByDsetObj(obj)
-            self.assertTrue("class" in shape_item)
-            self.assertEqual(shape_item["class"], "H5S_SCALAR")
-
-    def testReadNullSpaceAttribute(self):
-        filepath = getFile("null_space_attr.h5", "readnullspaceattr.h5")
-
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            rootUuid = db.getUUIDByPath("/")
-            self.assertEqual(len(rootUuid), UUID_LEN)
-            item = db.getAttributeItem("groups", rootUuid, "attr1")
-            self.assertTrue("shape" in item)
-            shape_item = item["shape"]
-            self.assertTrue("class" in shape_item)
-            self.assertEqual(shape_item["class"], "H5S_NULL")
-
-    def testReadAttribute(self):
-        # getAttributeItemByUuid
-        item = None
-        filepath = getFile("tall.h5", "readattribute.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            rootUuid = db.getUUIDByPath("/")
-            self.assertEqual(len(rootUuid), UUID_LEN)
-            item = db.getAttributeItem("groups", rootUuid, "attr1")
-            self.assertTrue(item is not None)
-
-    def testWriteScalarAttribute(self):
-        # getAttributeItemByUuid
-        item = None
-        filepath = getFile("empty.h5", "writescalarattribute.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            root_uuid = db.getUUIDByPath("/")
-            dims = ()
-            datatype = "H5T_STD_I32LE"
-            value = 42
-            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
-            item = db.getAttributeItem("groups", root_uuid, "A1")
-            self.assertEqual(item["name"], "A1")
-            self.assertEqual(item["value"], 42)
-            now = int(time.time())
-            self.assertTrue(item["ctime"] > now - 5)
-            self.assertTrue(item["mtime"] > now - 5)
-            shape = item["shape"]
-            self.assertEqual(shape["class"], "H5S_SCALAR")
-            item_type = item["type"]
-
-            self.assertEqual(item_type["class"], "H5T_INTEGER")
-            self.assertEqual(item_type["base"], "H5T_STD_I32LE")
-            self.assertEqual(
-                len(item_type.keys()), 2
-            )  # just two keys should be returned
-
-    def testWriteFixedStringAttribute(self):
-        # getAttributeItemByUuid
-        item = None
-        filepath = getFile("empty.h5", "writefixedstringattribute.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            root_uuid = db.getUUIDByPath("/")
-            dims = ()
-            datatype = {
-                "charSet": "H5T_CSET_ASCII",
-                "class": "H5T_STRING",
-                "strPad": "H5T_STR_NULLPAD",
-                "length": 13,
-            }
-            value = "Hello, world!"
-            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
-            item = db.getAttributeItem("groups", root_uuid, "A1")
-            self.assertEqual(item["name"], "A1")
-            self.assertEqual(item["value"], "Hello, world!")
-            now = int(time.time())
-            self.assertTrue(item["ctime"] > now - 5)
-            self.assertTrue(item["mtime"] > now - 5)
-            shape = item["shape"]
-            self.assertEqual(shape["class"], "H5S_SCALAR")
-            item_type = item["type"]
-            self.assertEqual(item_type["length"], 13)
-            self.assertEqual(item_type["class"], "H5T_STRING")
-            self.assertEqual(item_type["strPad"], "H5T_STR_NULLPAD")
-            self.assertEqual(item_type["charSet"], "H5T_CSET_ASCII")
-
-    def testWriteFixedNullTermStringAttribute(self):
-        # getAttributeItemByUuid
-        item = None
-        filepath = getFile("empty.h5", "writefixednulltermstringattribute.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            root_uuid = db.getUUIDByPath("/")
-            dims = ()
-            datatype = {
-                "charSet": "H5T_CSET_ASCII",
-                "class": "H5T_STRING",
-                "strPad": "H5T_STR_NULLTERM",
-                "length": 13,
-            }
-            value = b"Hello, world!"
-
-            # write the attribute
-            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
-            # read it back
-            item = db.getAttributeItem("groups", root_uuid, "A1")
-
-            self.assertEqual(item["name"], "A1")
-            # the following compare fails - see issue #34
-            # self.assertEqual(item['value'], "Hello, world!")
-            now = int(time.time())
-            self.assertTrue(item["ctime"] > now - 5)
-            self.assertTrue(item["mtime"] > now - 5)
-            shape = item["shape"]
-            self.assertEqual(shape["class"], "H5S_SCALAR")
-            item_type = item["type"]
-            self.assertEqual(item_type["length"], 13)
-            self.assertEqual(item_type["class"], "H5T_STRING")
-            # NULLTERM get's converted to NULLPAD since the numpy dtype does not
-            # support other padding conventions.
-            self.assertEqual(item_type["strPad"], "H5T_STR_NULLPAD")
-            self.assertEqual(item_type["charSet"], "H5T_CSET_ASCII")
-
-    def testWriteVlenStringAttribute(self):
-        # getAttributeItemByUuid
-        item = None
-        filepath = getFile("empty.h5", "writevlenstringattribute.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            root_uuid = db.getUUIDByPath("/")
-            dims = ()
-            datatype = {
-                "charSet": "H5T_CSET_ASCII",
-                "class": "H5T_STRING",
-                "strPad": "H5T_STR_NULLTERM",
-                "length": "H5T_VARIABLE",
-            }
-
-            # value = np.string_("Hello, world!")
-            value = "Hello, world!"
-            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
-            item = db.getAttributeItem("groups", root_uuid, "A1")
-            self.assertEqual(item["name"], "A1")
-            self.assertEqual(item["value"], "Hello, world!")
-            now = int(time.time())
-            self.assertTrue(item["ctime"] > now - 5)
-            self.assertTrue(item["mtime"] > now - 5)
-            shape = item["shape"]
-            self.assertEqual(shape["class"], "H5S_SCALAR")
-            item_type = item["type"]
-            self.assertEqual(item_type["class"], "H5T_STRING")
-            self.assertEqual(item_type["strPad"], "H5T_STR_NULLTERM")
-            self.assertEqual(item_type["charSet"], "H5T_CSET_ASCII")
-            self.assertEqual(item_type["length"], "H5T_VARIABLE")
-
-    def testReadVlenStringDataset(self):
-        item = None
-        filepath = getFile("vlen_string_dset.h5", "vlen_string_dset.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            dset_uuid = db.getUUIDByPath("/DS1")
-            item = db.getDatasetItemByUuid(dset_uuid)
-            shape = item["shape"]
-            self.assertEqual(shape["class"], "H5S_SIMPLE")
-            dims = shape["dims"]
-            self.assertEqual(len(dims), 1)
-            self.assertEqual(dims[0], 4)
-            item_type = item["type"]
-            self.assertEqual(item_type["class"], "H5T_STRING")
-            # actual padding is SPACEPAD - See issue #32
-            self.assertEqual(item_type["strPad"], "H5T_STR_NULLTERM")
-            self.assertEqual(item_type["charSet"], "H5T_CSET_ASCII")
-            self.assertEqual(item_type["length"], "H5T_VARIABLE")
-            row = db.getDatasetValuesByUuid(dset_uuid, (slice(0, 1),))
-            self.assertEqual(row, ["Parting"])
-
-    def testReadVlenStringDataset_utc(self):
-        item = None
-        filepath = getFile("vlen_string_dset_utc.h5", "vlen_string_dset_utc.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            dset_uuid = db.getUUIDByPath("/ds1")
-            item = db.getDatasetItemByUuid(dset_uuid)
-            shape = item["shape"]
-            self.assertEqual(shape["class"], "H5S_SIMPLE")
-            dims = shape["dims"]
-            self.assertEqual(len(dims), 1)
-            self.assertEqual(dims[0], 2293)
-            item_type = item["type"]
-            self.assertEqual(item_type["class"], "H5T_STRING")
-            self.assertEqual(item_type["strPad"], "H5T_STR_NULLTERM")
-            self.assertEqual(item_type["charSet"], "H5T_CSET_ASCII")
-            self.assertEqual(item_type["length"], "H5T_VARIABLE")
-            # next line throws conversion error - see issue #19
-            # row = db.getDatasetValuesByUuid(dset_uuid, (slice(0, 1),))
-
-    def testReadFixedStringDataset(self):
-        item = None
-        filepath = getFile("fixed_string_dset.h5", "fixed_string_dset.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            dset_uuid = db.getUUIDByPath("/DS1")
-            item = db.getDatasetItemByUuid(dset_uuid)
-            shape = item["shape"]
-            self.assertEqual(shape["class"], "H5S_SIMPLE")
-            dims = shape["dims"]
-            self.assertEqual(len(dims), 1)
-            self.assertEqual(dims[0], 4)
-            item_type = item["type"]
-            self.assertEqual(item_type["class"], "H5T_STRING")
-            self.assertEqual(item_type["strPad"], "H5T_STR_NULLPAD")
-            self.assertEqual(item_type["charSet"], "H5T_CSET_ASCII")
-            self.assertEqual(item_type["length"], 7)
-            row = db.getDatasetValuesByUuid(dset_uuid)
-            self.assertEqual(row, ["Parting", "is such", "sweet", "sorrow."])
-            row = db.getDatasetValuesByUuid(dset_uuid, (slice(0, 1),))
-            self.assertEqual(
-                row,
-                [
-                    "Parting",
-                ],
-            )
-            row = db.getDatasetValuesByUuid(dset_uuid, (slice(2, 3),))
-            self.assertEqual(
-                row,
-                [
-                    "sweet",
-                ],
-            )
-
-    def testReadFixedStringDatasetBinary(self):
-        item = None
-        filepath = getFile("fixed_string_dset.h5", "fixed_string_dset.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            dset_uuid = db.getUUIDByPath("/DS1")
-            item = db.getDatasetItemByUuid(dset_uuid)
-            shape = item["shape"]
-            self.assertEqual(shape["class"], "H5S_SIMPLE")
-            dims = shape["dims"]
-            self.assertEqual(len(dims), 1)
-            self.assertEqual(dims[0], 4)
-            item_type = item["type"]
-            self.assertEqual(item_type["class"], "H5T_STRING")
-            self.assertEqual(item_type["strPad"], "H5T_STR_NULLPAD")
-            self.assertEqual(item_type["charSet"], "H5T_CSET_ASCII")
-            self.assertEqual(item_type["length"], 7)
-            row = db.getDatasetValuesByUuid(dset_uuid, format="binary")
-            self.assertEqual(row, b"Partingis suchsweet\x00\x00sorrow.")
-            row = db.getDatasetValuesByUuid(dset_uuid, (slice(0, 1),), format="binary")
-            self.assertEqual(row, b"Parting")
-            row = db.getDatasetValuesByUuid(dset_uuid, (slice(2, 3),), format="binary")
-            self.assertEqual(row, b"sweet\x00\x00")
-
-    def testWriteVlenUnicodeAttribute(self):
-        # getAttributeItemByUuid
-        item = None
-        filepath = getFile("empty.h5", "writevlenunicodeattribute.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            root_uuid = db.getUUIDByPath("/")
-            dims = ()
-            datatype = {
-                "charSet": "H5T_CSET_UTF8",
-                "class": "H5T_STRING",
-                "strPad": "H5T_STR_NULLTERM",
-                "length": "H5T_VARIABLE",
-            }
-            value = "\u6b22\u8fce\u63d0\u4ea4\u5fae\u535a\u641c\u7d22\u4f7f\u7528\u53cd\u9988\uff0c\u8bf7\u76f4\u63a5"
-            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
-            item = db.getAttributeItem("groups", root_uuid, "A1")
-
-            self.assertEqual(item["name"], "A1")
-            self.assertEqual(item["value"], value)
-            now = int(time.time())
-            self.assertTrue(item["ctime"] > now - 5)
-            self.assertTrue(item["mtime"] > now - 5)
-            shape = item["shape"]
-            self.assertEqual(shape["class"], "H5S_SCALAR")
-            item_type = item["type"]
-            self.assertEqual(item_type["class"], "H5T_STRING")
-            self.assertEqual(item_type["strPad"], "H5T_STR_NULLTERM")
-            self.assertEqual(item_type["charSet"], "H5T_CSET_UTF8")
-            self.assertEqual(item_type["length"], "H5T_VARIABLE")
-
-    def testWriteIntAttribute(self):
-        # getAttributeItemByUuid
-        item = None
-        filepath = getFile("empty.h5", "writeintattribute.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            root_uuid = db.getUUIDByPath("/")
-            dims = (5,)
-            datatype = "H5T_STD_I16LE"
-            value = [2, 3, 5, 7, 11]
-            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
-            item = db.getAttributeItem("groups", root_uuid, "A1")
-            self.assertEqual(item["name"], "A1")
-            self.assertEqual(item["value"], [2, 3, 5, 7, 11])
-            now = int(time.time())
-            self.assertTrue(item["ctime"] > now - 5)
-            self.assertTrue(item["mtime"] > now - 5)
-            shape = item["shape"]
-            self.assertEqual(shape["class"], "H5S_SIMPLE")
-            item_type = item["type"]
-            self.assertEqual(item_type["class"], "H5T_INTEGER")
-            self.assertEqual(item_type["base"], "H5T_STD_I16LE")
+            db.getObjectIdByPath("/g1/foo")
+            self.assertTrue(False)
+        except KeyError:
+            pass  # expected
+
+        ret = db.getLink(g2_id, "not_a_link")
+        self.assertTrue(ret is None)
+
+        db.createAttribute(g1_id, "a1", "hello")
+        db.createAttribute(g1_id, "a2", "bye-bye")
+        self.assertEqual(len(db.getAttributes(g1_id)), 2)
+        a1_attr = db.getAttribute(g1_id, "a1")
+        self.assertEqual(a1_attr["value"], "hello")
+        self.assertTrue("shape" in a1_attr)
+        attr_shape = a1_attr["shape"]
+        self.assertEqual(attr_shape["class"], "H5S_SCALAR")
+
+        db.deleteAttribute(g1_id, "a1")
+        self.assertEqual(len(db.getAttributes(g1_id)), 1)
+        self.assertEqual(db.getAttribute(g1_id, "a1"), None)
+        db.close()
+
+    def testCircularLinks(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        g1_id = db.createGroup()
+        db.createHardLink(root_id, "g1", g1_id)
+        g2_id = db.createGroup()
+        db.createHardLink(g1_id, "g2", g2_id)
+        # create circular link
+        db.createHardLink(g2_id, "g1", g1_id)
+
+        g1_json = db.getObjectById(g1_id)
+        self.assertTrue("links" in g1_json)
+        g1_links = g1_json["links"]
+        self.assertTrue("g2" in g1_links)
+        self.assertEqual(len(g1_links), 1)
+
+        g2_json = db.getObjectById(g2_id)
+        self.assertTrue("links" in g2_json)
+        g2_links = g2_json["links"]
+        self.assertTrue("g1" in g2_links)
+        self.assertEqual(len(g2_links), 1)
+
+        paths = db.getPathsForObjectId(g2_id)
+        # only the canonical path is returned
+        self.assertEqual(paths, ["/g1/g2"])
+        grp_id = db.getObjectIdByPath("/g1/g2")
+        self.assertEqual(grp_id, g2_id)
+        # you can still get objects via circular paths...
+        grp_id = db.getObjectIdByPath("/g1/g2/g1")
+        self.assertEqual(grp_id, g1_id)
+        grp_id = db.getObjectIdByPath("/g1/g2/g1/g2")
+        self.assertEqual(grp_id, g2_id)
+
+        db.close()
+
+    def testNullSpaceAttribute(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        db.createAttribute(root_id, "A1", None, shape="H5S_NULL", dtype=np.int32)
+        item = db.getAttribute(root_id, "A1")
+        self.assertTrue("shape" in item)
+        shape_item = item["shape"]
+        self.assertTrue("class" in shape_item)
+        self.assertEqual(shape_item["class"], "H5S_NULL")
+        self.assertFalse("value" in item)
+        self.assertTrue(item["created"] > time.time() - 1.0)
+        value = db.getAttributeValue(root_id, "A1")
+        self.assertEqual(value, None)
+        db.close()
+
+    def testScalarAttribute(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dims = ()
+        value = 42
+        db.createAttribute(root_id, "A1", value, shape=dims, dtype=np.int32)
+        item = db.getAttribute(root_id, "A1")
+        shape_json = item["shape"]
+        self.assertEqual(shape_json["class"], "H5S_SCALAR")
+        self.assertEqual(len(shape_json.keys()), 1)  # just one key should be returned
+        item_type = item["type"]
+        self.assertEqual(item_type["class"], "H5T_INTEGER")
+        self.assertEqual(item_type["base"], "H5T_STD_I32LE")
+        self.assertEqual(len(item_type.keys()), 2)  # just two keys should be returned
+        self.assertEqual(item["value"], 42)
+        now = int(time.time())
+        self.assertTrue(item["created"] > now - 1)
+        shape = item["shape"]
+        self.assertEqual(shape["class"], "H5S_SCALAR")
+
+        self.assertEqual(item_type["class"], "H5T_INTEGER")
+        self.assertEqual(item_type["base"], "H5T_STD_I32LE")
+
+        value = db.getAttributeValue(root_id, "A1")
+        self.assertTrue(isinstance(value, np.ndarray))
+        self.assertEqual(value.shape, ())
+        self.assertEqual(value.dtype, np.int32)
+        self.assertEqual(value[()], 42)
+        db.close()
+
+    def testArrayTypeAttribute(self):
+        # A top-level array-typed attribute (dtype.subdtype is not None) -
+        # one scalar attribute whose value is itself a fixed-size array.
+        #
+        # Regression test: createAttribute() used to convert the value via
+        # np.asarray(value, dtype=<array dtype>) *before* unwrapping the
+        # array type. numpy silently broadcasts in that case rather than
+        # reinterpreting a matching-shape array as a single array-typed
+        # element - e.g. np.asarray([0, 1, 2], dtype='(3,)i4') produces a
+        # (3, 3) broadcast, not the intended 3-element scalar. That also
+        # lost the array type itself: since the (already-broadcast) value's
+        # apparent shape no longer matched the expected shape, the "advertised"
+        # shape/dtype reduction that follows was skipped, so the stored type
+        # ended up as a plain H5T_INTEGER instead of H5T_ARRAY.
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dt = np.dtype("(3,)i4")
+        value = np.arange(3, dtype="i4")
+        db.createAttribute(root_id, "A1", value, shape=value.shape, dtype=dt)
+        item = db.getAttribute(root_id, "A1")
+
+        shape_json = item["shape"]
+        # the array's own shape (3,) is entirely absorbed into the type,
+        # so the attribute itself is a scalar
+        self.assertEqual(shape_json["class"], "H5S_SCALAR")
+
+        item_type = item["type"]
+        self.assertEqual(item_type["class"], "H5T_ARRAY")
+        self.assertEqual(item_type["dims"], (3,))
+        self.assertEqual(item_type["base"]["class"], "H5T_INTEGER")
+        self.assertEqual(item_type["base"]["base"], "H5T_STD_I32LE")
+
+        # the stored value must be the plain 3-element array, not a
+        # broadcast 3x3 result
+        self.assertEqual(item["value"], [0, 1, 2])
+
+        ret_value = db.getAttributeValue(root_id, "A1")
+        self.assertTrue(isinstance(ret_value, np.ndarray))
+        self.assertEqual(ret_value.shape, (3,))
+        self.assertEqual(ret_value.dtype, np.dtype("i4"))
+        self.assertTrue((ret_value == value).all())
+        db.close()
+
+    def testFixedStringAttribute(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        value = "Hello, world!"
+        db.createAttribute(root_id, "A1", value, dtype=np.dtype("S13"))  # dims, datatype, value)
+        item = db.getAttribute(root_id, "A1")
+        shape_json = item["shape"]
+        self.assertEqual(shape_json["class"], "H5S_SCALAR")
+        item_type = item["type"]
+        self.assertEqual(item_type["class"], "H5T_STRING")
+        self.assertEqual(item_type["strPad"], "H5T_STR_NULLPAD")
+        self.assertEqual(item_type["length"], 13)
+        self.assertEqual(item_type["charSet"], "H5T_CSET_ASCII")
+        self.assertEqual(item["value"], "Hello, world!")
+        now = int(time.time())
+        self.assertTrue(item["created"] > now - 1)
+        ret_value = db.getAttributeValue(root_id, "A1")
+        self.assertTrue(isinstance(ret_value, np.ndarray))
+        self.assertEqual(ret_value.shape, ())
+        self.assertEqual(ret_value.dtype, np.dtype("S13"))
+        self.assertEqual(ret_value[()], value.encode("ascii"))
+        db.close()
+
+    def testVlenAsciiAttribute(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        value = b"Hello, world!"
+        dt = special_dtype(vlen=bytes)
+
+        # write the attribute
+        db.createAttribute(root_id, "A1", value, dtype=dt)
+        # read it back
+        item = db.getAttribute(root_id, "A1")
+        shape_json = item["shape"]
+        self.assertEqual(shape_json["class"], "H5S_SCALAR")
+        item_type = item["type"]
+        self.assertEqual(item_type["class"], "H5T_STRING")
+        self.assertEqual(item_type["strPad"], "H5T_STR_NULLTERM")
+        self.assertEqual(item_type["length"], "H5T_VARIABLE")
+        self.assertEqual(item_type["charSet"], "H5T_CSET_ASCII")
+        self.assertEqual(item["value"], "Hello, world!")
+
+        ret_value = db.getAttributeValue(root_id, "A1")
+        self.assertTrue(isinstance(ret_value, np.ndarray))
+        self.assertEqual(ret_value.shape, ())
+        self.assertEqual(ret_value.dtype, dt)
+        self.assertEqual(ret_value[()], value)
+
+        now = int(time.time())
+        self.assertTrue(item["created"] > now - 1)
+        db.close()
+
+    def testVlenUtf8Attribute(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        value = b"Hello, world!"
+        dt = special_dtype(vlen=str)
+
+        # write the attribute
+        db.createAttribute(root_id, "A1", value, dtype=dt)
+        # read it back
+        item = db.getAttribute(root_id, "A1")
+        shape_json = item["shape"]
+        self.assertEqual(shape_json["class"], "H5S_SCALAR")
+        item_type = item["type"]
+        self.assertEqual(item_type["class"], "H5T_STRING")
+        self.assertEqual(item_type["strPad"], "H5T_STR_NULLTERM")
+        self.assertEqual(item_type["length"], "H5T_VARIABLE")
+        self.assertEqual(item_type["charSet"], "H5T_CSET_UTF8")
+        self.assertEqual(item["value"], "Hello, world!")
+
+        ret_value = db.getAttributeValue(root_id, "A1")
+        self.assertTrue(isinstance(ret_value, np.ndarray))
+        self.assertEqual(ret_value.shape, ())
+        self.assertEqual(ret_value.dtype, dt)
+        self.assertEqual(ret_value[()].encode(), value)
+
+        now = int(time.time())
+        self.assertTrue(item["created"] > now - 1)
+        db.close()
+
+    def testVlenUtf8AttributeInvalidUtf8(self):
+        # createAttribute() fails fast (via array_util.validateUtf8()) on a
+        # UTF8-charset string value that can't actually be encoded as valid
+        # UTF-8 (a lone surrogate here), rather than silently storing it and
+        # deferring the failure to a later getAttributeValue() call. A
+        # client that legitimately has non-UTF8 text/binary data should
+        # store it as base64-encoded bytes and read it back as bytes instead.
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        dt = special_dtype(vlen=str)
+        with self.assertRaises(UnicodeEncodeError):
+            db.createAttribute(root_id, "A1", "\udc80abc", dtype=dt)
+
+        # the attribute was never actually created
+        self.assertIsNone(db.getAttribute(root_id, "A1"))
+
+        db.close()
+
+    def testIntAttribute(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        value = [2, 3, 5, 7, 11]
+        db.createAttribute(root_id, "A1", value, dtype=np.int16)
+        item = db.getAttribute(root_id, "A1")
+        self.assertEqual(item["value"], [2, 3, 5, 7, 11])
+        now = int(time.time())
+        self.assertTrue(item["created"] > now - 1)
+        item_shape = item["shape"]
+        self.assertEqual(item_shape["class"], "H5S_SIMPLE")
+        self.assertEqual(item_shape["dims"], [5,])
+        item_type = item["type"]
+        self.assertEqual(item_type["class"], "H5T_INTEGER")
+        self.assertEqual(item_type["base"], "H5T_STD_I16LE")
+
+        ret_value = db.getAttributeValue(root_id, "A1")
+        self.assertTrue(isinstance(ret_value, np.ndarray))
+        self.assertEqual(ret_value.shape, (len(value),))
+        self.assertEqual(ret_value.dtype, np.int16)
+        for i in range(len(value)):
+            self.assertEqual(ret_value[i], value[i])
+
+        now = int(time.time())
+        self.assertTrue(item["created"] > now - 1)
+
+        db.close()
+
+    def testCompoundAttribute(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dt_compound = np.dtype([("field1", "S8"), ("field2", np.int32)])
+        value = [("hello", 42), ('', 0), ("world", 99),]
+        db.createAttribute(root_id, "A1", value, dtype=dt_compound)
+        item = db.getAttribute(root_id, "A1")
+        item_value = item['value']
+        self.assertEqual(len(item_value), 3)
+        for i in range(3):
+            e = item_value[i]
+            # self.assertTrue(isinstance(e, tuple))  # TBD
+            self.assertEqual(tuple(e), value[i])
+
+        item_shape = item["shape"]
+        self.assertEqual(item_shape["class"], "H5S_SIMPLE")
+        self.assertEqual(item_shape["dims"], [3,])
+        item_type = item["type"]
+        self.assertEqual(item_type["class"], "H5T_COMPOUND")
+
+        ret_value = db.getAttributeValue(root_id, "A1")
+        self.assertTrue(isinstance(ret_value, np.ndarray))
+        self.assertEqual(ret_value.shape, (3,))
+        self.assertEqual(ret_value.dtype, dt_compound)
+        for i in range(3):
+            e = ret_value[i]
+            self.assertEqual((e[0].decode(), e[1]), value[i])
+
+        now = int(time.time())
+        self.assertTrue(item["created"] > now - 1)
+
+        db.close()
 
     def testCreateReferenceAttribute(self):
-        filepath = getFile("empty.h5", "createreferencedataset.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            root_uuid = db.getUUIDByPath("/")
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
 
-            dims = ()  # if no space in body, default to scalar
-            rsp = db.createDataset(
-                "H5T_STD_I64LE", dims, max_shape=None, creation_props=None
-            )
-            dset_uuid = rsp["id"]
-            db.linkObject(root_uuid, dset_uuid, "DS1")
+        dset_id = db.createDataset(shape=(), dtype=np.int32)
+        db.createHardLink(root_id, "DS1", dset_id)
 
-            dims = (1,)
-            datatype = {"class": "H5T_REFERENCE", "base": "H5T_STD_REF_OBJ"}
-            ds1_ref = "datasets/" + dset_uuid
-            value = [
-                ds1_ref,
-            ]
-            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
-            item = db.getAttributeItem("groups", root_uuid, "A1")
+        dt = special_dtype(ref=Reference)
 
-            attr_type = item["type"]
-            self.assertEqual(attr_type["class"], "H5T_REFERENCE")
-            self.assertEqual(attr_type["base"], "H5T_STD_REF_OBJ")
-            attr_value = item["value"]
-            self.assertEqual(len(attr_value), 1)
-            self.assertEqual(attr_value[0], ds1_ref)
+        ds1_ref = "datasets/" + dset_id
+        value = [ds1_ref,]
+        db.createAttribute(root_id, "A1", value, dtype=dt)
+        attr = db.getAttribute(root_id, "A1")
+        self.assertTrue("shape" in attr)
+
+        attr_type = attr["type"]
+        self.assertEqual(attr_type["class"], "H5T_REFERENCE")
+        self.assertEqual(attr_type["base"], "H5T_STD_REF_OBJ")
+        attr_value = attr["value"]
+        self.assertEqual(len(attr_value), 1)
+        self.assertEqual(attr_value[0], ds1_ref)
+
+        db.close()
 
     def testCreateVlenReferenceAttribute(self):
-        filepath = getFile("empty.h5", "createreferenceattribute.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            root_uuid = db.getUUIDByPath("/")
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dset_id = db.createDataset(shape=(), dtype=np.int32)
+        db.createHardLink(root_id, "DS1", dset_id)
+        grp_id = db.createGroup()
+        db.createHardLink(root_id, "G1", grp_id)
 
-            dims = ()  # if no space in body, default to scalar
-            rsp = db.createDataset(
-                "H5T_STD_I64LE", dims, max_shape=None, creation_props=None
-            )
-            dset_uuid = rsp["id"]
-            db.linkObject(root_uuid, dset_uuid, "DS1")
+        dt_base = special_dtype(ref=Reference)
+        dt = special_dtype(vlen=dt_base)
 
-            dims = (1,)
-            datatype = {
-                "class": "H5T_VLEN",
-                "base": {"class": "H5T_REFERENCE", "base": "H5T_STD_REF_OBJ"},
-            }
-            ds1_ref = "datasets/" + dset_uuid
-            value = [
-                [
-                    ds1_ref,
-                ],
-            ]
-            db.createAttribute("groups", root_uuid, "A1", dims, datatype, value)
-            item = db.getAttributeItem("groups", root_uuid, "A1")
+        ds1_ref = "datasets/" + dset_id
+        grp_ref = "groups/" + grp_id
+        ref_arr = np.zeros((2,), dtype=dt_base)
+        ref_arr[0] = ds1_ref
+        ref_arr[1] = grp_ref
+        vlen_arr = np.zeros((), dtype=dt)
+        vlen_arr[()] = ref_arr
 
-            attr_type = item["type"]
-            self.assertEqual(attr_type["class"], "H5T_VLEN")
-            base_type = attr_type["base"]
-            # todo - this should be H5T_REFERENCE, not H5T_OPAQUE
-            # See h5py issue: https://github.com/h5py/h5py/issues/553
-            import h5py
+        db.createAttribute(root_id, "A1", vlen_arr)
+        item = db.getAttribute(root_id, "A1")
 
-            # test based on h5py version until we change install requirements
-            if h5py.version.version_tuple >= (2, 6, 0):
-                self.assertEqual(base_type["class"], "H5T_REFERENCE")
+        item_type = item["type"]
+        self.assertEqual(item_type["class"], "H5T_VLEN")
+        self.assertEqual(item_type["size"], "H5T_VARIABLE")
+        base_type = item_type["base"]
+        self.assertEqual(base_type["class"], "H5T_REFERENCE")
+        self.assertEqual(base_type["base"], "H5T_STD_REF_OBJ")
+
+        item_shape = item["shape"]
+        self.assertEqual(item_shape["class"], "H5S_SCALAR")
+
+        db.close()
+
+    def testAttributeCreateOrder(self):
+        titles = ("one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten")
+        cpl = {"CreateOrder": True}
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        g1_id = db.createGroup()
+        db.createHardLink(root_id, "g1", g1_id)
+        for title in titles:
+            db.createAttribute(g1_id, title, title)
+        g2_id = db.createGroup(cpl=cpl)
+        db.createHardLink(root_id, "g2", g2_id)
+        for title in titles:
+            db.createAttribute(g2_id, title, title)
+        self.assertEqual(sorted(db.getAttributes(g1_id)), sorted(titles))
+        self.assertEqual(tuple(db.getAttributes(g2_id)), titles)
+        db.close()
+
+    def testCommittedType(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dt = np.dtype("S15")
+
+        ctype_id = db.createCommittedType(dt)
+        db.createHardLink(root_id, "ctype", ctype_id)
+        item = db.getObjectById(ctype_id)
+        now = int(time.time())
+        self.assertTrue(item["created"] > now - 1)
+
+        item_type = item["type"]
+
+        self.assertEqual(item_type["class"], "H5T_STRING")
+        self.assertEqual(item_type["strPad"], "H5T_STR_NULLPAD")
+        self.assertEqual(item_type["charSet"], "H5T_CSET_ASCII")
+        self.assertEqual(item_type["length"], 15)
+
+        # create an attribute using the committed type
+        db.createAttribute(root_id, "A1", "hello world!", dtype=f"datatypes/{ctype_id}")
+        attr = db.getAttribute(root_id, "A1")
+        self.assertEqual(attr["value"], "hello world!")
+
+        attr_type = attr["type"]
+        self.assertEqual(attr_type["class"], "H5T_STRING")
+        self.assertEqual(attr_type["length"], 15)
+        self.assertEqual(attr_type["charSet"], "H5T_CSET_ASCII")
+
+        db.close()
+
+    def testCommittedCompoundType(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        dt_str = special_dtype(vlen=str)
+        fields = []
+        fields.append(("field_1", np.dtype(">i8")))
+        fields.append(("field_2", ">f8"))
+        fields.append(("field_3", np.dtype("S15")))
+        fields.append(("field_4", dt_str))
+        dt = np.dtype(fields)
+
+        ctype_id = db.createCommittedType(dt)
+        db.createHardLink(root_id, "ctype", ctype_id)
+        item = db.getObjectById(ctype_id)
+        now = int(time.time())
+        self.assertTrue(item["created"] > now - 1)
+
+        item_type = item["type"]
+
+        self.assertEqual(item_type["class"], "H5T_COMPOUND")
+        fields = item_type["fields"]
+        self.assertEqual(len(fields), 4)
+
+        # create an attribute using the committed type
+        attr_value = (42, 3.14, "circle", "area = R^2 * PI")
+        db.createAttribute(root_id, "A1", attr_value, dtype=f"datatypes/{ctype_id}")
+        attr = db.getAttribute(root_id, "A1")
+        self.assertEqual(attr["value"], list(attr_value))
+        attr_shape = attr["shape"]
+        self.assertEqual(attr_shape["class"], "H5S_SCALAR")
+
+        attr_type = attr["type"]
+        self.assertEqual(attr_type["class"], "H5T_COMPOUND")
+
+        value = db.getAttributeValue(root_id, "A1")
+        self.assertTrue(isinstance(value, np.ndarray))
+
+        db.close()
+
+    def test1DDataset(self):
+        nelements = 10
+        shape = (nelements,)
+        dtype = np.int32
+
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dset_id = db.createDataset(shape, dtype=dtype)
+        db.createHardLink(root_id, "dset", dset_id)
+        db.createAttribute(dset_id, "a1", "Hello, world")
+        sel_all = selections.select(shape, ...)
+        arr = db.getDatasetValues(dset_id, sel_all)
+
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, shape)
+        self.assertEqual(arr.min(), 0)
+        self.assertEqual(arr.max(), 0)
+
+        # set values element by element
+        for i in range(nelements):
+            sel = selections.select(shape, slice(i, i + 1))
+            db.setDatasetValues(dset_id, sel, np.array([i], dtype=dtype))
+
+        # read entire dataset
+        arr = db.getDatasetValues(dset_id, sel_all)
+        for i in range(nelements):
+            val = np.array([i], dtype=dtype)
+            np.testing.assert_array_equal(arr[i], val)
+
+        # read element by element
+        for i in range(nelements):
+            sel = selections.select(shape, slice(i, i + 1))
+            val = db.getDatasetValues(dset_id, sel)
+            self.assertTrue(isinstance(val, np.ndarray))
+            self.assertEqual(val.shape, (1,))
+            self.assertEqual(val[0], i)
+
+        # do a point selection
+        sel = selections.select(shape, [2, 3, 5, 7])
+
+        val = db.getDatasetValues(dset_id, sel)
+
+        self.assertTrue(isinstance(val, np.ndarray))
+        self.assertEqual(val.shape, (4,))
+
+        self.assertEqual(val[0], 2)
+        self.assertEqual(val[1], 3)
+        self.assertEqual(val[2], 5)
+        self.assertEqual(val[3], 7)
+
+        # point selection write
+        arr = np.zeros((4,), dtype=dtype)
+        db.setDatasetValues(dset_id, sel, arr)
+        arr = db.getDatasetValues(dset_id, sel_all)
+        for i in range(nelements):
+            if i in (2, 3, 5, 7):
+                self.assertEqual(arr[i], 0)  # these were set to 0 by point selection write
             else:
-                self.assertEqual(base_type["class"], "H5T_OPAQUE")
+                self.assertEqual(arr[i], i)
 
-    def testCreateReferenceListAttribute(self):
-        filepath = getFile("empty.h5", "createreferencelistattribute.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            root_uuid = db.getUUIDByPath("/")
+        # try with broadcasting
+        arr_one_value = np.zeros((1), dtype=dtype)
+        arr_one_value[0] = 42
+        db.setDatasetValues(dset_id, sel_all, arr_one_value)
+        # check that entire dataset is updated to the single value
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertTrue((arr == 42).all())
 
-            dims = (10,)
+        db.close()
 
-            rsp = db.createDataset(
-                "H5T_STD_I64LE", dims, max_shape=None, creation_props=None
-            )
-            dset_uuid = rsp["id"]
-            db.linkObject(root_uuid, dset_uuid, "dset")
+    def test2DDataset(self):
+        nrows = 8
+        ncols = 10
+        shape = (nrows, ncols)
+        dtype = np.int32
 
-            rsp = db.createDataset(
-                "H5T_STD_I64LE", dims, max_shape=None, creation_props=None
-            )
-            xscale_uuid = rsp["id"]
-            nullterm_string_type = {
-                "charSet": "H5T_CSET_ASCII",
-                "class": "H5T_STRING",
-                "length": 16,
-                "strPad": "H5T_STR_NULLTERM",
-            }
-            scalar_dims = ()
-            db.createAttribute(
-                "datasets",
-                xscale_uuid,
-                "CLASS",
-                scalar_dims,
-                nullterm_string_type,
-                "DIMENSION_SCALE",
-            )
-            db.linkObject(root_uuid, xscale_uuid, "xscale")
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dset_id = db.createDataset(shape, dtype=dtype)
+        db.createHardLink(root_id, "dset", dset_id)
+        db.createAttribute(dset_id, "a1", "Hello, world")
+        sel_all = selections.select(shape, ...)
+        arr = db.getDatasetValues(dset_id, sel_all)
 
-            ref_dims = (1,)
-            datatype = {
-                "class": "H5T_VLEN",
-                "base": {"class": "H5T_REFERENCE", "base": "H5T_STD_REF_OBJ"},
-            }
-            xscale_ref = "datasets/" + xscale_uuid
-            value = [
-                (xscale_ref,),
-            ]
-            db.createAttribute(
-                "datasets", dset_uuid, "DIMENSION_LIST", ref_dims, datatype, value
-            )
-            item = db.getAttributeItem("datasets", dset_uuid, "DIMENSION_LIST")
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, shape)
+        self.assertEqual(arr.min(), 0)
+        self.assertEqual(arr.max(), 0)
+        row = np.zeros((1, ncols,), dtype=dtype)
 
-            attr_type = item["type"]
-            self.assertEqual(attr_type["class"], "H5T_VLEN")
-            base_type = attr_type["base"]
-            # todo - this should be H5T_REFERENCE, not H5T_OPAQUE
-            self.assertEqual(base_type["class"], "H5T_REFERENCE")
+        # set values row by row
+        for i in range(nrows):
+            row[0, :] = list(range(i * 10, (i + 1) * 10))
+            row_sel = selections.select(shape, (slice(i, i + 1), slice(0, ncols)))
+            db.setDatasetValues(dset_id, row_sel, row)
 
-    def testReadCommittedType(self):
-        filepath = getFile("committed_type.h5", "readcommitted_type.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            root_uuid = db.getUUIDByPath("/")
-            type_uuid = db.getUUIDByPath("/Sensor_Type")
-            item = db.getCommittedTypeItemByUuid(type_uuid)
-            self.assertTrue("type" in item)
-            item_type = item["type"]
-            self.assertTrue(item_type["class"], "H5T_COMPOUND")
-            ds1_uuid = db.getUUIDByPath("/DS1")
-            item = db.getDatasetItemByUuid(ds1_uuid)
-            shape = item["shape"]
-            self.assertEqual(shape["class"], "H5S_SIMPLE")
-            dims = shape["dims"]
-            self.assertEqual(len(dims), 1)
-            self.assertEqual(dims[0], 4)
-            item_type = item["type"]
-            self.assertTrue("class" in item_type)
-            self.assertEqual(item_type["class"], "H5T_COMPOUND")
-            self.assertTrue("uuid" in item_type)
-            self.assertEqual(item_type["uuid"], type_uuid)
+        # read entire dataset
+        arr = db.getDatasetValues(dset_id, sel_all)
+        for i in range(nrows):
+            row = np.array(list(range(i * 10, (i + 1) * 10)), dtype=dtype)
+            np.testing.assert_array_equal(arr[i, :], row)
 
-            item = db.getAttributeItem("groups", root_uuid, "attr1")
-            shape = item["shape"]
-            self.assertEqual(shape["class"], "H5S_SCALAR")
-            item_type = item["type"]
-            self.assertTrue("class" in item_type)
-            self.assertEqual(item_type["class"], "H5T_COMPOUND")
-            self.assertTrue("uuid" in item_type)
-            self.assertEqual(item_type["uuid"], type_uuid)
+        # read row by row
+        for i in range(nrows):
+            sel = selections.select(shape, (slice(i, i + 1), slice(0, ncols)))
+            row = db.getDatasetValues(dset_id, sel)
+            self.assertTrue(isinstance(row, np.ndarray))
+            self.assertEqual(row.shape, (1, ncols))
+            for j in range(ncols):
+                self.assertEqual(row[0, j], i * 10 + j)
 
-    def testWriteCommittedType(self):
-        filepath = getFile("empty.h5", "writecommittedtype.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            root_uuid = db.getUUIDByPath("/")
-            self.assertTrue(len(root_uuid) >= 36)
-            datatype = {
-                "charSet": "H5T_CSET_ASCII",
-                "class": "H5T_STRING",
-                "strPad": "H5T_STR_NULLTERM",
-                "length": 15,
-            }
-            item = db.createCommittedType(datatype)
-            type_uuid = item["id"]
-            item = db.getCommittedTypeItemByUuid(type_uuid)
-            self.assertEqual(item["id"], type_uuid)
-            self.assertEqual(item["attributeCount"], 0)
-            now = int(time.time())
-            self.assertTrue(item["ctime"] > now - 5)
-            self.assertTrue(item["mtime"] > now - 5)
-            self.assertEqual(len(item["alias"]), 0)  # anonymous, so no alias
+        # read col by col
+        for j in range(ncols):
+            sel = selections.select(shape, (slice(0, ncols), slice(j, j + 1)))
+            col = db.getDatasetValues(dset_id, sel)
+            self.assertTrue(isinstance(col, np.ndarray))
+            self.assertEqual(col.shape, (nrows, 1))
+            for i in range(nrows):
+                self.assertEqual(col[i, 0], i * 10 + j)
 
-            item_type = item["type"]
+        # read with a fancy selection
+        sel = selections.select(shape, (slice(0, 4), [0, 2, 4, 6, 8]))
+        val = db.getDatasetValues(dset_id, sel)
+        self.assertTrue(isinstance(val, np.ndarray))
+        self.assertEqual(val.shape, (4, 5))
+        for i in range(4):
+            for j in range(5):
+                self.assertEqual(val[i, j], i * 10 + j * 2)
 
-            self.assertEqual(item_type["class"], "H5T_STRING")
-            self.assertEqual(item_type["strPad"], "H5T_STR_NULLPAD")
-            self.assertEqual(item_type["charSet"], "H5T_CSET_ASCII")
-            self.assertEqual(item_type["length"], 15)
+        # read with a point selection with two coordinates
+        sel = selections.select(shape, ([1, 3, 5, 7], [0, 2, 4, 6]))
+        val = db.getDatasetValues(dset_id, sel)
+        self.assertTrue(isinstance(val, np.ndarray))
+        self.assertEqual(val.shape, (4,))
 
-    def testWriteCommittedCompoundType(self):
-        filepath = getFile("empty.h5", "writecommittedcompoundtype.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            root_uuid = db.getUUIDByPath("/")
-            self.assertTrue(len(root_uuid) >= 36)
+        for i in range(4):
+            self.assertEqual(val[i], ((i * 2) + 1) * 10 + i * 2)
 
-            datatype = {"class": "H5T_COMPOUND", "fields": []}
+        # read element by element
+        for i in range(nrows):
+            for j in range(ncols):
+                sel = selections.select(shape, (slice(i, i + 1), slice(j, j + 1)))
+                val = db.getDatasetValues(dset_id, sel)
+                self.assertTrue(isinstance(val, np.ndarray))
+                self.assertEqual(val.shape, (1, 1))
+                self.assertEqual(val[0, 0], i * 10 + j)
 
-            fixed_str_type = {
-                "charSet": "H5T_CSET_ASCII",
-                "class": "H5T_STRING",
-                "strPad": "H5T_STR_NULLTERM",
-                "length": 15,
-            }
+        # do a point selection
+        sel = selections.select(shape, [(0, 0), (1, 1), (2, 2), (3, 3)])
+        val = db.getDatasetValues(dset_id, sel)
+        self.assertTrue(isinstance(val, np.ndarray))
+        self.assertEqual(val.shape, (4,))
+        for i in range(4):
+            self.assertEqual(val[i], i * 10 + i)
 
-            var_str_type = {
-                "charSet": "H5T_CSET_ASCII",
-                "class": "H5T_STRING",
-                "length": "H5T_VARIABLE",
-                "strPad": "H5T_STR_NULLTERM",
-            }
-            type_fields = []
-            type_fields.append({"name": "field_1", "type": "H5T_STD_I64BE"})
-            type_fields.append({"name": "field_2", "type": "H5T_IEEE_F64BE"})
-            type_fields.append({"name": "field_3", "type": fixed_str_type})
-            type_fields.append({"name": "field_4", "type": var_str_type})
-            datatype["fields"] = type_fields
+        # point selection write
+        arr = np.zeros((4,), dtype=dtype)
+        db.setDatasetValues(dset_id, sel, arr)
+        arr = db.getDatasetValues(dset_id, sel_all)
+        for i in range(nrows):
+            for j in range(ncols):
+                x = arr[i, j]
+                if i == j and i < 4:
+                    # these are the elements we zeroed out with the point write
+                    self.assertEqual(x, 0)
+                else:
+                    self.assertEqual(x, i * 10 + j)
 
-            item = db.createCommittedType(datatype)
-            type_uuid = item["id"]
-            item = db.getCommittedTypeItemByUuid(type_uuid)
-            self.assertEqual(item["id"], type_uuid)
-            self.assertEqual(item["attributeCount"], 0)
-            now = int(time.time())
-            self.assertTrue(item["ctime"] > now - 5)
-            self.assertTrue(item["mtime"] > now - 5)
-            self.assertEqual(len(item["alias"]), 0)  # anonymous, so no alias
+        # point selection write with broadcasting
+        arr = np.array(42, dtype=dtype)
+        db.setDatasetValues(dset_id, sel, arr)
+        arr = db.getDatasetValues(dset_id, sel_all)
+        for i in range(nrows):
+            for j in range(ncols):
+                x = arr[i, j]
+                if i == j and i < 4:
+                    # these are the elements were set to 42 with the point write
+                    self.assertEqual(x, 42)
+                else:
+                    self.assertEqual(x, i * 10 + j)
 
-            item_type = item["type"]
+        # test select all write
+        arr = np.zeros(shape, dtype=dtype)
+        arr[...] = 42
+        db.setDatasetValues(dset_id, sel_all, arr)
+        arr = db.getDatasetValues(dset_id, sel_all)
+        for i in range(nrows):
+            for j in range(ncols):
+                self.assertEqual(arr[i, j], 42)
 
-            self.assertEqual(item_type["class"], "H5T_COMPOUND")
-            fields = item_type["fields"]
-            self.assertEqual(len(fields), 4)
-            # todo - the last field class should be H5T_STRING, but it is getting
-            # saved to HDF5 as Opaque - see: https://github.com/h5py/h5py/issues/613
-            # this is fixed in h5py v. 2.6.0 - check the version until 2.6.0 becomes
-            # available via pip and anaconda.
-            import h5py
+        # try with broadcasting
+        arr_one_value = np.zeros((1, 1), dtype=dtype)
+        arr_one_value[0, 0] = 7
+        db.setDatasetValues(dset_id, sel_all, arr_one_value)
+        # check that entire dataset is updated to the single value
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertTrue((arr == 7).all())
 
-            if h5py.version.version_tuple >= (2, 6, 0):
-                field_classes = ("H5T_INTEGER", "H5T_FLOAT", "H5T_STRING", "H5T_STRING")
-            else:
-                field_classes = ("H5T_INTEGER", "H5T_FLOAT", "H5T_STRING", "H5T_OPAQUE")
-            for i in range(4):
-                field = fields[i]
-                self.assertEqual(field["name"], "field_" + str(i + 1))
-                field_type = field["type"]
-                self.assertEqual(field_type["class"], field_classes[i])
+        db.close()
 
-    def testToRef(self):
+    def test3DDataset(self):
 
-        filepath = getFile("empty.h5", "toref.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            type_item = {
-                "order": "H5T_ORDER_LE",
-                "base_size": 1,
-                "class": "H5T_INTEGER",
-                "base": "H5T_STD_I8LE",
-                "size": 1,
-            }
-            data_list = [2, 3, 5, 7, 11]
-            ref_value = db.toRef(1, type_item, data_list)
-            self.assertEqual(ref_value, data_list)
+        shape = (5, 1000, 1000)
+        dtype = np.int32
 
-            type_item = {
-                "charSet": "H5T_CSET_ASCII",
-                "class": "H5T_STRING",
-                "length": 8,
-                "strPad": "H5T_STR_NULLPAD",
-            }
-            data_list = ["Hypertext", "as", "engine", "of", "state"]
-            ref_value = db.toRef(1, type_item, data_list)
+        db = Hdf5db(app_logger=self.log)
+        db.open()
 
-    def testToTuple(self):
-        filepath = getFile("empty.h5", "totuple.h5")
-        data1d = [1, 2, 3]
-        data2d = [[1, 2], [3, 4]]
-        data3d = [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            self.assertEqual(db.toTuple(1, data1d), [1, 2, 3])
-            self.assertEqual(db.toTuple(2, data2d), [[1, 2], [3, 4]])
-            self.assertEqual(db.toTuple(1, data2d), [(1, 2), (3, 4)])
-            self.assertEqual(
-                db.toTuple(3, data3d), [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
-            )
-            self.assertEqual(
-                db.toTuple(2, data3d), [[(1, 2), (3, 4)], [(5, 6), (7, 8)]]
-            )
-            self.assertEqual(
-                db.toTuple(1, data3d), [((1, 2), (3, 4)), ((5, 6), (7, 8))]
-            )
+        dset_id = db.createDataset(shape, dtype=dtype)
+        # write some values to the dataset
+        sel = selections.select(shape, (slice(0, 5), 1, 10))
+        data = np.array([95, 96, 97, 98, 99], dtype=dtype)
+        db.setDatasetValues(dset_id, sel, data)
 
-    def testBytesArrayToList(self):
-        filepath = getFile("empty.h5", "bytestostring.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
+        sel = selections.select(shape, (slice(0, 5), 10, 100))
+        data = np.array([195, 196, 197, 198, 199], dtype=dtype)
+        db.setDatasetValues(dset_id, sel, data)
 
-            val = db.bytesArrayToList(b"Hello")
-            self.assertTrue(type(val) is str)
-            val = db.bytesArrayToList(
-                [
-                    b"Hello",
-                ]
-            )
-            self.assertEqual(len(val), 1)
-            self.assertTrue(type(val[0]) is str)
-            self.assertEqual(val[0], "Hello")
+        sel = selections.select(shape, (slice(0, 5), 100, 500))
+        data = np.array([295, 296, 297, 298, 299], dtype=dtype)
+        db.setDatasetValues(dset_id, sel, data)
 
-            import numpy as np
+        # single coordinate, increasing
+        sel = selections.select(shape, (slice(0, 5), 10, [10, 100, 500]))
+        arr = db.getDatasetValues(dset_id, sel)
+        self.assertEqual(arr.shape, (5, 3))
+        self.assertTrue((arr[:, 0] == [0, 0, 0, 0, 0]).all())
+        self.assertTrue((arr[:, 1] == [195, 196, 197, 198, 199]).all())
+        self.assertTrue((arr[:, 2] == [0, 0, 0, 0, 0]).all())
 
-            data = np.array([b"Hello"])
-            val = db.bytesArrayToList(data)
-            self.assertEqual(len(val), 1)
-            self.assertTrue(type(val[0]) is str)
-            self.assertEqual(val[0], "Hello")
+        # non-increasing indexes
+        sel = selections.select(shape, (slice(0, 5), 10, [100, 10, 500]))
+        arr = db.getDatasetValues(dset_id, sel)
+        self.assertEqual(arr.shape, (5, 3))
+        self.assertTrue((arr[:, 0] == [195, 196, 197, 198, 199]).all())
+        self.assertTrue((arr[:, 1] == [0, 0, 0, 0, 0]).all())
+        self.assertTrue((arr[:, 2] == [0, 0, 0, 0, 0]).all())
 
-    def testGetDataValue(self):
-        # typeItem, value, dimension=0, dims=None):
-        filepath = getFile("empty.h5", "bytestostring.h5")
-        string_type = {
-            "charSet": "H5T_CSET_ASCII",
-            "class": "H5T_STRING",
-            "strPad": "H5T_STR_NULLTERM",
-            "length": "H5T_VARIABLE",
-        }
+        # test multiple coordinates
+        sel = selections.select(shape, (0, [1, 10, 100], [10, 100, 500]))
+        arr = db.getDatasetValues(dset_id, sel)
+        self.assertEqual(arr.shape, (3,))
+        self.assertTrue((arr[:] == [95, 195, 295]).all())
 
-        with Hdf5db(filepath, app_logger=self.log) as db:
+        # test slice plus two coordinates
+        sel = selections.select(shape, (slice(0, 5), [1, 10, 100], [10, 100, 500]))
+        arr = db.getDatasetValues(dset_id, sel)
+        self.assertEqual(arr.shape, (5, 3))
+        self.assertTrue((arr[:, 0] == [95, 96, 97, 98, 99]).all())
+        self.assertTrue((arr[:, 1] == [195, 196, 197, 198, 199]).all())
+        self.assertTrue((arr[:, 2] == [295, 296, 297, 298, 299]).all())
 
-            import numpy as np
+        db.close()
 
-            data = np.array([b"Hello"])
-            val = db.getDataValue(string_type, data, dimension=1, dims=(1,))
-            self.assertTrue(type(val[0]) is str)
+    def testStringDataset(self):
+        nrows = 6
+        ncols = 3
+        shape = (nrows, ncols)
+        dtype = np.dtype("S1")
+        data = [[b'a', b'b', b'c'],
+                [b'd', b'e', b'f'],
+                [b'g', b'h', b'i'],
+                [b'j', b'k', b'l'],
+                [b'm', b'n', b'o'],
+                [b'x', b'y', b'z']]
+        init_arr = np.array(data, dtype=dtype)
 
-    def testGetAclDataset(self):
-        filepath = getFile("tall.h5", "getacldataset.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            d111_uuid = db.getUUIDByPath("/g1/g1.1/dset1.1.1")
-            num_acls = db.getNumAcls(d111_uuid)
-            self.assertEqual(num_acls, 0)
-            acl_dset = db.getAclDataset(d111_uuid, create=True)
-            self.assertTrue(acl_dset.name.endswith(d111_uuid))
-            self.assertEqual(len(acl_dset.dtype), 7)
-            self.assertEqual(len(acl_dset.shape), 1)
-            self.assertEqual(acl_dset.shape[0], 0)
-            num_acls = db.getNumAcls(d111_uuid)
-            self.assertEqual(num_acls, 0)
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dset_id = db.createDataset(shape, dtype=dtype)
+        db.createHardLink(root_id, "dset", dset_id)
+        sel_all = selections.select(shape, ...)
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, shape)
 
-    def testSetAcl(self):
-        filepath = getFile("tall.h5", "setacl.h5")
-        user1 = 123
-        user2 = 456
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            d111_uuid = db.getUUIDByPath("/g1/g1.1/dset1.1.1")
-            num_acls = db.getNumAcls(d111_uuid)
-            self.assertEqual(num_acls, 0)
+        db.setDatasetValues(dset_id, sel_all, init_arr)
 
-            # add read/write acl for user1
-            acl_user1 = db.getAcl(d111_uuid, user1)
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertTrue(np.array_equal(arr, init_arr))
+        sel_one = selections.select(shape, (slice(5, 6), slice(2, 3)))
+        arr = db.getDatasetValues(dset_id, sel_one)
+        self.assertEqual(arr.shape, (1, 1))
+        self.assertEqual(arr[0, 0], b'z')
 
-            self.assertEqual(acl_user1["userid"], 0)
-            acl_user1["userid"] = user1
-            acl_user1["readACL"] = 0
-            acl_user1["updateACL"] = 0
-            num_acls = db.getNumAcls(d111_uuid)
-            self.assertEqual(num_acls, 0)
+        db.close()
 
-            db.setAcl(d111_uuid, acl_user1)
-            acl = db.getAcl(d111_uuid, user1)
-            num_acls = db.getNumAcls(d111_uuid)
-            self.assertEqual(num_acls, 1)
+    def testBoolDataset(self):
+        shape = (10,)
+        dtype = np.dtype(bool)
 
-            # add read-only acl for user2
-            acl_user2 = db.getAcl(d111_uuid, user2)
-            self.assertEqual(acl_user2["userid"], 0)
-            acl_user2["userid"] = user2
-            acl_user2["create"] = 0
-            acl_user2["read"] = 1
-            acl_user2["update"] = 0
-            acl_user2["delete"] = 0
-            acl_user2["readACL"] = 0
-            acl_user2["updateACL"] = 0
-            db.setAcl(d111_uuid, acl_user2)
-            num_acls = db.getNumAcls(d111_uuid)
-            self.assertEqual(num_acls, 2)
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dset_id = db.createDataset(shape, dtype=dtype)
+        db.createHardLink(root_id, "dset", dset_id)
+        sel_first = selections.select(shape, slice(0, 1))
+        arr = db.getDatasetValues(dset_id, sel_first)
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, (1,))
+        self.assertEqual(arr[0], False)
 
-            # fetch and verify acls
-            acl = db.getAcl(d111_uuid, user1)
-            self.assertEqual(acl["userid"], user1)
-            self.assertEqual(acl["create"], 1)
-            self.assertEqual(acl["read"], 1)
-            self.assertEqual(acl["update"], 1)
-            self.assertEqual(acl["delete"], 1)
-            self.assertEqual(acl["readACL"], 0)
-            self.assertEqual(acl["updateACL"], 0)
+        # update one element
+        sel_second = selections.select(shape, slice(1, 2))
+        db.setDatasetValues(dset_id, sel_second, np.array([True,], dtype=dtype))
 
-            acl = db.getAcl(d111_uuid, user2)
-            self.assertEqual(acl["userid"], user2)
-            self.assertEqual(acl["create"], 0)
-            self.assertEqual(acl["read"], 1)
-            self.assertEqual(acl["update"], 0)
-            self.assertEqual(acl["delete"], 0)
-            self.assertEqual(acl["readACL"], 0)
-            self.assertEqual(acl["updateACL"], 0)
+        # read back three elements
+        sel_three = selections.select(shape, slice(0, 3))
+        arr = db.getDatasetValues(dset_id, sel_three)
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, (3,))
+        self.assertEqual(list(arr[...]), [False, True, False])
 
-            num_acls = db.getNumAcls(d111_uuid)
-            self.assertEqual(num_acls, 2)
+        # read back three elements
+        sel_three = selections.select(shape, slice(1, 4))
+        arr = db.getDatasetValues(dset_id, sel_three)
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, (3,))
+        self.assertEqual(list(arr[...]), [True, False, False])
 
-            # get acl data_list
-            acls = db.getAcls(d111_uuid)
-            self.assertEqual(len(acls), 2)
+        db.close()
 
-    def testRootAcl(self):
-        filepath = getFile("tall.h5", "rootacl.h5")
-        user1 = 123
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            root_uuid = db.getUUIDByPath("/")
-            d111_uuid = db.getUUIDByPath("/g1/g1.1/dset1.1.1")
-            num_acls = db.getNumAcls(d111_uuid)
-            self.assertEqual(num_acls, 0)
+    def testVlenStringDataset(self):
+        nrows = 4
+        shape = (nrows,)
+        dtype = special_dtype(vlen=str)
+        data = ["Hello", "HDF5", "REST", "API"]
+        init_arr = np.array(data, dtype=dtype)
 
-            # add read/write acl for user1 at root
-            acl_root = db.getAcl(root_uuid, 0)
-            self.assertEqual(acl_root["userid"], 0)
-            acl_root["create"] = 0
-            acl_root["read"] = 1
-            acl_root["update"] = 0
-            acl_root["delete"] = 0
-            acl_root["readACL"] = 0
-            acl_root["updateACL"] = 0
-            num_acls = db.getNumAcls(root_uuid)
-            self.assertEqual(num_acls, 0)
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dset_id = db.createDataset(shape, dtype=dtype)
+        db.createHardLink(root_id, "dset", dset_id)
+        sel_all = selections.select(shape, ...)
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, shape)
 
-            db.setAcl(root_uuid, acl_root)
-            num_acls = db.getNumAcls(root_uuid)
-            self.assertEqual(num_acls, 1)
+        db.setDatasetValues(dset_id, sel_all, init_arr)
 
-            acl = db.getAcl(d111_uuid, user1)
-            num_acls = db.getNumAcls(d111_uuid)  # this will fetch the root acl
-            self.assertEqual(num_acls, 0)
-            self.assertEqual(acl["userid"], 0)
-            self.assertEqual(acl["create"], 0)
-            self.assertEqual(acl["read"], 1)
-            self.assertEqual(acl["update"], 0)
-            self.assertEqual(acl["delete"], 0)
-            self.assertEqual(acl["readACL"], 0)
-            self.assertEqual(acl["updateACL"], 0)
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertTrue(np.array_equal(arr, init_arr))
+        sel_one = selections.select(shape, slice(2, 3))
+        arr = db.getDatasetValues(dset_id, sel_one)
+        self.assertEqual(arr.shape, (1,))
+        self.assertEqual(arr[0], 'REST')
 
-    def testGetEvalStr(self):
-        queries = {
-            "date == 23": "rows['date'] == 23",
-            "wind == b'W 5'": "rows['wind'] == b'W 5'",
-            "temp > 61": "rows['temp'] > 61",
-            "(date >=22) & (date <= 24)": "(rows['date'] >=22) & (rows['date'] <= 24)",
-            "(date == 21) & (temp > 70)": "(rows['date'] == 21) & (rows['temp'] > 70)",
-            "(wind == b'E 7') | (wind == b'S 7')": "(rows['wind'] == b'E 7') | (rows['wind'] == b'S 7')",
-        }
+        db.close()
 
-        fields = ["date", "wind", "temp"]
-        filepath = getFile("empty.h5", "getevalstring.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
+    def testVlenIntDataset(self):
+        nrows = 4
+        shape = (nrows,)
+        dtype = special_dtype(vlen=np.int32)
 
-            for query in queries.keys():
-                eval_str = db._getEvalStr(query, fields)
-                self.assertEqual(eval_str, queries[query])
-                # print(query, "->", eval_str)
+        init_arr = np.empty((nrows,), dtype=dtype)
+        for i in range(nrows):
+            init_arr[i] = np.array(list(range(i, 2 * i + 1)), dtype=np.int32)
 
-    def testBadQuery(self):
-        queries = (
-            "foobar",  # no variable used
-            "wind = b'abc",  # non-closed literal
-            "(wind = b'N') & (temp = 32",  # missing paren
-            "foobar > 42",  # invalid field name
-            "import subprocess; subprocess.call(['ls', '/'])",
-        )  # injection attack
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dset_id = db.createDataset(shape, dtype=dtype)
+        db.createHardLink(root_id, "dset", dset_id)
+        sel_all = selections.select(shape, ...)
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, shape)
 
-        fields = ("date", "wind", "temp")
-        filepath = getFile("empty.h5", "badquery.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
-            for query in queries:
-                try:
-                    eval_str = db._getEvalStr(query, fields)
-                    self.log.error(f"got eval_str: {eval_str}")
-                    self.assertTrue(False)  # shouldn't get here
-                except IOError:
-                    pass  # ok
+        db.setDatasetValues(dset_id, sel_all, init_arr)
 
-    def testInjectionBlock(self):
-        queries = (
-            "import subprocess; subprocess.call(['ls', '/'])",
-        )  # injection attack
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertTrue(isinstance(arr, np.ndarray))
+        self.assertEqual(arr.dtype.kind, 'O')
+        self.assertTrue("vlen" in arr.dtype.metadata)
+        self.assertEqual(arr.dtype.metadata["vlen"], np.dtype(np.int32))
+        for i in range(nrows):
+            e = arr[i]
+            self.assertTrue(isinstance(e, np.ndarray))
+            self.assertEqual(e.dtype, np.int32)
+            self.assertTrue(np.array_equal(e, init_arr[i]))
 
-        fields = ("import", "subprocess", "call")
-        filepath = getFile("empty.h5", "injectionblock.h5")
-        with Hdf5db(filepath, app_logger=self.log) as db:
+        sel_one = selections.select(shape, slice(2, 3))
+        arr = db.getDatasetValues(dset_id, sel_one)
+        self.assertEqual(arr.shape, (1,))
+        self.assertTrue(np.array_equal(arr[0], init_arr[2]))
 
-            for query in queries:
-                try:
-                    eval_str = db._getEvalStr(query, fields)
-                    self.log.error(f"got eval_str: {eval_str}")
-                    self.assertTrue(False)  # shouldn't get here
-                except IOError:
-                    pass  # ok
+        db.close()
+
+    def testScalarDataset(self):
+        dtype = np.int32
+
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        dset_id = db.createDataset((), dtype=dtype)
+        db.createHardLink(root_id, "dset", dset_id)
+        db.createAttribute(dset_id, "a1", "Hello, world")
+        sel_all = selections.select((), ...)
+
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, ())
+        self.assertEqual(arr[()], 0)
+        db.setDatasetValues(dset_id, sel_all, np.array(42, dtype=dtype))
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, ())
+        self.assertEqual(arr.min(), 42)
+        self.assertEqual(arr.max(), 42)
+
+        db.close()
+
+    def testCompoundDataset(self):
+        count = 10
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dtype = np.dtype([('real', np.float32), ('img', np.float32)])
+        dset_id = db.createDataset((count,), dtype=dtype)
+
+        sel_one = selections.select((count,), slice(0, 1))
+        val = db.getDatasetValues(dset_id, sel_one)
+
+        for i in range(count):
+            theta = (4.0 * math.pi) * (float(i) / float(count))
+            val['real'] = math.cos(theta)
+            val['img'] = math.sin(theta)
+            sel_one = selections.select((count,), slice(i, i + 1))
+            db.setDatasetValues(dset_id, sel_one, val)
+
+        sel_one = selections.select((count,), slice(0, 1))
+        val = db.getDatasetValues(dset_id, sel_one)
+        self.assertEqual(val['real'], 1.0)
+
+        # create a selection to fetch just the real components
+        sel_real = selections.select((count,), ..., fields=["real",])
+        val = db.getDatasetValues(dset_id, sel_real)
+
+        self.assertTrue(isinstance(val, np.ndarray))
+        self.assertEqual(len(val.dtype), 0)
+        self.assertEqual(val.dtype, np.float32)
+
+        # zero out the imaginary values
+        sel_img = selections.select((count,), ..., fields=["img", ])
+        db.setDatasetValues(dset_id, sel_img, np.array(0.0, dtype=np.float32))
+
+        # read the entire dataset
+        sel_all = selections.select((count,), ...)
+        val = db.getDatasetValues(dset_id, sel_all)
+        self.assertTrue(isinstance(val, np.ndarray))
+        self.assertEqual(len(val.dtype), 2)
+        for i in range(count):
+            theta = (4.0 * math.pi) * (float(i) / float(count))
+            e = val[i]
+            self.assertEqual(e[0], math.cos(theta))
+            self.assertEqual(e[1], 0.0)
+
+    def testResizableDataset(self):
+        nrows = 8
+        ncols = 10
+        shape = (nrows, ncols)
+        dtype = np.int32
+        maxdims = (None, ncols * 2)
+        layout = {"class": "H5D_CHUNKED", "dims": shape}
+        cpl = {"layout": layout}
+
+        db = Hdf5db(app_logger=self.log)
+
+        root_id = db.open()
+        dset_id = db.createDataset(shape, maxdims=maxdims, dtype=dtype, cpl=cpl)
+        db.createHardLink(root_id, "dset", dset_id)
+        db.createAttribute(dset_id, "a1", "Hello, world")
+
+        # resize limited dimension
+        db.resizeDataset(dset_id, (nrows, ncols * 2))
+
+        # try to go beyond max extent
+        try:
+            db.resizeDataset(dset_id, (nrows, ncols * 3))
+            self.assertTrue(False)
+        except ValueError:
+            pass  # expected
+
+        # resize unlimited dimension
+        db.resizeDataset(dset_id, (nrows * 10, ncols))
+
+        db.close()
+
+    def testFillValueDataset(self):
+        dtype = np.uint32
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+        cpl = {"fillValue": 0xdeadbeef}
+        dset_id = db.createDataset((), dtype=dtype, cpl=cpl)
+        db.createHardLink(root_id, "dset", dset_id)
+        dset_json = db.getObjectById(dset_id)
+        self.assertTrue("creationProperties" in dset_json)
+        cpl = dset_json["creationProperties"]
+        self.assertTrue("fillValue" in cpl)
+        self.assertEqual(cpl["fillValue"], 0xdeadbeef)
+        sel_all = selections.select((), ...)
+        arr = db.getDatasetValues(dset_id, sel_all)
+        self.assertEqual(arr.dtype, dtype)
+        self.assertEqual(arr.shape, ())
+        self.assertEqual(arr[()], 0xdeadbeef)
+
+    def _make_tabular_arr(self):
+        """Return a 1-D compound ndarray with 12 rows of stock-trade data."""
+        value = [
+            ("EBAY", "20170102", 3023, 3088),  # 0
+            ("AAPL", "20170102", 3054, 2933),  # 1
+            ("AMZN", "20170102", 2973, 3011),  # 2
+            ("EBAY", "20170103", 3042, 3128),  # 3
+            ("AAPL", "20170103", 3182, 3034),  # 4
+            ("AMZN", "20170103", 3021, 2788),  # 5
+            ("EBAY", "20170104", 2798, 2876),  # 6
+            ("AAPL", "20170104", 2834, 2867),  # 7
+            ("AMZN", "20170104", 2891, 2978),  # 8
+            ("EBAY", "20170105", 2973, 2962),  # 9
+            ("AAPL", "20170105", 2934, 3010),  # 10
+            ("AMZN", "20170105", 3018, 3086),  # 11
+        ]
+        dtype = np.dtype([("symbol", "S4"), ("date", "S8"), ("open", "i4"), ("close", "i4")])
+        arr = np.zeros((len(value),), dtype=dtype)
+        for i, row in enumerate(value):
+            for j in range(4):
+                arr[i][j] = row[j]
+        return arr
+
+    def testQuerySimpleType(self):
+        nrows = 10
+        ncols = 10
+        shape = (nrows, ncols)
+        dtype = np.int32
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+
+        dset_id = db.createDataset(shape, dtype=dtype)
+        arr = np.zeros(shape, dtype=dtype)
+        for i in range(nrows):
+            for j in range(ncols):
+                arr[i, j] = i * j
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, arr)
+        # query syntax follows https://hdfgroup.github.io/h5col/queries/syntax.html
+        query = "field('_') > 10"
+        indices = db.queryDataset(dset_id, query)
+        self.assertEqual(indices.shape, (56, 2))
+
+        indices = db.queryDataset(dset_id, query, update_value=0)
+        self.assertEqual(indices.shape, (56, 2))
+
+        indices = db.queryDataset(dset_id, query)
+        self.assertEqual(indices.shape, (0, 2))
+
+        # query update with limit
+        query = "field('_') == 0"
+        indices = db.queryDataset(dset_id, query, limit=5, update_value=-99)
+        self.assertEqual(indices.shape, (5, 2))
+
+        db.close()
+
+    def testQueryDataset1D(self):
+        data_arr = self._make_tabular_arr()
+        shape = data_arr.shape
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=data_arr.dtype)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, data_arr)
+
+        # simple equality query
+        query = "field('symbol') == b'AAPL'"
+        indices = db.queryDataset(dset_id, query)
+        self.assertIsInstance(indices, np.ndarray)
+        self.assertEqual(indices.dtype, np.dtype("int64"))
+        self.assertEqual(indices.shape, (4, 1))
+        expected_indexes = {1, 4, 7, 10}
+        for idx in indices:
+            self.assertIn(int(idx[0]), expected_indexes)
+
+        # isin query
+        query = "field('symbol').isin(b'AAPL', b'EBAY')"
+        indices = db.queryDataset(dset_id, query)
+        self.assertIsInstance(indices, np.ndarray)
+        self.assertEqual(len(indices), 8)
+        expected_indexes = {0, 1, 3, 4, 6, 7, 9, 10}
+        for idx in indices:
+            self.assertIn(int(idx[0]), expected_indexes)
+
+        # AND ('&') query across two fields
+        query = "(field('symbol').isin(b'AAPL')) & (field('date') > 20170102)"
+        indices = db.queryDataset(dset_id, query)
+        self.assertIsInstance(indices, np.ndarray)
+        self.assertEqual(len(indices), 3)
+        expected_indexes = {4, 7, 10}
+        for idx in indices:
+            self.assertIn(int(idx[0]), expected_indexes)
+
+        # query with no results
+        query = "field('symbol') == b'XYZ'"
+        indices = db.queryDataset(dset_id, query)
+        self.assertIsInstance(indices, np.ndarray)
+        self.assertEqual(indices.dtype, np.dtype("int64"))
+        self.assertEqual(indices.shape, (0, 1))
+        self.assertEqual(len(indices), 0)
+
+        # query with selection (only rows 2-11)
+        sel = selections.select(shape, slice(2, 12))
+        query = "field('symbol') == b'AAPL'"
+        indices = db.queryDataset(dset_id, query, sel=sel)
+        self.assertIsInstance(indices, np.ndarray)
+        self.assertEqual(indices.shape, (3, 1))
+        expected_in_order = (4, 7, 10)
+        for i, idx in enumerate(indices):
+            self.assertEqual(int(idx[0]), expected_in_order[i])
+
+        # invalid query should raise ValueError
+        try:
+            db.queryDataset(dset_id, "foobar")
+            self.fail("Expected ValueError for invalid query field")
+        except ValueError:
+            pass
+
+        # query with update_value
+        indices = db.queryDataset(dset_id, query, update_value={"open": -999, "close": 999})
+        self.assertEqual(indices.shape, (4, 1))
+        sel = selections.select(shape, indices)
+        values = db.getDatasetValues(dset_id, sel)
+        for i in range(len(values)):
+            self.assertEqual(values[i]["open"], -999)
+            self.assertEqual(values[i]["close"], 999)
+            self.assertEqual(values[i]["symbol"], b"AAPL")
+
+        db.close()
+
+    def testQueryDataset2D(self):
+        data_arr = self._make_tabular_arr()
+        nrows = data_arr.shape[0]
+        data_arr = data_arr.reshape((nrows // 2, 2))
+        shape = data_arr.shape
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=data_arr.dtype)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, data_arr)
+
+        # AAPL appears at (0,1), (2,0), (3,1), (5,0) in the 6×2 layout
+        query = "field('symbol') == b'AAPL'"
+        indices = db.queryDataset(dset_id, query)
+        self.assertIsInstance(indices, np.ndarray)
+        self.assertEqual(indices.shape, (4, 2))
+        expected_indexes = {(0, 1), (2, 0), (3, 1), (5, 0)}
+        for row in indices:
+            self.assertIn(tuple(int(x) for x in row), expected_indexes)
+
+        # query with selection (second column only: rows 0-5, col 1)
+        slices = (slice(0, 6, 1), slice(1, 2, 1))
+        sel = selections.select(shape, slices)
+        indices = db.queryDataset(dset_id, query, sel=sel)
+        self.assertIsInstance(indices, np.ndarray)
+        self.assertEqual(indices.shape, (2, 2))
+        expected_indexes = [(0, 1), (3, 1)]
+        for i, row in enumerate(indices):
+            self.assertEqual(tuple(int(x) for x in row), expected_indexes[i])
+
+        # query with update_value
+        indices = db.queryDataset(dset_id, query, update_value={"open": -999, "close": 999})
+        self.assertEqual(indices.shape, (4, 2))
+        sel = selections.select(shape, indices)
+        values = db.getDatasetValues(dset_id, sel)
+        for i in range(len(values)):
+            self.assertEqual(values[i]["open"], -999)
+            self.assertEqual(values[i]["close"], 999)
+            self.assertEqual(values[i]["symbol"], b"AAPL")
+
+        db.close()
+
+    def testChunkIterator1D(self):
+        shape = (10,)
+        dtype = np.int32
+        data = np.arange(10, dtype=dtype)
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": (3,)}}
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=dtype, cpl=cpl)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, data)
+
+        it = db.getChunkIterator(dset_id)
+        self.assertIsInstance(it, ChunkIterator)
+        chunks = list(it)
+        self.assertEqual(len(chunks), 4)  # ceil(10/3)
+        for chunk in chunks:
+            self.assertIsInstance(chunk, np.ndarray)
+        reconstructed = np.concatenate(chunks)
+        np.testing.assert_array_equal(reconstructed, data)
+
+        db.close()
+
+    def testChunkIterator2D(self):
+        shape = (6, 5)
+        dtype = np.int32
+        data = np.arange(30, dtype=dtype).reshape(shape)
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": (4, 3)}}
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=dtype, cpl=cpl)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, data)
+
+        total_elements = 0
+        collected = []
+        for chunk in db.getChunkIterator(dset_id):
+            self.assertIsInstance(chunk, np.ndarray)
+            total_elements += chunk.size
+            collected.append(chunk.reshape(-1))
+        self.assertEqual(total_elements, data.size)
+        # every element should appear exactly once across the chunks
+        np.testing.assert_array_equal(np.sort(np.concatenate(collected)), np.sort(data.reshape(-1)))
+
+        db.close()
+
+    def testChunkIteratorWithSelection(self):
+        shape = (10,)
+        dtype = np.int32
+        data = np.arange(10, dtype=dtype)
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": (3,)}}
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=dtype, cpl=cpl)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, data)
+
+        sel = selections.select(shape, slice(2, 8))
+        reconstructed = np.concatenate(list(db.getChunkIterator(dset_id, sel=sel)))
+        np.testing.assert_array_equal(reconstructed, data[2:8])
+
+        db.close()
+
+    def testChunkIteratorNonChunkedLayout(self):
+        # with no chunked layout, the whole dataset is treated as a single chunk
+        shape = (5, 4)
+        dtype = np.int32
+        data = np.arange(20, dtype=dtype).reshape(shape)
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=dtype)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, data)
+
+        chunks = list(db.getChunkIterator(dset_id))
+        self.assertEqual(len(chunks), 1)
+        np.testing.assert_array_equal(chunks[0], data)
+
+        db.close()
+
+    def testChunkIteratorInvalid(self):
+        shape = (10,)
+        dtype = np.int32
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": (3,)}}
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=dtype, cpl=cpl)
+
+        # scalar datasets aren't supported
+        scalar_dset_id = db.createDataset((), dtype=dtype)
+        with self.assertRaises(ValueError):
+            db.getChunkIterator(scalar_dset_id)
+
+        # fancy/point selections aren't supported
+        fancy_sel = selections.select(shape, [1, 3, 5])
+        with self.assertRaises(ValueError):
+            db.getChunkIterator(dset_id, sel=fancy_sel)
+
+        # selection shape must match the dataset shape
+        mismatched_sel = selections.select((20,), ...)
+        with self.assertRaises(TypeError):
+            db.getChunkIterator(dset_id, sel=mismatched_sel)
+
+        db.close()
+
+    def testGetDatasetValuesByQuery1D(self):
+        data_arr = self._make_tabular_arr()
+        shape = data_arr.shape
+        # small chunk size so matches span multiple chunks
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": (3,)}}
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=data_arr.dtype, cpl=cpl)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, data_arr)
+
+        query = "field('symbol') == b'AAPL'"
+        values = db.getDatasetValues(dset_id, sel_all, query=query)
+        self.assertIsInstance(values, np.ndarray)
+        self.assertEqual(values.dtype, data_arr.dtype)
+        self.assertEqual(values.shape, (4,))
+        expected_indexes = (1, 4, 7, 10)
+        for i, val in enumerate(values):
+            self.assertEqual(val, data_arr[expected_indexes[i]])
+
+        # same result as fetching indices via queryDataset and point-reading them
+        indices = db.queryDataset(dset_id, query)
+        sel_points = selections.select(shape, [int(idx[0]) for idx in indices])
+        expected_values = db.getDatasetValues(dset_id, sel_points)
+        np.testing.assert_array_equal(values, expected_values)
+
+        # query with no results
+        no_match = db.getDatasetValues(dset_id, sel_all, query="field('symbol') == b'XYZ'")
+        self.assertIsInstance(no_match, np.ndarray)
+        self.assertEqual(no_match.dtype, data_arr.dtype)
+        self.assertEqual(no_match.shape, (0,))
+
+        # query with a selection (rows 2-11)
+        sel = selections.select(shape, slice(2, 12))
+        values = db.getDatasetValues(dset_id, sel, query=query)
+        self.assertEqual(values.shape, (3,))
+        expected_in_order = (4, 7, 10)
+        for i, val in enumerate(values):
+            self.assertEqual(val, data_arr[expected_in_order[i]])
+
+        db.close()
+
+    def testGetDatasetValuesByQuery2D(self):
+        nrows = 10
+        ncols = 10
+        shape = (nrows, ncols)
+        dtype = np.int32
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": (4, 3)}}
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=dtype, cpl=cpl)
+        arr = np.zeros(shape, dtype=dtype)
+        for i in range(nrows):
+            for j in range(ncols):
+                arr[i, j] = i * j
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, arr)
+
+        query = "field('_') > 10"
+        values = db.getDatasetValues(dset_id, sel_all, query=query)
+        self.assertIsInstance(values, np.ndarray)
+        self.assertEqual(values.shape, (56,))
+        for val in values:
+            self.assertTrue(val > 10)
+        # every matching value should appear exactly once
+        expected = sorted(arr[arr > 10].tolist())
+        self.assertEqual(sorted(values.tolist()), expected)
+
+        db.close()
+
+    def testGetDatasetValuesByQueryFancySelection(self):
+        data_arr = self._make_tabular_arr()
+        shape = data_arr.shape
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=data_arr.dtype)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, data_arr)
+
+        # a point/fancy selection isn't chunk-iterable - exercises the
+        # single-fetch fallback path (AAPL is at indices 1, 4, 7 of the six
+        # selected rows 1, 2, 4, 5, 7, 8)
+        point_sel = selections.select(shape, [1, 2, 4, 5, 7, 8])
+        query = "field('symbol') == b'AAPL'"
+        values = db.getDatasetValues(dset_id, point_sel, query=query)
+        self.assertEqual(values.shape, (3,))
+        for val in values:
+            self.assertEqual(val["symbol"], b"AAPL")
+
+        db.close()
+
+    def testCreateReferenceDataset(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        dset_id = db.createDataset(shape=(), dtype=np.int32)
+        db.createHardLink(root_id, "DS1", dset_id)
+
+        dt = special_dtype(ref=Reference)
+
+        # create a ref datsaet
+        shape = (4, )
+        ref_dset_id = db.createDataset(shape=shape, dtype=dt)
+
+        # assign a ref to ds1
+        ref_arr = np.zeros(shape, dtype=dt)
+        ds1_ref = "datasets/" + dset_id
+        ref_arr[0] = ds1_ref
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(ref_dset_id, sel_all, ref_arr)
+        sel = selections.select(shape, (slice(0, 2),))
+        arr = db.getDatasetValues(ref_dset_id, sel)
+        self.assertEqual(arr.shape, (2, ))
+        self.assertEqual(arr.dtype, dt)
+        self.assertEqual(arr[0], ds1_ref.encode())
+        self.assertEqual(arr[1], b'')
+
+        db.close()
+
+    def testCreateRegionReferenceDataset(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        # target dataset that the region reference will point into
+        target_shape = (10,)
+        target_id = db.createDataset(shape=target_shape, dtype=np.int32)
+        db.createHardLink(root_id, "DS1", target_id)
+
+        # build a RegionReference: id of the target dataset + a selection on it
+        sel = selections.select(target_shape, slice(2, 8))
+        ref = RegionReference("datasets/" + target_id, sel)
+        raw = ref.tobytes()
+
+        # RegionReference is a variable-length ("O") type - its size depends
+        # on the bound selection, not just the referenced dataset - so
+        # (unlike a plain object Reference) it isn't a fixed-width dtype
+        dt = special_dtype(ref=RegionReference)
+        self.assertEqual(dt.kind, "O")
+
+        # create a ref dataset
+        shape = (4, )
+        ref_dset_id = db.createDataset(shape=shape, dtype=dt)
+
+        # assign a region ref to element 0, leave the rest empty (no ref)
+        ref_arr = np.empty(shape, dtype=dt)
+        ref_arr[0] = raw
+        for i in range(1, shape[0]):
+            ref_arr[i] = b''
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(ref_dset_id, sel_all, ref_arr)
+        sel_read = selections.select(shape, (slice(0, 2),))
+        arr = db.getDatasetValues(ref_dset_id, sel_read)
+        self.assertEqual(arr.shape, (2, ))
+        self.assertEqual(arr.dtype, dt)
+        self.assertEqual(arr[1], b'')
+
+        # decode the round-tripped region reference and confirm it matches
+        round_tripped = RegionReference.frombytes(arr[0])
+        self.assertEqual(round_tripped.id, ref.id)
+        round_tripped_sel = selections.Selection.frombytes(round_tripped.selection_bytes)
+        self.assertEqual(round_tripped_sel, sel)
+
+        db.close()
+
+    def testCreateOpaqueDataset(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        dt = np.dtype("V2")
+        shape = (4,)
+        dset_id = db.createDataset(shape=shape, dtype=dt)
+        db.createHardLink(root_id, "DS1", dset_id)
+
+        arr = np.zeros(shape, dtype=dt)
+        arr[3] = b'\xfe\xff'
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, arr)
+
+        result = db.getDatasetValues(dset_id, sel_all)
+        self.assertEqual(result.dtype, dt)
+        self.assertEqual([v.tobytes() for v in result], [b'\x00\x00'] * 3 + [b'\xfe\xff'])
+
+        dset_json = db.getObjectById(dset_id)
+        self.assertEqual(dset_json["type"], {"class": "H5T_OPAQUE", "size": 2})
+
+        db.close()
+
+    def testCreateOpaqueAttribute(self):
+        # matches the format used in data/json/opaque_attr.json:
+        # {"value": "<base64>", "encoding": "base64"}
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        dt = np.dtype("V2")
+        value = np.zeros((), dtype=dt)
+        value[()] = b'\xfe\xff'
+        db.createAttribute(root_id, "A1", value, dtype=dt)
+
+        attr = db.getAttribute(root_id, "A1")
+        self.assertEqual(attr["type"], {"class": "H5T_OPAQUE", "size": 2})
+        self.assertEqual(attr["shape"], {"class": "H5S_SCALAR"})
+        self.assertEqual(attr["value"], "/v8=")
+        self.assertEqual(attr["encoding"], "base64")
+
+        attr_value = db.getAttributeValue(root_id, "A1")
+        self.assertEqual(attr_value.dtype, dt)
+        self.assertEqual(attr_value.tobytes(), b'\xfe\xff')
+
+        db.close()
+
+    def testClosedProperty(self):
+        # closed before any plugin is set at all
+        db = Hdf5db(app_logger=self.log)
+        self.assertFalse(db.closed)
+
+        # set a plugin directly (bypassing db.open())
+        plugin = NullPlugin(None, app_logger=self.log)
+        db.plugin = plugin
+        self.assertTrue(db.closed)  # plugin hasn't been opened yet
+
+        plugin.open()
+        self.assertFalse(db.closed)
+
+        plugin.close()
+        self.assertTrue(db.closed)
+
+    def testGetDtype(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        dt = np.dtype([("x", np.int32), ("y", np.float64)])
+        ctype_id = db.createCommittedType(dt)
+        db.createHardLink(root_id, "ctype", ctype_id)
+
+        # obj_json whose "type" is a direct reference (by id) to a committed
+        # datatype, rather than an inline type description - exercises the
+        # committed-type branch of getDtype()
+        obj_json = {"type": ctype_id}
+        resolved_dtype = db.getDtype(obj_json)
+        self.assertEqual(resolved_dtype, dt)
+
+        # sanity check against the more common "inline type json" branch -
+        # the committed type's own json describes its type inline
+        ctype_json = db.getObjectById(ctype_id)
+        self.assertEqual(db.getDtype({"type": ctype_json["type"]}), dt)
+
+        # obj_json with no "type" key at all (e.g. a group)
+        with self.assertRaises(TypeError):
+            db.getDtype({"links": {}})
+
+        db.close()
+
+    def testGetObjectByPath(self):
+        db = Hdf5db(app_logger=self.log)
+        root_id = db.open()
+
+        g1_id = db.createGroup()
+        db.createHardLink(root_id, "g1", g1_id)
+        db.createAttribute(g1_id, "a1", "hello")
+
+        dset_id = db.createDataset((4,), dtype=np.int32)
+        db.createHardLink(g1_id, "dset", dset_id)
+
+        root_obj = db.getObjectByPath("/")
+        self.assertEqual(root_obj, db.getObjectById(root_id))
+
+        g1_obj = db.getObjectByPath("g1")
+        self.assertEqual(g1_obj, db.getObjectById(g1_id))
+        self.assertIn("a1", g1_obj["attributes"])
+
+        dset_obj = db.getObjectByPath("/g1/dset")
+        self.assertEqual(dset_obj, db.getObjectById(dset_id))
+        self.assertEqual(dset_obj["type"]["class"], "H5T_INTEGER")
+
+        # non-existent path raises KeyError (mirrors getObjectIdByPath)
+        with self.assertRaises(KeyError):
+            db.getObjectByPath("/g1/nosuch")
+
+        db.close()
+
+    def testTrackingSetsAndDeleteObject(self):
+        filepath = "test/unit/out/hdf5db_testTrackingSetsAndDeleteObject.json"
+        db = Hdf5db(app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        # fresh db - no dirty/deleted/resized objects tracked yet
+        self.assertEqual(db.dirty_objects, set())
+        self.assertEqual(db.deleted_objects, set())
+        self.assertEqual(db.resized_datasets, set())
+
+        g1_id = db.createGroup()
+        db.createHardLink(root_id, "g1", g1_id)
+        self.assertIn(g1_id, db.new_objects)
+
+        shape = (4, 4)
+        maxdims = (None, 8)
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": shape}}
+        dset_id = db.createDataset(shape, maxdims=maxdims, dtype=np.int32, cpl=cpl)
+        db.createHardLink(root_id, "dset", dset_id)
+        self.assertIn(dset_id, db.new_objects)
+
+        # flush persists the new objects, clearing the new/dirty/resized sets
+        self.assertTrue(db.flush())
+        self.assertEqual(db.new_objects, set())
+        self.assertEqual(db.dirty_objects, set())
+        self.assertEqual(db.resized_datasets, set())
+
+        # modifying a previously-flushed (no longer "new") object marks it dirty
+        db.createAttribute(g1_id, "a1", "hello")
+        self.assertIn(g1_id, db.dirty_objects)
+
+        # resizing a previously-flushed (no longer "new") dataset marks it resized
+        db.resizeDataset(dset_id, (4, 8))
+        self.assertIn(dset_id, db.resized_datasets)
+
+        # deleteObject removes the object from the dirty set and adds it to
+        # deleted_objects
+        db.deleteObject(g1_id)
+        self.assertIn(g1_id, db.deleted_objects)
+        self.assertNotIn(g1_id, db.dirty_objects)
+        self.assertNotIn(g1_id, db.getCollection("groups"))
+        self.assertFalse(g1_id in db)
+
+        # deleteObject removes a resized dataset from the resized_datasets set
+        db.deleteObject(dset_id)
+        self.assertIn(dset_id, db.deleted_objects)
+        self.assertNotIn(dset_id, db.resized_datasets)
+
+        # deleting the root group is not allowed
+        with self.assertRaises(KeyError):
+            db.deleteObject(root_id)
+
+        # deleting an id that was never created should raise
+        with self.assertRaises(KeyError):
+            db.deleteObject("d-does-not-exist")
+
+        # a freshly created (still "new") object can also be deleted directly
+        g2_id = db.createGroup()
+        self.assertIn(g2_id, db.new_objects)
+        db.deleteObject(g2_id)
+        self.assertNotIn(g2_id, db.new_objects)
+        self.assertIn(g2_id, db.deleted_objects)
+
+        db.close()
+
+    def testAutoFlushDefaultsAndOverrides(self):
+        from h5json.hdf5db import DEFAULT_AUTO_FLUSH_MEMORY, DEFAULT_AUTO_FLUSH_INTERVAL
+
+        db = Hdf5db(app_logger=self.log)
+        self.assertEqual(db.auto_flush_memory, DEFAULT_AUTO_FLUSH_MEMORY)
+        self.assertEqual(db.auto_flush_interval, DEFAULT_AUTO_FLUSH_INTERVAL)
+        self.assertEqual(db.memory_usage, 0)
+        # last_flush_time is set at construction, before any flush() has happened
+        self.assertTrue(db.last_flush_time > 0)
+
+        db2 = Hdf5db(app_logger=self.log, auto_flush_memory=1024, auto_flush_interval=5)
+        self.assertEqual(db2.auto_flush_memory, 1024)
+        self.assertEqual(db2.auto_flush_interval, 5)
+
+        db3 = Hdf5db(app_logger=self.log, auto_flush_memory=None, auto_flush_interval=None)
+        self.assertIsNone(db3.auto_flush_memory)
+        self.assertIsNone(db3.auto_flush_interval)
+
+    def testMemoryUsageTracksDatasetUpdates(self):
+        filepath = "test/unit/out/hdf5db_testMemoryUsageTracksDatasetUpdates.json"
+        db = Hdf5db(app_logger=self.log, auto_flush_memory=None, auto_flush_interval=None)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        self.assertEqual(db.memory_usage, 0)
+
+        shape = (100,)
+        dset_id = db.createDataset(shape, dtype=np.int64)
+        db.createHardLink(root_id, "dset", dset_id)
+        self.assertEqual(db.memory_usage, 0)  # no values written yet
+
+        arr = np.arange(100, dtype=np.int64)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, arr)
+        self.assertEqual(db.memory_usage, arr.nbytes)
+
+        # a full-coverage rewrite discards (and un-counts) the prior update
+        db.setDatasetValues(dset_id, sel_all, arr)
+        self.assertEqual(db.memory_usage, arr.nbytes)
+
+        # a partial (hyperslab) update adds to, rather than replaces, the total
+        sel_partial = selections.select(shape, slice(0, 10))
+        db.setDatasetValues(dset_id, sel_partial, arr[:10])
+        self.assertEqual(db.memory_usage, arr.nbytes + arr[:10].nbytes)
+
+        # flush() resets the tracked memory usage back to 0
+        db.flush()
+        self.assertEqual(db.memory_usage, 0)
+        db.close()
+
+    def testAutoFlushOnMemoryThreshold(self):
+        filepath = "test/unit/out/hdf5db_testAutoFlushOnMemoryThreshold.json"
+        arr = np.zeros((100,), dtype=np.int64)  # 800 bytes
+        db = Hdf5db(app_logger=self.log, auto_flush_memory=arr.nbytes, auto_flush_interval=None)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        shape = arr.shape
+        dset_id = db.createDataset(shape, dtype=np.int64)
+        db.createHardLink(root_id, "dset", dset_id)
+        db.flush()  # start with a clean slate so createDataset above doesn't count
+
+        sel_all = selections.select(shape, ...)
+        # writing an update whose size meets the threshold triggers an
+        # automatic flush - without ever calling db.flush() explicitly
+        db.setDatasetValues(dset_id, sel_all, arr)
+        self.assertEqual(db.memory_usage, 0)
+        self.assertEqual(db.dirty_objects, set())
+        self.assertEqual(db.new_objects, set())
+
+        db.close()
+
+    def testAutoFlushOnTimeInterval(self):
+        filepath = "test/unit/out/hdf5db_testAutoFlushOnTimeInterval.json"
+        db = Hdf5db(app_logger=self.log, auto_flush_memory=None, auto_flush_interval=0.05)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        g1_id = db.createGroup()
+        db.createHardLink(root_id, "g1", g1_id)
+        db.flush()  # clean slate, resets last_flush_time
+
+        time.sleep(0.1)  # exceed the 0.05s auto_flush_interval
+
+        # any subsequent mutating call should now trigger an automatic flush
+        db.createAttribute(g1_id, "a1", "hello")
+        self.assertEqual(db.dirty_objects, set())
+
+        db.close()
+
+    def testAutoFlushDisabled(self):
+        filepath = "test/unit/out/hdf5db_testAutoFlushDisabled.json"
+        # a tiny memory threshold and interval would normally trigger
+        # immediately, but passing None for both disables auto-flush entirely
+        db = Hdf5db(app_logger=self.log, auto_flush_memory=None, auto_flush_interval=None)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log)
+        root_id = db.open()
+
+        shape = (100,)
+        dset_id = db.createDataset(shape, dtype=np.int64)
+        db.createHardLink(root_id, "dset", dset_id)
+        db.flush()
+
+        time.sleep(0.05)
+        arr = np.ones(shape, dtype=np.int64)
+        sel_all = selections.select(shape, ...)
+        db.setDatasetValues(dset_id, sel_all, arr)
+
+        # nothing should have been auto-flushed
+        self.assertEqual(db.memory_usage, arr.nbytes)
+        self.assertIn(dset_id, db.dirty_objects)
+
+        db.close()
+
+    def testAutoFlushJsonRoundTrip(self):
+        # confirm data written via an automatic (not explicit) flush is
+        # actually persisted correctly - not just that in-memory tracking
+        # state looks right
+        filepath = "test/unit/out/hdf5db_testAutoFlushJsonRoundTrip.json"
+        shape = (50,)
+        arr = np.arange(50, dtype=np.int64)  # 400 bytes
+
+        wdb = Hdf5db(app_logger=self.log, auto_flush_memory=arr.nbytes, auto_flush_interval=None)
+        wdb.plugin = H5JsonPlugin(filepath, app_logger=self.log)
+        root_id = wdb.open()
+
+        dset_id = wdb.createDataset(shape, dtype=np.int64)
+        wdb.createHardLink(root_id, "dset", dset_id)
+        wdb.flush()  # clean slate
+
+        sel_all = selections.select(shape, ...)
+        wdb.setDatasetValues(dset_id, sel_all, arr)  # crosses memory threshold
+        self.assertEqual(wdb.memory_usage, 0)  # confirms auto-flush already ran
+        wdb.close()
+
+        rdb = Hdf5db(app_logger=self.log)
+        rdb.plugin = H5JsonPlugin(filepath, read_only=True, app_logger=self.log)
+        rdb.open()
+        read_dset_id = rdb.getObjectIdByPath("/dset")
+        result = rdb.getDatasetValues(read_dset_id, selections.select(shape, ...))
+        self.assertTrue(np.array_equal(result, arr))
+        rdb.close()
+
+    def testReadAll(self):
+        filepath = "test/unit/out/hdf5db_testReadAll.json"
+
+        wdb = Hdf5db(app_logger=self.log)
+        wdb.plugin = H5JsonPlugin(filepath, app_logger=self.log)
+        root_id = wdb.open()
+
+        g1_id = wdb.createGroup()
+        wdb.createHardLink(root_id, "g1", g1_id)
+        g2_id = wdb.createGroup()
+        wdb.createHardLink(g1_id, "g2", g2_id)
+        dset_id = wdb.createDataset((4,), dtype=np.int32)
+        wdb.createHardLink(g2_id, "dset", dset_id)
+        wdb.createAttribute(g1_id, "a1", "hello")
+        wdb.close()
+
+        rdb = Hdf5db(app_logger=self.log)
+        rdb.plugin = H5JsonPlugin(filepath, read_only=True, app_logger=self.log)
+        reopened_root_id = rdb.open()
+        self.assertEqual(reopened_root_id, root_id)
+
+        # before readAll, nothing has been pulled into the in-memory db yet
+        self.assertEqual(rdb.getCollection(), [])
+
+        rdb.readAll()
+
+        obj_ids = rdb.getCollection()
+        self.assertEqual(len(obj_ids), 4)  # root, g1, g2, dset
+        for expected_id in (root_id, g1_id, g2_id, dset_id):
+            self.assertIn(expected_id, obj_ids)
+
+        groups = rdb.getCollection("groups")
+        self.assertEqual(len(groups), 3)
+        datasets = rdb.getCollection("datasets")
+        self.assertEqual(datasets, [dset_id])
+
+        # attributes on objects pulled in via readAll should be usable too
+        self.assertEqual(rdb.getAttributes(g1_id), ["a1"])
+
+        # readAll should raise once the db is closed
+        rdb.close()
+        with self.assertRaises(IOError):
+            rdb.readAll()
 
 
 if __name__ == "__main__":

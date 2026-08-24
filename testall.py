@@ -15,7 +15,27 @@ import sys
 import shutil
 import h5py
 
-unit_tests = ("hdf5dtype_test", "hdf5db_test")
+unit_tests = [
+    "array_util_test",
+    "array_query_test",
+    "dset_util_test",
+    "filter_test",
+    "objid_test",
+    "hdf5dtype_test",
+    "shape_util_test",
+    "link_util_test",
+    "time_util_test",
+    "track_util_test",
+    "storage_plugin_test",
+    "hdf5db_test",
+    "h5json_reader_test",
+    "h5json_writer_test",
+    "h5py_test",
+    "selection_test",
+]
+
+unit_tests = tuple(unit_tests)
+
 integ_tests = ("h5tojson_test", "jsontoh5_test")
 
 # verify the hdf5 lib version is recent
@@ -28,6 +48,9 @@ if h5py.version.version_tuple < (3, 0, 0):
     print(h5py.version.info)
     sys.exit("Need h5py version 3.0 or later")
 
+if not os.path.isdir("./test/unit/out"):
+    os.makedirs("test/unit/out")
+
 # Run all hdf5-json tests
 # Run this script before running any integ tests
 for file_name in unit_tests:
@@ -36,9 +59,15 @@ for file_name in unit_tests:
     if rc != 0:
         sys.exit("FAILED")
 shutil.rmtree("./out", ignore_errors=True)
-os.remove("hdf5dbtest.log")
 
 os.chdir("test/integ")
+
+if not os.path.isdir("./h5_out"):
+    os.makedirs("h5_out")
+
+if not os.path.isdir("./json_out"):
+    os.makedirs("json_out")
+
 for file_name in integ_tests:
     print(file_name)
     rc = os.system("python " + file_name + ".py")
@@ -46,8 +75,6 @@ for file_name in integ_tests:
         sys.exit("FAILED")
 shutil.rmtree("./h5_out", ignore_errors=True)
 shutil.rmtree("./json_out", ignore_errors=True)
-os.remove("h5tojson.log")
-os.remove("jsontoh5.log")
 
 os.chdir("..")
 print("Testing suite: Success!")

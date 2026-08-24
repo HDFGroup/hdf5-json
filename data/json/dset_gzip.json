@@ -1,0 +1,150 @@
+{
+    "apiVersion": "1.1.1",
+    "datasets": {
+        "ac03b468-a0693e3f-07f9-6ccce8-75b135": {
+            "alias": [
+                "/dset1"
+            ],
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_INCR",
+                "fillTime": "H5D_FILL_TIME_ALLOC",
+                "filters": [
+                    {
+                        "class": "H5Z_FILTER_DEFLATE",
+                        "id": 1,
+                        "name": "deflate"
+                    }
+                ],
+                "layout": {
+                    "class": "H5D_CHUNKED",
+                    "dims": [
+                        100,
+                        100
+                    ]
+                }
+            },
+            "shape": {
+                "class": "H5S_SIMPLE",
+                "dims": [
+                    1000,
+                    1000
+                ]
+            },
+            "type": {
+                "base": "H5T_IEEE_F64LE",
+                "class": "H5T_FLOAT"
+            }
+        },
+        "ac03b468-a0693e3f-732d-351ffe-084d66": {
+            "alias": [
+                "/dset2"
+            ],
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_INCR",
+                "fillTime": "H5D_FILL_TIME_ALLOC",
+                "filters": [
+                    {
+                        "class": "H5Z_FILTER_SHUFFLE",
+                        "id": 2,
+                        "name": "shuffle"
+                    },
+                    {
+                        "class": "H5Z_FILTER_DEFLATE",
+                        "id": 1,
+                        "name": "deflate"
+                    }
+                ],
+                "layout": {
+                    "class": "H5D_CHUNKED",
+                    "dims": [
+                        100,
+                        100
+                    ]
+                }
+            },
+            "shape": {
+                "class": "H5S_SIMPLE",
+                "dims": [
+                    1000,
+                    1000
+                ]
+            },
+            "type": {
+                "base": "H5T_IEEE_F64LE",
+                "class": "H5T_FLOAT"
+            }
+        },
+        "ac03b468-a0693e3f-8109-7e59c9-832e0f": {
+            "alias": [
+                "/dset3"
+            ],
+            "creationProperties": {
+                "allocTime": "H5D_ALLOC_TIME_INCR",
+                "fillTime": "H5D_FILL_TIME_ALLOC",
+                "filters": [
+                    {
+                        "class": "H5Z_FILTER_FLETCHER32",
+                        "id": 3,
+                        "name": "fletcher32"
+                    },
+                    {
+                        "class": "H5Z_FILTER_SHUFFLE",
+                        "id": 2,
+                        "name": "shuffle"
+                    },
+                    {
+                        "class": "H5Z_FILTER_DEFLATE",
+                        "id": 1,
+                        "name": "deflate"
+                    }
+                ],
+                "layout": {
+                    "class": "H5D_CHUNKED",
+                    "dims": [
+                        100,
+                        100
+                    ]
+                }
+            },
+            "shape": {
+                "class": "H5S_SIMPLE",
+                "dims": [
+                    1000,
+                    1000
+                ]
+            },
+            "type": {
+                "base": "H5T_IEEE_F64LE",
+                "class": "H5T_FLOAT"
+            }
+        }
+    },
+    "groups": {
+        "ac03b468-a0693e3f-248b-3ce028-e1b6b7": {
+            "alias": [
+                "/"
+            ],
+            "links": [
+                {
+                    "class": "H5L_TYPE_HARD",
+                    "collection": "datasets",
+                    "id": "ac03b468-a0693e3f-07f9-6ccce8-75b135",
+                    "title": "dset1"
+                },
+                {
+                    "class": "H5L_TYPE_HARD",
+                    "collection": "datasets",
+                    "id": "ac03b468-a0693e3f-732d-351ffe-084d66",
+                    "title": "dset2"
+                },
+                {
+                    "class": "H5L_TYPE_HARD",
+                    "collection": "datasets",
+                    "id": "ac03b468-a0693e3f-8109-7e59c9-832e0f",
+                    "title": "dset3"
+                }
+            ]
+        }
+    },
+    "root": "ac03b468-a0693e3f-248b-3ce028-e1b6b7"
+}

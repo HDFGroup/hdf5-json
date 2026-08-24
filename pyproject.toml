@@ -9,7 +9,6 @@ classifiers = [
     "Topic :: Software Development :: Build Tools",
     "License :: OSI Approved :: BSD License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -17,45 +16,47 @@ classifiers = [
 ]
 authors = [{ "name" = "The HDF Group", "email" = "help@hdfgroup.org" }]
 keywords = ["json", "hdf5", "multidimensional array", "data", "datacube"]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
+version = "2.0.0"
+
 dependencies = [
-    "h5py >=3.10",
+    "h5py >= 3.10",
     "numpy >= 2.0; python_version>='3.9'",
     "jsonschema >=4.4.0",
     "tomli; python_version<'3.11'",
-    "numpy >=1.20,<2.0.0; python_version=='3.8'",
 ]
-dynamic = ["version"]
+
+#dynamic = ["version"]
 
 [project.urls]
-Homepage = "https://hdf5-json.readthedocs.io"
-Documentation = "https://hdf5-json.readthedocs.io"
+Homepage = "https://support.hdfgroup.org/documentation/hdf5-json/latest/"
+Documentation = "https://support.hdfgroup.org/documentation/hdf5-json/latest/"
 Source = "https://github.com/HDFGroup/hdf5-json"
 "Bug Reports" = "https://github.com/HDFGroup/hdf5-json/issues"
 Social = "https://twitter.com/hdf5"
 Discussion = "https://forum.hdfgroup.org"
 
 [project.scripts]
-h5tojson = "h5json.h5tojson.h5tojson:main"
-jsontoh5 = "h5json.jsontoh5.jsontoh5:main"
-h5jvalidate = "h5json.validator.validator:main"
+h5tojson = "h5json.apps.h5tojson:main"
+jsontoh5 = "h5json.apps.jsontoh5:main"
+h5jvalidate = "h5json.apps.validator:main"
 
 [project.optional-dependencies]
 dev = ["check-manifest"]
 test = ["coverage"]
 
 [build-system]
-requires = ["setuptools", "setuptools_scm", "wheel"]
+requires = ["setuptools >= 61"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
 packages = [
     "h5json",
-    "h5json.h5tojson",
-    "h5json.jsontoh5",
+    "h5json.jsonstore",
+    "h5json.h5pystore",
     "h5json.schema",
-    "h5json.validator",
+    "h5json.apps",
 ]
 package-data = { "h5json.schema" = ["*.schema.json"] }
 platforms = ["any"]

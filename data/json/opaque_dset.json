@@ -1,44 +1,50 @@
 {
-    "apiVersion": "1.0.0", 
+    "apiVersion": "1.1.1",
     "datasets": {
-        "a27b18a1-83f8-11e5-ab76-3c15c2da029e": {
+        "aadac21f-80b8a6ce-818c-c6ef60-1b39d5": {
             "alias": [
                 "/DS1"
-            ], 
+            ],
             "creationProperties": {
-                "allocTime": "H5D_ALLOC_TIME_LATE", 
-                "fillTime": "H5D_FILL_TIME_IFSET", 
+                "allocTime": "H5D_ALLOC_TIME_LATE",
+                "fillTime": "H5D_FILL_TIME_IFSET",
                 "layout": {
                     "class": "H5D_CONTIGUOUS"
                 }
-            }, 
+            },
+            "encoding": "base64",
             "shape": {
-                "class": "H5S_SIMPLE", 
+                "class": "H5S_SIMPLE",
                 "dims": [
                     4
                 ]
-            }, 
+            },
             "type": {
-                "class": "H5T_OPAQUE", 
+                "class": "H5T_OPAQUE",
                 "size": 7
-            }, 
-            "value": "????"
+            },
+            "value": [
+                "T1BBUVVFMA==",
+                "T1BBUVVFMQ==",
+                "T1BBUVVFMg==",
+                "T1BBUVVFMw=="
+            ]
         }
-    }, 
+    },
     "groups": {
-        "a27a0021-83f8-11e5-b3ea-3c15c2da029e": {
+        "aadac21f-80b8a6ce-2252-4a9708-302e46": {
             "alias": [
                 "/"
-            ], 
+            ],
             "links": [
                 {
-                    "class": "H5L_TYPE_HARD", 
-                    "collection": "datasets", 
-                    "id": "a27b18a1-83f8-11e5-ab76-3c15c2da029e", 
+                    "class": "H5L_TYPE_HARD",
+                    "collection": "datasets",
+                    "id": "aadac21f-80b8a6ce-818c-c6ef60-1b39d5",
                     "title": "DS1"
                 }
             ]
         }
-    }, 
-    "root": "a27a0021-83f8-11e5-b3ea-3c15c2da029e"
+    },
+    "root": "aadac21f-80b8a6ce-2252-4a9708-302e46"
 }

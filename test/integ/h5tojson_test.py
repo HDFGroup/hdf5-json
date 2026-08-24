@@ -35,7 +35,7 @@ test_files = (
     "compound.h5",
     "compound_array.h5",
     "compound_array_attr.h5",
-    # "compound_array_vlen_string.h5",  # crashes python w/ Linux!
+    "compound_array_vlen_string.h5",
     "compound_array_dset.h5",
     "compound_attr.h5",
     "compound_committed.h5",
@@ -47,8 +47,8 @@ test_files = (
     "enum_attr.h5",
     "enum_dset.h5",
     "fillvalue.h5",
-    "fixed_string_attr.h5",  # temp for trying travis
-    "fixed_string_dset.h5",  # temp for trying travis
+    "fixed_string_attr.h5",
+    "fixed_string_dset.h5",
     "h5ex_d_alloc.h5",
     "h5ex_d_checksum.h5",
     "h5ex_d_chunk.h5",
@@ -119,13 +119,13 @@ for test_file in test_files:
     out_file = os.path.join(out_dir, split_ext[0] + ".json")
     if not os.path.exists(file_path):
         sys.exit("file: " + file_path + " not found")
-    cmd = "python ../../src/h5json/h5tojson/h5tojson.py " + file_path + " >" + out_file
+    cmd = "python ../../src/h5json/apps/h5tojson.py " + file_path + " >" + out_file
     print("cmd:", cmd)
     rc = os.system(cmd)
     if rc != 0:
         sys.exit("h5tojson failed converting: " + test_file)
 
-    cmd = "python ../../src/h5json/validator/validator.py " + out_file
+    cmd = "python ../../src/h5json/apps/validator.py " + out_file
     print("cmd:", cmd)
     if rc != 0:
         sys.exit("HDF5/JSON validation failed for: " + out_file)
