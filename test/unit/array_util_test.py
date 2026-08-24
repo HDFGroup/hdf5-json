@@ -714,13 +714,15 @@ class ArrayUtilTest(unittest.TestCase):
         # vlen array of records) raised "TypeError: Invalid type class".
         # The H5T_ARRAY branch already did this correctly - see
         # testJsonToArrayH5T_ARRAY below for the analogous array case.
+        vlen_int_type_json = {
+            "class": "H5T_VLEN", "size": "H5T_VARIABLE",
+            "base": {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"},
+        }
         inner_type_json = {
             "class": "H5T_COMPOUND",
             "fields": [
-                {"name": "a", "type": {"class": "H5T_VLEN", "size": "H5T_VARIABLE",
-                                        "base": {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"}}},
-                {"name": "b", "type": {"class": "H5T_VLEN", "size": "H5T_VARIABLE",
-                                        "base": {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"}}},
+                {"name": "a", "type": vlen_int_type_json},
+                {"name": "b", "type": vlen_int_type_json},
             ],
         }
         vlen_of_compound_type_json = {
@@ -752,13 +754,15 @@ class ArrayUtilTest(unittest.TestCase):
         # scalar record instead of an array of records) - here the vlen
         # field holds 2 records of a 2-field compound. _vlenBaseToArray()
         # now builds it element-by-element instead to avoid the ambiguity.
+        vlen_int_type_json = {
+            "class": "H5T_VLEN", "size": "H5T_VARIABLE",
+            "base": {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"},
+        }
         inner_type_json = {
             "class": "H5T_COMPOUND",
             "fields": [
-                {"name": "a", "type": {"class": "H5T_VLEN", "size": "H5T_VARIABLE",
-                                        "base": {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"}}},
-                {"name": "b", "type": {"class": "H5T_VLEN", "size": "H5T_VARIABLE",
-                                        "base": {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"}}},
+                {"name": "a", "type": vlen_int_type_json},
+                {"name": "b", "type": vlen_int_type_json},
             ],
         }
         outer_type_json = {
