@@ -829,7 +829,7 @@ def contained(s1, s2):
     rank = len(s1.shape)
     for dim in range(rank):
         if not _ap_is_subset(s1.start[dim], s1.step[dim], s1.count[dim],
-                              s2.start[dim], s2.step[dim], s2.count[dim]):
+                             s2.start[dim], s2.step[dim], s2.count[dim]):
             is_contained = False
             break
     return is_contained
