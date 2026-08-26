@@ -450,8 +450,17 @@ def getElementSize(e, dt):
             count = len(e.encode("utf-8")) + 4
         elif isinstance(e, np.ndarray):
             nElements = math.prod(e.shape)
-            if e.dtype.kind != "O":
+            if e.dtype.kind != "O" and len(e.dtype) == 0:
                 count = e.dtype.itemsize * nElements
+            elif len(e.dtype) > 0:
+                # compound base type (e.g. a vlen field whose elements are a
+                # compound with its own vlen sub-fields) - each record must
+                # be measured with its own (e.dtype) dtype, not the outer
+                # vlen-wrapper dtype
+                arr1d = e.reshape((nElements,))
+                count = 0
+                for item in arr1d:
+                    count += getElementSize(item, e.dtype)
             else:
                 arr1d = e.reshape((nElements,))
                 count = 0
@@ -548,12 +557,24 @@ def copyElement(e, dt, buffer, offset):
         elif isinstance(e, np.ndarray):
             nElements = math.prod(e.shape)
 
-            if e.dtype.kind != "O":
+            if e.dtype.kind != "O" and len(e.dtype) == 0:
                 count = np.int32(e.dtype.itemsize * nElements)
                 if count > MAX_VLEN_ELEMENT:
                     raise ValueError("vlen element too large")
                 offset = copyBuffer(count.tobytes(), buffer, offset)
                 offset = copyBuffer(e.tobytes(), buffer, offset)
+            elif len(e.dtype) > 0:
+                # compound base type (possibly itself containing vlen
+                # fields) - a raw tobytes() would dump internal object
+                # pointers instead of the actual data, so measure/copy each
+                # record with its own (e.dtype) dtype
+                arr1d = e.reshape((nElements,))
+                count = np.int32(sum(getElementSize(item, e.dtype) for item in arr1d))
+                if count > MAX_VLEN_ELEMENT:
+                    raise ValueError("vlen element too large")
+                offset = copyBuffer(count.tobytes(), buffer, offset)
+                for item in arr1d:
+                    offset = copyElement(item, e.dtype, buffer, offset)
             else:
                 arr1d = e.reshape((nElements,))
                 for item in arr1d:
@@ -663,6 +684,22 @@ def readElement(buffer, offset, arr, index, dt):
                         arr[index] = ""
                     else:
                         arr[index] = b""
+            elif getattr(vlenBaseType, "names", None) and count > 0:
+                # compound base type (possibly itself containing vlen
+                # sub-fields, e.g. a vlen field whose elements are a
+                # compound with vlen fields) - sub-fields with no fixed
+                # width can't be parsed via a single flat frombuffer(), so
+                # read one record at a time until the element's byte count
+                # is fully consumed
+                n_end = offset + count
+                pos = offset
+                items = []
+                while pos < n_end:
+                    item_arr = np.zeros((1,), dtype=vlenBaseType)
+                    pos = readElement(buffer, pos, item_arr, 0, vlenBaseType)
+                    items.append(item_arr[0])
+                offset = pos
+                arr[index] = np.array(items, dtype=vlenBaseType)
             elif count > 0:
                 e_buffer = buffer[n:m]
                 offset += count
