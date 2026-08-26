@@ -1173,6 +1173,38 @@ class ArrayUtilTest(unittest.TestCase):
         with self.assertRaises(UnicodeDecodeError):
             bytesToArray(buffer, dt, (1,))
 
+    def testBytesToArraySubarrayDtype(self):
+        # exercises bytesToArray()'s reshape when dt is itself an
+        # array/subarray dtype (HDF5's H5T_ARRAY, e.g. numpy's "3int8") -
+        # np.frombuffer() already absorbs dt.shape into the resulting
+        # array's shape, so the final reshape must target shape + dt.shape,
+        # not just the bare "outer" shape passed in.  This is the calling
+        # convention h5pyd/HSDS use: shape is the dataset's own shape,
+        # unrelated to dt's subarray shape.
+        dt = np.dtype(("i1", (3,)))
+
+        # single dataset element - build via frombuffer (the same mechanism
+        # bytesToArray itself uses), since np.array(nested_list, dtype=dt)
+        # broadcasts each scalar into the subarray shape instead of
+        # treating the inner list as one element's worth of data
+        data = bytes([1, 2, 3])
+        arr = np.frombuffer(data, dtype=dt)
+        self.assertEqual(arr.shape, (1, 3))
+        buffer = arrayToBytes(arr)
+        arr_copy = bytesToArray(buffer, dt, (1,))  # (1,) is the dataset shape
+        self.assertEqual(arr_copy.shape, (1, 3))
+        self.assertTrue(np.array_equal(arr, arr_copy))
+
+        # multiple dataset elements, so the outer dim isn't coincidentally
+        # correct just because it's 1
+        data2 = bytes([1, 2, 3, 4, 5, 6])
+        arr2 = np.frombuffer(data2, dtype=dt)
+        self.assertEqual(arr2.shape, (2, 3))
+        buffer2 = arrayToBytes(arr2)
+        arr2_copy = bytesToArray(buffer2, dt, (2,))
+        self.assertEqual(arr2_copy.shape, (2, 3))
+        self.assertTrue(np.array_equal(arr2, arr2_copy))
+
     def testArrToBytesBase64(self):
         # Simple array
         dt = np.dtype("<i4")

@@ -808,6 +808,10 @@ def bytesToArray(data, dt, shape, encoding=None):
     if not _isVlenLike(dt):
         # regular numpy from string
         arr = np.frombuffer(data, dtype=dt)
+        # frombuffer already absorbs an array/subarray dtype's own shape
+        # (dt.shape) into arr's shape - append it to the target shape too,
+        # or the reshape below would incorrectly try to drop those elements
+        target_shape = shape if shape is None or not dt.shape else tuple(shape) + dt.shape
     else:
         nElements = getNumElements(shape)
 
@@ -815,8 +819,9 @@ def bytesToArray(data, dt, shape, encoding=None):
         offset = 0
         for index in range(nElements):
             offset = readElement(data, offset, arr, index, dt)
-    if shape is not None:
-        arr = arr.reshape(shape)
+        target_shape = shape
+    if target_shape is not None:
+        arr = arr.reshape(target_shape)
     # check that we can update the array if needed
     # Note: this seems to have been required starting with numpuy v 1.17
     # Setting the flag directly is not recommended.
@@ -848,7 +853,10 @@ def getNumpyValue(value, dt=None, encoding=None):
             msg = f"Unable to decode base64 string: {value}"
             # log.warn(msg)
             raise ValueError(msg)
-        arr = bytesToArray(data, dt, dt.shape)
+        # shape=() means "a single value of dtype dt" - bytesToArray appends
+        # dt.shape itself (if dt is an array/subarray dtype) to the shape
+        # passed in, so passing dt.shape here as well would double it
+        arr = bytesToArray(data, dt, ())
     else:
         if isinstance(value, list):
             # convert to tuple
