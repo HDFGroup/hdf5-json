@@ -12,6 +12,7 @@
 
 import numpy as np
 import logging
+from collections import defaultdict, deque
 from .hdf5dtype import getTypeItem, createDataType, Reference, special_dtype, isOpaqueDtype
 from .hdf5dtype import numpy_integer_types, numpy_float_types, isVlen, vlenBaseType
 from .hdf5dtype import RegionReference, is_reference, is_regionreference, has_reference
@@ -1213,6 +1214,15 @@ class Hdf5db:
 
         updates = self._getDatasetUpdates(dset_id)
 
+        if "initializer" in cpl and (dset_id in self._new_objects or updates):
+            # a server-side chunk initializer (e.g. HSDS's "arange") computes
+            # values the client has no way to replicate locally - flush first
+            # so this read goes through the real per-chunk initialization
+            # path on the server, rather than falling back to the local
+            # zero/fillValue-based array built below for unflushed data
+            self.flush()
+            updates = self._getDatasetUpdates(dset_id)
+
         shape_class = getShapeClass(shape_json)
 
         if shape_class == "H5S_NULL":
@@ -1292,30 +1302,40 @@ class Hdf5db:
 
             if is_paired_read:
                 # Paired-coordinate read: output is 1-D, one entry per point pair.
-                # Map each intersected pair back to its 1-D output index.
+                # Map each intersected pair back to its 1-D output index(es).
+                # A plain dict would collapse a repeated point to a single
+                # (last-seen) index, silently dropping the earlier occurrence's
+                # output slot - use a per-point queue instead, consumed in
+                # order.  intersect() preserves the original left-to-right
+                # order/multiplicity of repeated points, so x_sel's occurrences
+                # line up positionally with sel's (and, when the update is
+                # itself paired-point, with update_sel's).
                 n_pairs = len(sel.slices[sel_list_dims[0]])
-                sel_pt_to_idx = {
-                    tuple(sel.slices[d][i] for d in range(rank)): i
-                    for i in range(n_pairs)
-                }
+                sel_pt_to_idx = defaultdict(deque)
+                for i in range(n_pairs):
+                    pt = tuple(sel.slices[d][i] for d in range(rank))
+                    sel_pt_to_idx[pt].append(i)
                 upd_list_dims = [d for d in range(rank)
                                  if isinstance(update_sel.slices[d], list)]
                 is_paired_update = update_sel.select_type == selections.H5S_SEL_POINTS
+                if is_paired_update:
+                    n_upd = len(update_sel.slices[upd_list_dims[0]])
+                    upd_pt_to_idx = defaultdict(deque)
+                    for j in range(n_upd):
+                        pt = tuple(update_sel.slices[d][j] for d in range(rank))
+                        upd_pt_to_idx[pt].append(j)
                 n_x = len(x_sel.slices[sel_list_dims[0]])
                 for i in range(n_x):
                     pt = tuple(x_sel.slices[d][i] for d in range(rank))
-                    tgt_idx = sel_pt_to_idx.get(pt)
-                    if tgt_idx is None:
+                    pt_queue = sel_pt_to_idx.get(pt)
+                    if not pt_queue:
                         continue
+                    tgt_idx = pt_queue.popleft()
                     if is_paired_update:
-                        n_upd = len(update_sel.slices[upd_list_dims[0]])
-                        upd_pt_to_idx = {
-                            tuple(update_sel.slices[d][j] for d in range(rank)): j
-                            for j in range(n_upd)
-                        }
-                        src_idx = upd_pt_to_idx.get(pt)
-                        if src_idx is None:
+                        src_queue = upd_pt_to_idx.get(pt)
+                        if not src_queue:
                             continue
+                        src_idx = src_queue.popleft()
                         _assign(arr, tgt_idx, eff_val, src_idx, write_fields)
                     else:
                         src_pt = tuple(pt[d] - update_sel.start[d] for d in range(rank))
@@ -1323,14 +1343,17 @@ class Hdf5db:
             elif update_sel.select_type == selections.H5S_SEL_POINTS:
                 # Point update: eff_val is 1-D indexed by position in update_sel.
                 # Iterate intersected points and copy each value individually.
+                # See the is_paired_read branch above for why a queue (not a
+                # plain dict) is needed to handle repeated points correctly.
                 rank = len(sel.shape)
-                upd_pt_to_idx = {
-                    pt: j for j, pt in enumerate(selections._iter_points(update_sel))
-                }
+                upd_pt_to_idx = defaultdict(deque)
+                for j, pt in enumerate(selections._iter_points(update_sel)):
+                    upd_pt_to_idx[pt].append(j)
                 for pt in selections._iter_points(x_sel):
-                    src_idx = upd_pt_to_idx.get(pt)
-                    if src_idx is None:
+                    src_queue = upd_pt_to_idx.get(pt)
+                    if not src_queue:
                         continue
+                    src_idx = src_queue.popleft()
                     tgt_coords = tuple(pt[d] - sel.start[d] for d in range(rank))
                     _assign(arr, tgt_coords, eff_val, src_idx, write_fields)
             else:
