@@ -62,6 +62,14 @@ def elapsedTime(timestamp):
     return ret_str
 
 
+# Fallback anchor for getNow() on platforms with a coarse wall clock: a
+# wall-clock reading paired with a monotonic reading taken at the same moment,
+# so later calls can advance the wall clock by a precisely measured delta.
+# Captured once, at import.
+_start_time = time.time()
+_start_time_relative = time.perf_counter()
+
+
 def getNow(app=None):
     """
     Get current time in unix timestamp
@@ -73,13 +81,22 @@ def getNow(app=None):
     current_time = 0
 
     if system == "nt":
-        # Windows
-        if app is None or "start_time_relative" not in app or "start_time" not in app:
-            current_time = time.time()  # just use lower precision time.time()
+        # Windows: before Python 3.13, time.time() only advances once per
+        # ~15.6ms system tick, so objects created in a loop get timestamps that
+        # compare equal. Callers order attributes and links by their "created"
+        # value, and equal timestamps leave that order undefined - so advance a
+        # wall-clock anchor by a perf_counter delta rather than reading the
+        # coarse clock directly. Prefer the caller's anchor when it has one; it
+        # is set once at node startup, so it stays consistent across a process.
+        if app is not None and "start_time_relative" in app and "start_time" in app:
+            start_time = app["start_time"]
+            start_time_relative = app["start_time_relative"]
         else:
-            current_time = (time.perf_counter() - app["start_time_relative"]) + app["start_time"]
+            start_time = _start_time
+            start_time_relative = _start_time_relative
+        current_time = (time.perf_counter() - start_time_relative) + start_time
     elif system == "posix":
-        # Unix
+        # Unix - time.time() is already fine-grained here
         current_time = time.time()
     else:
         raise ValueError(f"Unsupported OS: {system}")
