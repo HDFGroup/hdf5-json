@@ -7,6 +7,7 @@ Everything else in the release pipeline keys off what this prints, so a tag
 that disagrees with the source tree stops the run before anything is built or
 published.
 """
+import ast
 import os
 import re
 import sys
@@ -47,33 +48,57 @@ def read_pyproject_version():
 
 
 def check_dunder_version(version):
-    """Soft check: warn if h5json exposes a __version__ that disagrees.
+    """Check that h5json.__version__ agrees with pyproject.toml.
 
-    docs/conf.py reads `h5json.__version__`, so once that attribute is
-    restored it becomes a second place the version lives and must agree with
-    pyproject.toml. Warn rather than fail so this does not block a release
-    while the attribute is still missing.
+    docs/conf.py reads `h5json.__version__`, so it is a second place the
+    version is exposed and must not disagree with the SSOT.
+
+    Two forms are accepted. Deriving it from installed distribution metadata
+    (`importlib.metadata.version("h5json")`) is the preferred one: there is
+    only one version in the tree, so it cannot drift, and nothing is checked.
+    A hard-coded literal is a second source of truth, so it is compared and
+    fails on a mismatch. Note the metadata form usually carries a literal
+    fallback for uninstalled source trees - that fallback is deliberately not
+    the declared version and must not be compared against.
     """
     init = Path("src/h5json/__init__.py")
     if not init.is_file():
         return
-    match = re.search(
-        r"^__version__\s*=\s*[\"']([^\"']+)[\"']",
-        init.read_text(encoding="utf-8"),
-        re.MULTILINE,
-    )
-    if not match:
+    try:
+        tree = ast.parse(init.read_text(encoding="utf-8"))
+    except SyntaxError as exc:
+        fail(f"could not parse {init}: {exc}")
+
+    literals = []
+    derived = False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(
+            isinstance(t, ast.Name) and t.id == "__version__" for t in node.targets
+        ):
+            continue
+        if isinstance(node.value, ast.Call):
+            derived = True
+        elif isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            literals.append(node.value.value)
+
+    if derived:
+        # Single source of truth already - nothing can disagree.
+        return
+    if not literals:
         print(
-            "::warning::src/h5json/__init__.py does not define __version__, but "
-            "docs/conf.py reads h5json.__version__ - the docs build will fail "
-            "until it is restored"
+            f"::warning::{init} does not define __version__, but docs/conf.py "
+            "reads h5json.__version__ - the docs build will fail until it is "
+            "restored"
         )
         return
-    if match.group(1) != version:
-        fail(
-            f"version mismatch: pyproject.toml says {version}, "
-            f"src/h5json/__init__.py __version__ says {match.group(1)}"
-        )
+    for found in literals:
+        if found != version:
+            fail(
+                f"version mismatch: {PYPROJECT} says {version}, "
+                f"{init} __version__ says {found}"
+            )
 
 
 def main():

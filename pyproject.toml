@@ -21,9 +21,8 @@ version = "2.0.0"
 
 dependencies = [
     "h5py >= 3.10",
-    "numpy >= 2.0; python_version>='3.9'",
+    "numpy >= 2.0",
     "jsonschema >=4.4.0",
-    "tomli; python_version<'3.11'",
 ]
 
 [project.urls]
