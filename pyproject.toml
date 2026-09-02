@@ -23,6 +23,7 @@ dependencies = [
     "h5py >= 3.10",
     "numpy >= 2.0",
     "jsonschema >=4.4.0",
+    "pytz",
 ]
 
 [project.urls]
