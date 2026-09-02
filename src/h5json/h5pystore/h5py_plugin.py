@@ -14,7 +14,6 @@ import h5py
 from h5py import h5r, h5s, h5t
 import numpy as np
 from os import stat as os_stat
-import time
 
 from ..objid import getCollectionForId, isValidUuid, createObjId
 from ..hdf5dtype import getTypeItem, createDataType, isVlen, vlenBaseType, RegionReference, isOpaqueDtype
@@ -22,6 +21,7 @@ from ..array_util import bytesArrayToList, jsonToArray
 from ..h5py_util import is_reference, is_regionreference, has_reference, convert_dtype
 from ..shape_util import getShapeDims, getShapeClass, isExtensible, getMaxDims
 from ..track_util import getTrackTimes
+from ..time_util import getNow
 from ..dset_util import getDatasetLayout, getFillValue
 from ..filters import isCompressionFilter, getFilters, getFilterItem
 from .. import selections
@@ -754,6 +754,14 @@ class H5pyPlugin(StoragePlugin):
                 else:
                     pass  # already deleted or never added
                 continue
+            # Both sides must come from getNow(), and from the same anchor:
+            # "created" is stamped by Hdf5db, _flush_time below. getNow() is
+            # monotonic, so anything created after the last flush compares
+            # greater and is written. Reading one side from time.time() instead
+            # put the two on number lines whose offset is arbitrary within a
+            # Windows clock tick, which silently skipped attributes that had in
+            # fact been created after the flush. Equal timestamps fall on the
+            # write side, so a tie costs a redundant write, never a lost one.
             if "created" in attr_json and attr_json["created"] < self._flush_time:
                 # attribute should be saved already
                 continue
@@ -1271,7 +1279,7 @@ class H5pyPlugin(StoragePlugin):
         # mark time write is complete
         # updates before this time will not need to be written
         # TBD: possible race condition with multithreading
-        self._flush_time = time.time()
+        self._flush_time = getNow()
 
         self._init = False  # done with init after first flush
         return True  # all objects written successfully
