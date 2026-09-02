@@ -1,0 +1,268 @@
+name: Release
+
+# Single entry point for cutting a release. Everything downstream (GitHub
+# release, PyPI, conda-forge) is a separate job so the three can fail, be
+# re-run, and be permissioned independently - but they all key off one tag
+# push, so the artifacts can never drift out of sync with each other.
+#
+# To cut a release:
+#   1. Bump the version in pyproject.toml (the SSOT - see the `version` job).
+#   2. Add the matching section to CHANGELOG.md.
+#   3. git tag -a v2.0.0 -m "v2.0.0" && git push origin v2.0.0
+#
+# `workflow_dispatch` runs the same pipeline in dry-run mode (build and
+# validate, publish nothing) so the release can be rehearsed off a branch.
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+[abrc]*[0-9]*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and validate only - publish nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Single place to change if the release pipeline moves to a newer Python.
+  BUILD_PYTHON_VERSION: "3.12"
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Resolve and validate the version. Nothing is built or published until
+  # this passes, so a tag that disagrees with the source tree fails fast
+  # and cheaply rather than half-publishing.
+  # ---------------------------------------------------------------------
+  version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ssot.outputs.version }}
+      tag: ${{ steps.ssot.outputs.tag }}
+      prerelease: ${{ steps.ssot.outputs.prerelease }}
+      has_notes: ${{ steps.notes.outputs.has_notes }}
+      dry_run: ${{ steps.mode.outputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.BUILD_PYTHON_VERSION }}
+
+      - name: Determine run mode
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "dry_run=${{ inputs.dry_run }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Read version from SSOT and validate against tag
+        id: ssot
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: python .github/scripts/release_version.py
+
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        env:
+          VERSION: ${{ steps.ssot.outputs.version }}
+        run: python .github/scripts/release_notes.py
+
+      - name: Upload release notes
+        if: steps.notes.outputs.has_notes == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes.md
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          {
+            echo "### Release ${{ steps.ssot.outputs.tag }}"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Version | \`${{ steps.ssot.outputs.version }}\` |"
+            echo "| Tag | \`${{ steps.ssot.outputs.tag }}\` |"
+            echo "| Pre-release | \`${{ steps.ssot.outputs.prerelease }}\` |"
+            echo "| Notes from CHANGELOG | \`${{ steps.notes.outputs.has_notes }}\` |"
+            echo "| Dry run | \`${{ steps.mode.outputs.dry_run }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------
+  # Build once. The exact same sdist/wheel are attached to the GitHub
+  # release and uploaded to PyPI - never rebuilt per target, so the two
+  # can't disagree.
+  # ---------------------------------------------------------------------
+  build:
+    name: Build distributions
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.BUILD_PYTHON_VERSION }}
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+
+      - name: Check metadata
+        run: python -m twine check --strict dist/*
+
+      - name: Verify built version matches the tag
+        env:
+          EXPECTED: ${{ needs.version.outputs.version }}
+        run: |
+          # Guards against a stale build backend or leftover dist/ contents
+          # silently shipping the wrong version.
+          if ! ls "dist/h5json-${EXPECTED}.tar.gz" >/dev/null 2>&1; then
+            echo "::error::expected dist/h5json-${EXPECTED}.tar.gz, got:"
+            ls -1 dist/
+            exit 1
+          fi
+
+      - name: Smoke test the wheel
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install --quiet dist/*.whl
+          /tmp/smoke/bin/python -c "import h5json; print('import ok')"
+          /tmp/smoke/bin/h5tojson --help > /dev/null
+          /tmp/smoke/bin/jsontoh5 --help > /dev/null
+          /tmp/smoke/bin/h5jvalidate --help > /dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------
+  # GitHub release. Matches the existing release pattern (annotated tag +
+  # hand-written notes) and additionally attaches the built dists, which
+  # earlier releases did not carry.
+  # ---------------------------------------------------------------------
+  github-release:
+    name: GitHub release
+    needs: [version, build]
+    if: needs.version.outputs.dry_run == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - uses: actions/download-artifact@v4
+        if: needs.version.outputs.has_notes == 'true'
+        with:
+          name: release-notes
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+          HAS_NOTES: ${{ needs.version.outputs.has_notes }}
+        run: |
+          args=(--title "$TAG" --verify-tag)
+          if [ "$HAS_NOTES" = "true" ]; then
+            args+=(--notes-file release-notes.md)
+          else
+            # No CHANGELOG section for this version - fall back to the
+            # commit-derived notes rather than publishing an empty body.
+            args+=(--generate-notes)
+          fi
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$TAG" "${args[@]}" dist/*
+
+  # ---------------------------------------------------------------------
+  # PyPI. Uses Trusted Publishing (OIDC) - no long-lived API token in repo
+  # secrets. Requires a one-time publisher config on PyPI; see the repo
+  # release docs.
+  # ---------------------------------------------------------------------
+  # Runs after github-release rather than alongside it. The two publish to
+  # places with very different undo stories: a GitHub release can be deleted
+  # and recreated, while PyPI permanently burns a version number - a deleted
+  # release cannot be re-uploaded. Ordering it this way means a failure in the
+  # recoverable half stops the irreversible half from happening at all.
+  pypi:
+    name: Publish to PyPI
+    needs: [version, github-release]
+    if: needs.version.outputs.dry_run == 'false'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/h5json/${{ needs.version.outputs.version }}
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Trusted Publishing: configure at
+        # https://pypi.org/manage/project/h5json/settings/publishing/
+        #   owner: HDFGroup   repo: hdf5-json
+        #   workflow: release.yml   environment: pypi
+        #
+        # If a token is preferred over OIDC instead, drop `permissions:
+        # id-token` above and set:
+        #   with:
+        #     password: ${{ secrets.PYPI_API_TOKEN }}
+
+  # ---------------------------------------------------------------------
+  # conda-forge.
+  # ---------------------------------------------------------------------
+  conda-forge:
+    name: conda-forge (not yet wired up)
+    needs: [version, github-release]
+    if: needs.version.outputs.dry_run == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: TODO
+        run: |
+          # TODO(conda-forge): h5json is not on conda-forge yet. Before this
+          # job can do anything real:
+          #
+          #   1. Submit an h5json recipe to conda-forge/staged-recipes. It is
+          #      pure Python, so `noarch: python`, one build, no compilers.
+          #      Entry points: h5tojson, jsontoh5, h5jvalidate.
+          #   2. Get conda-forge/h5json-feedstock created and building.
+          #
+          # After that, the feedstock's own bot opens a version-bump PR
+          # automatically within ~an hour of a PyPI release, so this job may
+          # never need to do anything. Wire it up only if the automatic bump
+          # proves too slow to keep in sync with the coordinated release -
+          # in which case this job should open the feedstock PR directly
+          # (regro autotick-bot style) using a bot token.
+          #
+          # NOTE: h5pyd's conda-forge feedstock cannot add an h5json run
+          # dependency until step 2 lands - its recipe runs `pip check`.
+          echo "conda-forge publishing is not configured yet - see comments in this file."
+          echo "Version that would be published: ${{ needs.version.outputs.version }}"

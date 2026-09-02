@@ -21,12 +21,10 @@ version = "2.0.0"
 
 dependencies = [
     "h5py >= 3.10",
-    "numpy >= 2.0; python_version>='3.9'",
+    "numpy >= 2.0",
     "jsonschema >=4.4.0",
-    "tomli; python_version<'3.11'",
+    "pytz",
 ]
-
-#dynamic = ["version"]
 
 [project.urls]
 Homepage = "https://support.hdfgroup.org/documentation/hdf5-json/latest/"
@@ -61,9 +59,6 @@ packages = [
 package-data = { "h5json.schema" = ["*.schema.json"] }
 platforms = ["any"]
 zip-safe = false
-
-[tool.setuptools_scm]
-version_file = "src/h5json/_version.py"
 
 # [tool.distutils.bdist_wheel]
 # universal = true
