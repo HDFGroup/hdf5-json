@@ -16,7 +16,8 @@ from h5json.filters import getFilterItem
 from h5json.dset_util import guessChunk, shrinkChunk, getChunkSize, expandChunk, generateLayout
 from h5json.dset_util import getDatasetLayoutClass, getContiguousLayout, getChunkDims
 from h5json.dset_util import validateLayout, validateDatasetCreationProps, getDatasetLayout
-from h5json.dset_util import getFillValue, generate_dcpl
+from h5json.dset_util import getFillValue, generate_dcpl, CHUNK_MIN, CHUNK_MAX
+from h5json.hdf5dtype import getItemSize
 from h5json.objid import createObjId
 
 
@@ -515,6 +516,64 @@ class DsetUtilTest(unittest.TestCase):
             if space_bytes > chunk_min:
                 self.assertTrue(chunk_bytes >= chunk_min)
             self.assertTrue(chunk_bytes <= chunk_max)
+
+    def testGetChunkDimsContiguousRef(self):
+        # H5D_CONTIGUOUS_REF data lives in a byte range of another file, and is read
+        # in virtual chunks of at most CHUNK_MAX bytes rather than all at once
+        def contiguousRefDset(dims, type_json, legacy_layout=None):
+            num_bytes = getChunkSize(dims, getItemSize(type_json)) if 0 not in dims else 0
+            layout = {"class": "H5D_CONTIGUOUS_REF", "file_uri": "bucket/file.h5",
+                      "offset": 1234, "size": num_bytes}
+            dset_json = {"type": type_json,
+                         "shape": {"class": "H5S_SIMPLE", "dims": dims},
+                         "creationProperties": {"layout": layout}}
+            if legacy_layout:
+                dset_json["layout"] = legacy_layout
+            return dset_json
+
+        f32 = {"class": "H5T_FLOAT", "base": "H5T_IEEE_F32LE"}
+        rows134 = {"class": "H5T_STRING", "charSet": "H5T_CSET_ASCII",
+                   "strPad": "H5T_STR_NULLPAD", "length": 134}
+
+        # a 16 GB 2-d dataset, and a 361 MB table of 134-byte rows
+        for dims, type_json in (([50000, 80000], f32), ([2693287], rows134)):
+            dset_json = contiguousRefDset(dims, type_json)
+            chunk_dims = getChunkDims(dset_json)
+            self.assertEqual(len(chunk_dims), len(dims))
+            for extent, chunk_extent in zip(dims, chunk_dims):
+                self.assertTrue(0 < chunk_extent <= extent)
+            item_size = getItemSize(type_json)
+            self.assertLessEqual(getChunkSize(chunk_dims, item_size), CHUNK_MAX)
+            self.assertLess(getChunkSize(chunk_dims, item_size), getChunkSize(dims, item_size))
+            # the same split getContiguousLayout gives with the module defaults
+            expected = getContiguousLayout(dset_json["shape"], item_size,
+                                           chunk_min=CHUNK_MIN, chunk_max=CHUNK_MAX)
+            self.assertEqual(chunk_dims, tuple(expected))
+
+        # a dataset smaller than CHUNK_MAX is a single chunk
+        dset_json = contiguousRefDset([100, 20], f32)
+        self.assertEqual(getChunkDims(dset_json), (100, 20))
+
+        # a legacy dataset that also has the old top-level chunked layout uses the
+        # reference layout, as getDatasetLayout does
+        legacy = {"class": "H5D_CHUNKED", "dims": [7]}
+        dset_json = contiguousRefDset([2693287], rows134, legacy_layout=legacy)
+        self.assertEqual(getChunkDims(dset_json),
+                         getChunkDims(contiguousRefDset([2693287], rows134)))
+
+        # an empty dataset
+        dset_json = contiguousRefDset([0, 10], f32)
+        self.assertEqual(getChunkDims(dset_json), (0, 10))
+
+        # other layouts are unchanged: plain contiguous data is one chunk, and a
+        # chunked reference uses its own dims
+        dset_json = contiguousRefDset([50000, 80000], f32)
+        dset_json["creationProperties"]["layout"] = {"class": "H5D_CONTIGUOUS"}
+        self.assertEqual(getChunkDims(dset_json), (50000, 80000))
+        dset_json["creationProperties"]["layout"] = {
+            "class": "H5D_CHUNKED_REF", "file_uri": "bucket/file.h5",
+            "dims": [500, 80000], "chunks": {}}
+        self.assertEqual(getChunkDims(dset_json), (500, 80000))
 
     def testGetFillValue(self):
         obj_json = {"creationProperties": {"fillValue": 42}}
