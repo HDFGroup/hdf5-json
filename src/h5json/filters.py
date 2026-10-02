@@ -287,6 +287,53 @@ def validateFilters(filters, supported_filters=None):
             raise ValueError(f"filter: {filter_class} not supported")
 
 
+def _getFilterDef(filter_json):
+    """ Return the FILTER_DEFS entry the given filter dict refers to, or None."""
+    filter_class = filter_json["class"]
+    if filter_class != "H5Z_FILTER_USER":
+        for filter_def in FILTER_DEFS:
+            if filter_def[0] == filter_class:
+                return filter_def
+        return None
+    if "id" in filter_json:
+        key, index = filter_json["id"], 1
+    elif "name" in filter_json:
+        key, index = filter_json["name"], 2
+        if key in ("deflate", "zlib"):
+            key = "gzip"  # use gzip as equivalent, as getFilterItem does
+    else:
+        return None
+    for filter_def in FILTER_DEFS:
+        if filter_def[index] == key:
+            return filter_def
+    return None
+
+
+def normalizeFilter(filter_json):
+    """ Return a copy of the given filter dict with any missing id or name filled
+    in from FILTER_DEFS.
+
+    Only dicts with a class are normalized. Others are returned unchanged. """
+    if not isinstance(filter_json, dict) or "class" not in filter_json:
+        return filter_json
+    filter_def = _getFilterDef(filter_json)
+    if filter_def is None:
+        return filter_json
+    normalized = dict(filter_json)
+    normalized["class"] = filter_def[0]
+    normalized.setdefault("id", filter_def[1])
+    normalized.setdefault("name", filter_def[2])
+    return normalized
+
+
+def normalizeFilters(filters):
+    """ Return a copy of the given filter list with normalizeFilter applied to
+    each item.  Anything other than a list is returned unchanged. """
+    if not isinstance(filters, list):
+        return filters
+    return [normalizeFilter(filter_json) for filter_json in filters]
+
+
 def getFilters(dset_json):
     """Return list of filters, or empty list"""
     if "creationProperties" not in dset_json:

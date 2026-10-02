@@ -15,6 +15,7 @@ import logging
 from h5json.filters import FILTER_DEFS
 from h5json.filters import getFilterItem, validateFilter, isCompressionFilter
 from h5json.filters import getAllFilterNames, getCompressionFilter, getShuffleFilter
+from h5json.filters import normalizeFilters, validateFilters
 
 
 class FiltersTest(unittest.TestCase):
@@ -127,6 +128,69 @@ class FiltersTest(unittest.TestCase):
         # empty filter list
         self.assertEqual(getCompressionFilter([]), None)
         self.assertEqual(getShuffleFilter([]), None)
+
+    def testNormalizeFilters(self):
+        deflate = {"class": "H5Z_FILTER_DEFLATE", "id": 1, "name": "gzip"}
+        lz4 = {"class": "H5Z_FILTER_LZ4", "id": 32004, "name": "lz4"}
+
+        # specs with class and id but no name
+        for spec, expected in (
+            ({"class": "H5Z_FILTER_DEFLATE", "id": 1, "level": 9}, dict(deflate, level=9)),
+            ({"class": "H5Z_FILTER_SHUFFLE", "id": 2},
+             {"class": "H5Z_FILTER_SHUFFLE", "id": 2, "name": "shuffle"}),
+            ({"class": "H5Z_FILTER_FLETCHER32", "id": 3},
+             {"class": "H5Z_FILTER_FLETCHER32", "id": 3, "name": "fletcher32"}),
+        ):
+            normalized = normalizeFilters([spec])
+            self.assertEqual(normalized, [expected])
+            validateFilters(normalized)
+
+        self.assertEqual(normalizeFilters([{"class": "H5Z_FILTER_DEFLATE"}]), [deflate])
+
+        # a user filter naming or numbering a registered one gets that filter's
+        # class, so its options validate (lz4's "level" isn't a user filter option)
+        for spec in ({"class": "H5Z_FILTER_USER", "name": "lz4", "level": 5},
+                     {"class": "H5Z_FILTER_USER", "id": 32004, "level": 5}):
+            normalized = normalizeFilters([spec])
+            self.assertEqual(normalized, [dict(lz4, level=5)])
+            validateFilters(normalized)
+        # with the deflate/zlib aliases resolving to gzip
+        spec = {"class": "H5Z_FILTER_USER", "name": "deflate"}
+        self.assertEqual(normalizeFilters([spec])[0]["class"], "H5Z_FILTER_DEFLATE")
+
+        # a name the client gave is kept, order is preserved, and the input isn't
+        # modified
+        spec = {"class": "H5Z_FILTER_DEFLATE", "name": "deflate"}
+        filters = [{"class": "H5Z_FILTER_SHUFFLE"}, spec]
+        normalized = normalizeFilters(filters)
+        self.assertEqual([f["class"] for f in normalized],
+                         ["H5Z_FILTER_SHUFFLE", "H5Z_FILTER_DEFLATE"])
+        self.assertEqual(normalized[1]["name"], "deflate")
+        self.assertEqual(spec, {"class": "H5Z_FILTER_DEFLATE", "name": "deflate"})
+
+        # a wrong id is kept
+        normalized = normalizeFilters([{"class": "H5Z_FILTER_DEFLATE", "id": 2}])
+        self.assertEqual(normalized[0]["id"], 2)
+        with self.assertRaises(ValueError):
+            validateFilters(normalized)
+
+        # anything else passes through unchanged
+        # unknown filters, dicts without a class, and bare names or ids
+        for spec in ({"class": "H5Z_FILTER_USER", "name": "incorrect_filter"},
+                     {"class": "H5Z_FILTER_FOOBAR"},
+                     {"id": 1},
+                     "gzip",
+                     1):
+            self.assertEqual(normalizeFilters([spec]), [spec])
+            with self.assertRaises((KeyError, TypeError, ValueError)):
+                validateFilters(normalizeFilters([spec]))
+
+        # an unregistered user filter with a complete spec is left alone
+        spec = {"class": "H5Z_FILTER_USER", "id": 40000, "name": "custom"}
+        self.assertEqual(normalizeFilters([spec]), [spec])
+
+        # a non-list is returned unchanged
+        self.assertEqual(normalizeFilters(None), None)
 
 
 if __name__ == "__main__":
