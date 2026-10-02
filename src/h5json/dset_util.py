@@ -189,7 +189,14 @@ def getChunkSize(chunk_dims, type_size: int = 1):
 
 
 def getChunkDims(dset_json):
-    """Get chunk layout.  Return shape dims for non-chunked layout"""
+    """Get chunk layout.
+
+    For chunked layouts this is the layout's dims.  An H5D_CONTIGUOUS_REF dataset
+    is split into virtual chunks of at most CHUNK_MAX bytes in order to avoid
+    reading the entire file for a small portion of data.
+
+    Any other non-chunked layout is one chunk the size of the dataset.
+    """
 
     shape_class = getShapeClass(dset_json)
     if shape_class == "H5S_NULL":
@@ -199,6 +206,15 @@ def getChunkDims(dset_json):
     shape_dims = getShapeDims(dset_json)
     layout_class = getDatasetLayoutClass(dset_json)
     if not layout_class:
+        return tuple(shape_dims)
+
+    if layout_class == "H5D_CONTIGUOUS_REF":
+        item_size = getItemSize(dset_json["type"])
+        if isinstance(item_size, int):
+            kwargs = {"chunk_min": CHUNK_MIN, "chunk_max": CHUNK_MAX}
+            return tuple(getContiguousLayout(dset_json["shape"], item_size, **kwargs))
+        # variable-length data can't be split by byte offset (validateLayout
+        # doesn't allow it for this layout anyway)
         return tuple(shape_dims)
 
     if not layout_class.startswith("H5D_CHUNKED"):
