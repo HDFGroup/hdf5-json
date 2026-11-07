@@ -10,6 +10,8 @@
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
 
+import math
+
 import numpy as np
 
 
@@ -130,6 +132,13 @@ def getShapeDims(shape):
     return dims
 
 
+def _prod(dims):
+    """ Product of the extents, in Python ints when they are all integers so it can't wrap. """
+    if all(isinstance(d, (int, np.integer)) for d in dims):
+        return math.prod(int(d) for d in dims)
+    return int(np.prod(dims))
+
+
 def getNumElements(obj_json):
     """ return the number of elements defined by the dataset's shape
         returns None for null shape, 1 for scalar shape, and product of
@@ -139,7 +148,7 @@ def getNumElements(obj_json):
     if dims is None:
         return 0
     else:
-        return int(np.prod(dims))
+        return _prod(dims)
 
 
 def getRank(shape):
@@ -189,7 +198,7 @@ def getDataSize(shape, type_size: int = 1):
     if dims is None:
         return 0
     else:
-        return type_size * int(np.prod(dims))
+        return type_size * _prod(dims)
 
 
 def isExtensible(obj_json):
