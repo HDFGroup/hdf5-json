@@ -190,6 +190,45 @@ class ArrayUtilTest(unittest.TestCase):
         as_list = bytesArrayToList(arr)
         self.assertEqual(as_list, [fancy_json])
 
+    def testJsonToArrayRangeErrors(self):
+        # out of range integers and over-long vlen lists raise ValueError
+        with self.assertRaises(ValueError):
+            jsonToArray([1], np.dtype("u1"), [1000])
+        with self.assertRaises(ValueError):
+            jsonToArray([1], np.dtype("u1"), [-1])
+        with self.assertRaises(ValueError):
+            jsonToArray([], np.dtype("i8"), 2 ** 64)
+        with self.assertRaises(ValueError):
+            jsonToArray([1], special_dtype(vlen=str), ["x", "y"])
+        with self.assertRaises(ValueError):
+            jsonToArray([1], np.dtype(np.uint64), [-1])
+
+        # in-range values are unchanged
+        arr = jsonToArray([2], np.dtype("u1"), [0, 255])
+        self.assertEqual(list(arr), [0, 255])
+
+    def testBytesToArrayVlenTruncated(self):
+        dt_str = special_dtype(vlen=str)
+        # truncated count bytes
+        with self.assertRaises(ValueError):
+            bytesToArray(b"\x05\x00", dt_str, (1,))
+        # no bytes at all, or fewer elements than the shape
+        with self.assertRaises(ValueError):
+            bytesToArray(b"", dt_str, (1,))
+        with self.assertRaises(ValueError):
+            bytesToArray(b"\x01\x00\x00\x00a", dt_str, (2,))
+
+        # a fixed field cut short in a compound with a vlen field
+        dt_cmp = np.dtype([("a", "<i4"), ("s", dt_str)])
+        with self.assertRaises(ValueError):
+            bytesToArray(b"", dt_cmp, (1,))
+        with self.assertRaises(ValueError):
+            bytesToArray(b"\x01\x00", dt_cmp, (1,))
+
+        # a well-formed buffer still decodes
+        arr = bytesToArray(b"\x02\x00\x00\x00ab", dt_str, (1,))
+        self.assertEqual(arr[0], "ab")
+
     def testByteArrayToListOpaque(self):
         # matches the format used in data/json/opaque_dset.json /
         # opaque_attr.json: base64-encoded strings, with an all-zero
