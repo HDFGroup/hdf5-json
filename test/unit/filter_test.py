@@ -192,6 +192,31 @@ class FiltersTest(unittest.TestCase):
         # a non-list is returned unchanged
         self.assertEqual(normalizeFilters(None), None)
 
+    def testFilterNameClassMismatch(self):
+        for name in ("shuffle", "bitshuffle", "fletcher32", "nbit"):
+            with self.assertRaises(ValueError):
+                validateFilter({"class": "H5Z_FILTER_LZ4", "id": 32004, "name": name})
+        with self.assertRaises(ValueError):
+            validateFilter({"class": "H5Z_FILTER_ZSTD", "id": 32015, "name": "shuffle"})
+
+        # other names are accepted, including ones a writer that picks the
+        # codec by id never looks at
+        for name in ("blosc", "LZ4", "zstandard"):
+            validateFilter({"class": "H5Z_FILTER_LZ4", "id": 32004, "name": name})
+        validateFilter({"class": "H5Z_FILTER_LZ4", "id": 32004, "name": "lz4"})
+        validateFilter({"class": "H5Z_FILTER_LZ4", "id": 32004, "name": "zstd"})
+        validateFilter({"class": "H5Z_FILTER_BLOSC", "id": 32001, "name": "blosclz"})
+        for name in ("zlib", "gzip", "deflate"):
+            validateFilter({"class": "H5Z_FILTER_BLOSC", "id": 32001, "name": name})
+        validateFilter({"class": "H5Z_FILTER_DEFLATE", "id": 1, "name": "deflate"})
+        validateFilter({"class": "H5Z_FILTER_SHUFFLE", "id": 2, "name": "shuffle"})
+        for filter_def in FILTER_DEFS:
+            validateFilter({"class": filter_def[0], "id": filter_def[1], "name": filter_def[2]})
+
+    def testUserFilterParametersList(self):
+        filter_json = getFilterItem(32099, options={"parameters": [1, 2, 3]})
+        self.assertEqual(filter_json["parameters"], [1, 2, 3])
+
 
 if __name__ == "__main__":
     # setup test files
