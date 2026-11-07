@@ -201,6 +201,9 @@ class ChunkIterator:
 
         self._chunk_index = []
         if not self._empty:
+            for d in self._layout:
+                if isinstance(d, bool) or not isinstance(d, (int, np.integer)) or d <= 0:
+                    raise ValueError(f"Invalid chunk layout: {self._layout}")
             for dim in range(rank):
                 s = self._sel[dim]
                 if s.start < 0 or s.stop > self._shape[dim] or s.stop <= s.start:

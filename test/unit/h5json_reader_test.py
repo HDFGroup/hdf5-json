@@ -176,6 +176,36 @@ class H5pyReaderTest(unittest.TestCase):
 
         db.close()
 
+    def testGetDatasetValuesCached(self):
+        filepath = "data/json/h5ex_d_chunk.json"
+        db = Hdf5db(app_logger=self.log)
+        db.plugin = H5JsonPlugin(filepath, app_logger=self.log, read_only=True)
+        db.open()
+
+        dset_id = db.getObjectIdByPath("/DS1")
+        sel_all = selections.select((6, 8), ...)
+        sel_chunk = selections.select((6, 8), (slice(0, 4), slice(4, 8)))
+
+        arr1 = db.getDatasetValues(dset_id, sel_chunk)
+        expected = arr1.copy()
+        arr2 = db.getDatasetValues(dset_id, sel_chunk)
+        np.testing.assert_array_equal(arr1, arr2)
+
+        # mutating a returned array mustn't change what later calls return
+        arr1[...] = -1
+        arr3 = db.getDatasetValues(dset_id, sel_chunk)
+        np.testing.assert_array_equal(arr3, expected)
+        all1 = db.getDatasetValues(dset_id, sel_all)
+        np.testing.assert_array_equal(all1[0:4, 4:8], expected)
+        all1[...] = -1
+        all2 = db.getDatasetValues(dset_id, sel_all)
+        np.testing.assert_array_equal(all2[0:4, 4:8], expected)
+
+        # the parsed value is cached for this dataset
+        self.assertEqual(db.plugin._values_cache[0][0], dset_id)
+
+        db.close()
+
     def testArrayDataset(self):
         # reads a real fixture with an H5T_ARRAY (subarray) dtype - a
         # regression test for jsonToArray() not accounting for the subarray

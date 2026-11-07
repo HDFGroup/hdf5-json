@@ -1402,6 +1402,26 @@ class Hdf5dbTest(unittest.TestCase):
 
         db.close()
 
+    def testChunkIteratorInvalidLayout(self):
+        shape = (10,)
+        dtype = np.int32
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": (3,)}}
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=dtype, cpl=cpl)
+        db.setDatasetValues(dset_id, selections.select(shape, ...), np.arange(10, dtype=dtype))
+        dset_json = db.getObjectById(dset_id)
+
+        # chunk dims come straight from the source file when converting, so
+        # check that each kind of bad value is rejected up front
+        for bad_dim in (0, -1, 1.5, True):
+            dset_json["creationProperties"]["layout"] = {"class": "H5D_CHUNKED", "dims": [bad_dim]}
+            with self.assertRaises(ValueError):
+                db.getChunkIterator(dset_id)
+
+        db.close()
+
     def testGetDatasetValuesByQuery1D(self):
         data_arr = self._make_tabular_arr()
         shape = data_arr.shape
