@@ -576,6 +576,11 @@ class H5pyPlugin(StoragePlugin):
                 del links_json[title]
                 continue
 
+            if title in parent and not self._linkMatches(parent, title, link_json):
+                # the link was replaced since it was written, remove the old one
+                self.log.debug(f"replacing link {title}")
+                del parent[title]
+
             if link_class == "H5L_TYPE_SOFT" and title not in parent:
                 h5path = link_json["h5path"]
                 parent[title] = h5py.SoftLink(h5path)
@@ -636,6 +641,30 @@ class H5pyPlugin(StoragePlugin):
 
             else:
                 self.log.warning(f"unexpected link class: {link_class}")
+
+    def _linkMatches(self, parent, title, link_json):
+        """ Return True if the on-disk link title in parent has the class and target of link_json """
+        try:
+            link_obj = parent.get(title, getlink=True)
+        except TypeError:
+            link_obj = None  # user-defined link
+        link_class = link_json["class"]
+        if link_class == "H5L_TYPE_SOFT":
+            return isinstance(link_obj, h5py.SoftLink) and link_obj.path == link_json["h5path"]
+        if link_class == "H5L_TYPE_EXTERNAL":
+            if not isinstance(link_obj, h5py.ExternalLink):
+                return False
+            return link_obj.filename == link_json["file"] and link_obj.path == link_json["h5path"]
+        if link_class == "H5L_TYPE_HARD":
+            if not isinstance(link_obj, h5py.HardLink):
+                return False
+            tgt_id = link_json["id"]
+            if tgt_id in self._id_map:
+                tgt_addr = h5py.h5o.get_info(self._id_map[tgt_id].id).addr
+                return h5py.h5o.get_info(parent[title].id).addr == tgt_addr
+            # an object created since the last flush can't be on disk yet
+            return not self.db.is_new(tgt_id)
+        return True  # nothing to compare for other link classes
 
     def _addCreatedObject(self, obj_id, obj):
         """ record a newly-created object in the shared id/address maps, so
