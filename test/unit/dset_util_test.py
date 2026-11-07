@@ -752,6 +752,18 @@ class DsetUtilTest(unittest.TestCase):
         layout = {"class": "H5D_CHUNKED_REF_INDIRECT", "dims": [5, 10], "chunk_table": chunk_table_id}
         validateLayout(shape, type_json, layout)
 
+    def testChunkTableSlashForm(self):
+        type_json = {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"}
+        shape = {"class": "H5S_SIMPLE", "dims": [10, 20]}
+        root_id = createObjId("groups")
+        chunk_table_id = createObjId("datasets", root_id=root_id)
+        for bad_id in ("datasets/" + chunk_table_id, "datasets/" + chunk_table_id[2:]):
+            layout = {"class": "H5D_CHUNKED_REF_INDIRECT", "dims": [5, 10], "chunk_table": bad_id}
+            with self.assertRaises(ValueError):
+                validateLayout(shape, type_json, layout)
+        layout = {"class": "H5D_CHUNKED_REF_INDIRECT", "dims": [5, 10], "chunk_table": chunk_table_id}
+        validateLayout(shape, type_json, layout)
+
     def testValidateLayoutStorageClasses(self):
         type_json = {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"}
         shape = {"class": "H5S_SIMPLE", "dims": [10, 20]}

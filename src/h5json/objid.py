@@ -16,12 +16,16 @@
 
 
 import hashlib
+import re
 import uuid
 
 S3_URI = "s3://"
 FILE_URI = "file://"
 AZURE_URI = "blob.core.windows.net/"  # preceded with "https://"
 UUID_LEN = 36  # length for uuid strings
+_HEX_CHARS = "0123456789abcdefABCDEF"
+_V2_HEX = "[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{6}-[0-9a-f]{6}"
+_CANONICAL_ID_RE = re.compile(f"[gdt]-{_V2_HEX}|c-{_V2_HEX}(?:_[0-9]+)+")
 
 
 def _getStorageProtocol(uri):
@@ -249,6 +253,9 @@ def getS3Key(id):
         include that along with the bucket name. e.g.: "s3://mybucket/a_folder/a_file.h5"
     """
 
+    if isinstance(id, str) and id.find("/") > 0 and isValidUuid(id):
+        # "<collection>/<id>" is an object id, not a domain path
+        raise ValueError(f"No storage key for collection-prefixed id: {id}")
     base_id = _getBaseName(id)  # strip any s3://, etc.
     if base_id.find("/") > 0:
         # a domain id
@@ -465,7 +472,7 @@ def validateUuid(id, obj_class=None):
         raise ValueError("Unexpected id length")
 
     for ch in id:
-        if ch.isalnum():
+        if ch in _HEX_CHARS:
             continue
         if ch == "-":
             continue
@@ -478,6 +485,18 @@ def isValidUuid(id, obj_class=None):
         return True
     except ValueError:
         return False
+
+
+def isCanonicalObjId(id, obj_class=None):
+    """Return True if id is a lowercase v2 object id (with a chunk index for chunk ids)."""
+    if not isinstance(id, str) or not _CANONICAL_ID_RE.fullmatch(id):
+        return False
+    if obj_class is not None:
+        try:
+            return id[0] == _getPrefixForCollection(obj_class)
+        except ValueError:
+            return False
+    return True
 
 
 def isValidChunkId(id):

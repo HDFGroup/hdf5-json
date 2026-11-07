@@ -14,7 +14,7 @@ import unittest
 from h5json.objid import isRootObjId, isValidUuid, validateUuid
 from h5json.objid import createObjId, getCollectionForId, getUuidFromId, getHashTagForId
 from h5json.objid import isObjId, isS3ObjKey, getS3Key, getObjId, isSchema2Id
-from h5json.objid import getRootObjId, isValidChunkId, getClassForObjId
+from h5json.objid import getRootObjId, isValidChunkId, getClassForObjId, isCanonicalObjId
 
 
 class IdUtilTest(unittest.TestCase):
@@ -266,6 +266,118 @@ class IdUtilTest(unittest.TestCase):
             self.assertTrue(False)
         except ValueError:
             pass  # expected
+
+    def testValidateUuidNonHex(self):
+        root_id = "g-f9aaa28e-d42e10e5-7122-2a065c-a6986d"
+        group_id = "g-314d61b8-995411e6-a733-3c15c2-da029e"
+        upper_ids = (
+            root_id[:20] + root_id[20:].upper(),
+            group_id[:2] + group_id[2:].upper(),
+            "314D61B8-9954-11E6-A733-3C15C2DA029E",
+        )
+        for obj_id in upper_ids:
+            self.assertTrue(isValidUuid(obj_id))
+            validateUuid(obj_id)
+        self.assertTrue(isRootObjId(upper_ids[0]))
+
+        fullwidth = str.maketrans("0123456789", "\uff10\uff11\uff12\uff13\uff14\uff15\uff16\uff17\uff18\uff19")
+        arabic_indic = str.maketrans("0123456789", "\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669")
+        bad_ids = (
+            "g-z14d61b8-995411e6-a733-3c15c2-da029e",
+            "g-314d61b8-995411e6-a733-3c15c2-da029z",
+            "g-314d61b8-9954-11e6-a733-3c15c2da0zzz",
+            "zzzzzzzz-9954-11e6-a733-3c15c2da029e",
+            "datasets/d-4c48f3ae-995411e6-a3cd-3c15c2-da0g9e",
+            "c-8c785f1c-995311e6-9bc2-0242ac-1100x5_7_2",
+            group_id[:20] + group_id[20:].translate(fullwidth),
+            root_id[:20] + root_id[20:].translate(arabic_indic),
+            group_id.translate(arabic_indic),
+        )
+        for obj_id in bad_ids:
+            self.assertFalse(isValidUuid(obj_id), obj_id)
+            with self.assertRaises(ValueError):
+                validateUuid(obj_id)
+        # the Unicode-digit alias of a root id is no longer a root id
+        with self.assertRaises(ValueError):
+            isRootObjId(root_id[:20] + root_id[20:].translate(arabic_indic))
+
+    def testGetS3KeySlashForm(self):
+        root_id = createObjId("groups")
+        group_id = createObjId("groups", root_id=root_id)
+        dataset_id = createObjId("datasets", root_id=root_id)
+        ctype_id = createObjId("datatypes", root_id=root_id)
+        slash_ids = (
+            "groups/" + root_id,
+            "groups/" + group_id,
+            "groups/" + group_id[2:],
+            "datasets/" + dataset_id,
+            "datasets/" + dataset_id[2:],
+            "datatypes/" + ctype_id,
+            "datatypes/9b652223-83f8-11e5-b028-3c15c2da029e",
+            "datatypes/t-9b652223-83f8-11e5-b028-3c15c2da029e",
+        )
+        for obj_id in slash_ids:
+            self.assertTrue(isValidUuid(obj_id), obj_id)
+            with self.assertRaises(ValueError):
+                getS3Key(obj_id)
+        # the unprefixed ids and domain paths still map to keys
+        for obj_id in (root_id, group_id, dataset_id, ctype_id):
+            self.assertEqual(getObjId(getS3Key(obj_id)), obj_id)
+        self.assertEqual(getS3Key("mybucket/" + group_id), group_id + "/.domain.json")
+        self.assertEqual(getS3Key("groups/bob/mydata.h5"), "bob/mydata.h5/.domain.json")
+        self.assertEqual(getS3Key("s3://groups/" + group_id), group_id + "/.domain.json")
+
+    def testIsCanonicalObjId(self):
+        root_id = createObjId("groups")
+        group_id = createObjId("groups", root_id=root_id)
+        dataset_id = createObjId("datasets", root_id=root_id)
+        ctype_id = createObjId("datatypes", root_id=root_id)
+        chunk_id = "c" + dataset_id[1:] + "_1_2"
+        for obj_id, obj_class in (
+            (root_id, "groups"),
+            (group_id, "Group"),
+            (dataset_id, "datasets"),
+            (ctype_id, "datatype"),
+            (chunk_id, "chunks"),
+            ("c" + dataset_id[1:] + "_0", "chunks"),
+        ):
+            self.assertTrue(isCanonicalObjId(obj_id), obj_id)
+            self.assertTrue(isCanonicalObjId(obj_id, obj_class), obj_id)
+            other = "datasets" if obj_class.lower() != "datasets" else "groups"
+            self.assertFalse(isCanonicalObjId(obj_id, other), obj_id)
+        self.assertFalse(isCanonicalObjId(group_id, "bad_class"))
+
+        not_canonical = (
+            None,
+            42,
+            "",
+            createObjId(),  # bare uuid
+            "g-314d61b8-9954-11e6-a733-3c15c2da029e",  # v1
+            "a49be-g-314d61b8-9954-11e6-a733-3c15c2da029e",  # v1 hash tag
+            "c-8c785f1c-9953-11e6-9bc2-0242ac110005_7_2",  # v1 chunk
+            "groups/" + group_id,
+            "groups/" + group_id[2:],
+            "datasets/" + dataset_id,
+            "datatypes/" + ctype_id,
+            "datatypes/9b652223-83f8-11e5-b028-3c15c2da029e",
+            group_id[:2] + group_id[2:].upper(),
+            "G" + group_id[1:],
+            group_id[:-1] + "z",
+            group_id[:-1] + "\u0661",
+            group_id + "\n",
+            " " + group_id,
+            group_id + "_1",  # chunk index on a group id
+            "c" + dataset_id[1:],  # chunk id without an index
+            "c" + dataset_id[1:] + "_",
+            "c" + dataset_id[1:] + "_1_",
+            "c" + dataset_id[1:] + "__1",
+            "c" + dataset_id[1:] + "_-1",
+            "c" + dataset_id[1:] + "_\u0661",
+            "c42-" + dataset_id[2:] + "_1_2",  # partitioned chunk id
+            "x" + group_id[1:],
+        )
+        for obj_id in not_canonical:
+            self.assertFalse(isCanonicalObjId(obj_id), repr(obj_id))
 
 
 if __name__ == "__main__":
