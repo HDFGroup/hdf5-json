@@ -843,6 +843,62 @@ class DsetUtilTest(unittest.TestCase):
         plist = generate_dcpl(simple_shape, type_json, filters=[deflate_filter])
         self.assertEqual(plist["filters"], [deflate_filter])
 
+    def testFillValueValidation(self):
+        u1_type = {"class": "H5T_INTEGER", "base": "H5T_STD_U8LE"}
+        shape = {"class": "H5S_SIMPLE", "dims": [10]}
+
+        bad_props = (
+            {"fillValue": "!!!notbase64", "fillValue_encoding": "base64"},
+            {"fillValue": "AAAA", "fillValue_encoding": "base64"},  # 3 bytes for a 1-byte type
+            {"fillValue": "abc", "fillValue_encoding": "None"},
+            {"fillValue": [1, 2]},
+            {"fillValue": 1000},
+            {"fillValue": -1},
+        )
+        for cprops in bad_props:
+            with self.assertRaises(ValueError):
+                validateDatasetCreationProps(cprops, type_json=u1_type, shape=shape)
+
+        validateDatasetCreationProps({"fillValue": 42}, type_json=u1_type, shape=shape)
+        validateDatasetCreationProps(
+            {"fillValue": "AQ==", "fillValue_encoding": "base64"}, type_json=u1_type, shape=shape)
+
+        cmp_type = {
+            "class": "H5T_COMPOUND",
+            "fields": [
+                {"name": "a", "type": "H5T_STD_I32LE"},
+                {"name": "b", "type": "H5T_IEEE_F32LE"},
+            ],
+        }
+        validateDatasetCreationProps({"fillValue": [1, 2.5]}, type_json=cmp_type, shape=shape)
+        validateDatasetCreationProps({"fillValue": (1, 2.5)}, type_json=cmp_type, shape=shape)
+
+        arr_type = {"class": "H5T_ARRAY", "base": "H5T_STD_I32LE", "dims": [3]}
+        validateDatasetCreationProps({"fillValue": [1, 2, 3]}, type_json=arr_type, shape=shape)
+        # a single value is broadcast to the array type
+        validateDatasetCreationProps({"fillValue": 7}, type_json=arr_type, shape=shape)
+        with self.assertRaises(ValueError):
+            validateDatasetCreationProps({"fillValue": [1, 2]}, type_json=arr_type, shape=shape)
+
+        float_type = {"class": "H5T_FLOAT", "base": "H5T_IEEE_F64LE"}
+        validateDatasetCreationProps({"fillValue": "nan"}, type_json=float_type, shape=shape)
+
+        str_type = {"class": "H5T_STRING", "charSet": "H5T_CSET_ASCII", "length": 3}
+        cprops = {"fillValue": "abc", "fillValue_encoding": "None"}
+        validateDatasetCreationProps(cprops, type_json=str_type, shape=shape)
+
+    def testValidateLayoutFalsyDims(self):
+        type_json = {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"}
+        shape = {"class": "H5S_SIMPLE", "dims": [10, 20]}
+        for dims in (0, None, True, [], {}, ""):
+            with self.assertRaises(ValueError):
+                validateLayout(shape, type_json, {"class": "H5D_CHUNKED", "dims": dims})
+        with self.assertRaises(ValueError):
+            validateLayout(shape, type_json, {"class": "H5D_CHUNKED", "dims": [5, True]})
+
+        validateLayout(shape, type_json, {"class": "H5D_CHUNKED", "dims": [5, 10]})
+        validateLayout(shape, type_json, {"class": "H5D_CHUNKED", "dims": (10, 20)})
+
 
 if __name__ == "__main__":
     # setup test files
