@@ -207,6 +207,37 @@ class ArrayUtilTest(unittest.TestCase):
         arr = jsonToArray([2], np.dtype("u1"), [0, 255])
         self.assertEqual(list(arr), [0, 255])
 
+    def testSingleFieldCompoundVlenRoundTrip(self):
+        dt_str = special_dtype(vlen=str)
+        dt = np.dtype([("s", dt_str)])
+        arr = np.zeros((2,), dtype=dt)
+        arr[0] = ("hello",)
+        arr[1] = ("",)
+        buffer = arrayToBytes(arr)
+        arr_copy = bytesToArray(buffer, dt, (2,))
+        self.assertEqual(arr_copy[0]["s"], "hello")
+        self.assertEqual(arr_copy[1]["s"], "")
+
+        arr = jsonToArray((2,), dt, [["abc"], ["de"]])
+        arr_copy = bytesToArray(arrayToBytes(arr), dt, (2,))
+        self.assertEqual(bytesArrayToList(arr_copy), [["abc"], ["de"]])
+
+        # a fixed single-field compound serializes as before
+        dt = np.dtype([("a", "<i4")])
+        arr = np.array([(1,), (2,)], dtype=dt)
+        buffer = arrayToBytes(arr)
+        self.assertEqual(buffer, arr.tobytes())
+        self.assertTrue(np.array_equal(bytesToArray(buffer, dt, (2,)), arr))
+
+        # and so does a vlen of fixed single-field compounds
+        dt_vlen = special_dtype(vlen=dt)
+        arr = np.zeros((1,), dtype=dt_vlen)
+        arr[0] = np.array([(1,), (2,), (3,)], dtype=dt)
+        buffer = arrayToBytes(arr)
+        self.assertEqual(buffer, b"\x0c\x00\x00\x00" + arr[0].tobytes())
+        arr_copy = bytesToArray(buffer, dt_vlen, (1,))
+        self.assertTrue(np.array_equal(arr_copy[0], arr[0]))
+
     def testBytesToArrayVlenTruncated(self):
         dt_str = special_dtype(vlen=str)
         # truncated count bytes

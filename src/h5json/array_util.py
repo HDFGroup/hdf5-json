@@ -436,7 +436,7 @@ def getElementSize(e, dt):
     Get number of byte needed to given element as a bytestream
     """
     # print(f"getElementSize - e: {e}  dt: {dt} metadata: {dt.metadata}")
-    if len(dt) > 1:
+    if len(dt) > 0:
         count = 0
         for name in dt.names:
             field_dt = dt[name]
@@ -523,7 +523,7 @@ def copyElement(e, dt, buffer, offset):
     """
 
     # print(f"copyElement - dt: {dt}  offset: {offset}")
-    if len(dt) > 1:
+    if len(dt) > 0:
         for name in dt.names:
             field_dt = dt[name]
             field_val = e[name]
@@ -647,7 +647,7 @@ def readElement(buffer, offset, arr, index, dt):
         int: The updated offset value after reading the element.
     """
     # print("readElement, offset:", offset)
-    if len(dt) > 1:
+    if len(dt) > 0:
         e = arr[index]
         for name in dt.names:
             field_dt = dt[name]
