@@ -1324,6 +1324,41 @@ class H5pyTest(unittest.TestCase):
             sub_dt = t1.dtype["field_4"]
             self.assertEqual(sub_dt, h5py.special_dtype(vlen=str))
 
+    def testCommittedTypeRootAttribute(self):
+        # the root attribute and dataset are read before /types/t1 has been
+        # reached, so their committed type has no id yet
+        filepath = "test/unit/out/h5py_test_testCommittedTypeRootAttribute.h5"
+        json_path = "test/unit/out/h5py_test_testCommittedTypeRootAttribute.json"
+        for path in (filepath, json_path):
+            if os.path.isfile(path):
+                os.remove(path)  # cleanup any previous run
+        with h5py.File(filepath, "w") as f:
+            f["types/t1"] = np.dtype("<i4")
+            t1 = f["types/t1"]
+            f.attrs.create("a1", data=[1, 2, 3], dtype=t1)
+            f.create_dataset("dset", data=[4, 5], dtype=t1)
+
+        src_db = Hdf5db(app_logger=self.log)
+        src_db.plugin = H5pyPlugin(filepath, read_only=True, app_logger=self.log)
+        src_db.open()
+        dst_db = Hdf5db(app_logger=self.log)
+        dst_db.plugin = H5JsonPlugin(json_path, app_logger=self.log)
+        dst_db.open()
+        src_db.copy(dst_db)
+        dst_db.close()
+        src_db.close()
+
+        with open(json_path) as f:
+            data = json.load(f)
+        root_json = data["groups"][data["root"]]
+        attrs = {a["name"]: a for a in root_json["attributes"]}
+        self.assertEqual(attrs["a1"]["value"], [1, 2, 3])
+        self.assertEqual(attrs["a1"]["type"], {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"})
+        self.assertEqual(len(data["datasets"]), 1)
+        dset_json = next(iter(data["datasets"].values()))
+        self.assertEqual(dset_json["value"], [4, 5])
+        self.assertEqual(dset_json["type"], {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"})
+
     def testReaderWithUpdate(self):
 
         file_in = "data/json/tall.json"

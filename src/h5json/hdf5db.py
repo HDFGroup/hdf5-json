@@ -1101,7 +1101,7 @@ class Hdf5db:
             shape_json["dims"] = list(shape)
 
         obj_json = self.getObjectById(obj_id)
-        attrs_json = obj_json["attributes"]
+        attrs_json = obj_json.setdefault("attributes", {})
         type_json = getTypeItem(original_dtype)
         # finally put it all together...
         attr_json = {"shape": shape_json, "type": type_json}

@@ -807,9 +807,13 @@ class H5pyPlugin(StoragePlugin):
             type_uuid = None
             addr = h5py.h5o.get_info(typeid).addr
             type_uuid = self.getObjIdByAddress(addr)
-            committedType = self._id_map[type_uuid]
-            type_item = getTypeItem(committedType.dtype)
-            type_item["id"] = type_uuid
+            if type_uuid is None:
+                # committed type not reached yet (or not linked anywhere), use it inline
+                type_item = getTypeItem(attrObj.dtype)
+            else:
+                committedType = self._id_map[type_uuid]
+                type_item = getTypeItem(committedType.dtype)
+                type_item["id"] = type_uuid
         else:
             type_item = getTypeItem(attrObj.dtype)
         item["type"] = type_item
@@ -834,6 +838,7 @@ class H5pyPlugin(StoragePlugin):
         else:
             pass  # use include_data parameter
 
+        data = None
         if include_data:
             try:
                 if is_opaque:
@@ -1037,9 +1042,13 @@ class H5pyPlugin(StoragePlugin):
             type_uuid = None
             addr = h5py.h5o.get_info(typeid).addr
             type_uuid = self.getObjIdByAddress(addr)
-            committedType = self.getObjectById(type_uuid)
-            type_item = committedType["type"]
-            type_item["id"] = type_uuid
+            if type_uuid is None:
+                # committed type not reached yet (or not linked anywhere), use it inline
+                type_item = getTypeItem(dset.dtype)
+            else:
+                committedType = self.getObjectById(type_uuid)
+                type_item = committedType["type"]
+                type_item["id"] = type_uuid
         else:
             type_item = getTypeItem(dset.dtype)
         item["type"] = type_item

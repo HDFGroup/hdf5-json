@@ -1914,6 +1914,18 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertTrue(np.array_equal(result, arr))
         rdb.close()
 
+    def testCreateAttributeNoAttributesKey(self):
+        # empty.json's root group has no "attributes" key at all
+        db = Hdf5db(app_logger=self.log)
+        db.plugin = H5JsonPlugin("data/json/empty.json", read_only=True, app_logger=self.log)
+        root_id = db.open()
+        self.assertNotIn("attributes", db.getObjectById(root_id))
+
+        db.createAttribute(root_id, "a1", 42)
+        self.assertEqual(db.getAttributes(root_id), ["a1"])
+        self.assertEqual(db.getAttributeValue(root_id, "a1"), 42)
+        db.close()
+
     def _writeCopySource(self, filepath, data):
         """ Write a json file with a chunked dataset and attributes for the copy tests """
         wdb = Hdf5db(app_logger=self.log)
