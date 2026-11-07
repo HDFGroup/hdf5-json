@@ -1182,7 +1182,7 @@ class Selection(object):
                     if s.start == s.stop:
                         return None, None
                     mins.append(s.start)
-                    maxs.append(s.stop)
+                    maxs.append(s.stop - s.step + 1)  # last selected index + 1
                 else:  # int
                     mins.append(s)
                     maxs.append(s + 1)
@@ -1435,11 +1435,8 @@ class SimpleSelection(Selection):
                 length = self._shape[idx]
                 arg = hyperslab[idx]
                 if isinstance(arg, slice):
-                    _, count, _ = _translate_slice(arg, length)
-                    start = 0 if arg.start is None else arg.start
-                    stop = length if arg.stop is None else arg.stop
-                    step = 1 if arg.step is None else arg.step
-                    slices.append(slice(start, stop, step))
+                    start, count, step = _translate_slice(arg, length)
+                    slices.append(slice(start, start + count * step, step))
                     mshape.append(count)
                     select_type = H5S_SEL_FANCY  # have both coordinates and slices
                 elif hasattr(arg, 'dtype') and arg.dtype == np.dtype('bool'):
@@ -1524,7 +1521,7 @@ class SimpleSelection(Selection):
         if self._select_type in (H5S_SEL_FANCY, H5S_SEL_POINTS):
             for dim, s in enumerate(self._slices):
                 if isinstance(s, slice):
-                    query.append(f"{s.start}:{s.stop}")
+                    query.append(f"{s.start}:{min(s.stop, self._shape[dim])}")
                     if s.step and s.step != 1:
                         query.append(f":{s.step}")
                 elif isinstance(s, list) or hasattr(s, 'dtype'):
@@ -1625,9 +1622,12 @@ class SimpleSelection(Selection):
         d = Selection.to_dict(self)
         if self._select_type != H5S_SEL_ALL:
             slices_out = []
-            for s in self.slices:
+            for dim, s in enumerate(self.slices):
                 if isinstance(s, slice):
-                    s = {"type": "slice", "start": int(s.start), "stop": int(s.stop), "step": int(s.step)}
+                    # clamp to the extent, as query_string does, so readers on older
+                    # versions (which check stop against the extent) accept it
+                    stop = min(int(s.stop), self._shape[dim])
+                    s = {"type": "slice", "start": int(s.start), "stop": stop, "step": int(s.step)}
                 elif isinstance(s, list):
                     s = {"type": "list", "values": [int(x) for x in s]}
                 else:
@@ -1670,9 +1670,10 @@ class SimpleSelection(Selection):
             return b""
         width, fmt, np_dtype = _SEL_WIDTH_INFO[width_code]
         buf = bytearray()
-        for s in self.slices:
+        for dim, s in enumerate(self.slices):
             if isinstance(s, slice):
-                buf += struct.pack(f"<B{fmt}{fmt}{fmt}", _SEL_DIM_SLICE, s.start, s.stop, s.step)
+                stop = min(s.stop, self._shape[dim])  # clamped as in to_dict
+                buf += struct.pack(f"<B{fmt}{fmt}{fmt}", _SEL_DIM_SLICE, s.start, stop, s.step)
             elif isinstance(s, list):
                 arr = np.asarray(s, dtype=np_dtype)
                 buf += struct.pack("<BI", _SEL_DIM_LIST, arr.size)
