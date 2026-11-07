@@ -11,38 +11,36 @@
 ##############################################################################
 import sys
 import os.path as op
-import logging
+import argparse
 
 from h5json import Hdf5db
 from h5json.h5pystore.h5py_plugin import H5pyPlugin
 from h5json.jsonstore.h5json_plugin import H5JsonPlugin
+from h5json.apps.applog import setup_logging
 
 
 def main():
-    if len(sys.argv) < 3 or sys.argv[1] in ("-h", "--help"):
-        print(f"usage: {sys.argv[0]} [-h] [--nodata] <json_file> <h5_file>")
+    parser = argparse.ArgumentParser(description="Create an HDF5 file from an HDF5/JSON file.")
+    parser.add_argument("--nodata", action="store_true", help="don't write dataset values")
+    parser.add_argument("--log", metavar="FILE", help="append DEBUG output to FILE")
+    parser.add_argument("json_file", help="HDF5/JSON file to convert")
+    parser.add_argument("h5_file", help="HDF5 file to create")
+    if len(sys.argv) < 2:
+        parser.print_help()
         sys.exit(0)
-
-    no_data = False
-    json_filename = None
-    hdf5_filename = None
-    for i in range(1, len(sys.argv)):
-        if sys.argv[i] == "--nodata":
-            no_data = True
-        elif not json_filename:
-            json_filename = sys.argv[i]
-        else:
-            hdf5_filename = sys.argv[i]
+    args = parser.parse_args()
+    no_data = args.nodata
+    json_filename = args.json_file
+    hdf5_filename = args.h5_file
 
     # create logger
-    logfname = "jsontoh5.log"
-    loglevel = logging.DEBUG
-    logging.basicConfig(filename=logfname, format='%(levelname)s %(asctime)s %(message)s', level=loglevel)
-    log = logging.getLogger()
+    log = setup_logging(args.log)
 
     # check that the input file exists
     if not op.isfile(json_filename):
         sys.exit(f"Cannot find file: {json_filename}")
+    if op.exists(hdf5_filename) and op.samefile(json_filename, hdf5_filename):
+        parser.error(f"input and output are the same file: {hdf5_filename}")
 
     log.info(f"jsontoh5 {json_filename} to {hdf5_filename}")
 

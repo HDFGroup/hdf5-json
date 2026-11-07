@@ -114,7 +114,7 @@ class H5JsonPlugin(StoragePlugin):
         """ return object with given id """
         collection = getCollectionForId(obj_id)
         if collection not in self.json:
-            self.log.warning(f"getObjectById - collection: {collection} not found")
+            self.log.debug(f"getObjectById - collection: {collection} not found")
             return None
         json_objs = self.json[collection]
         obj_uuid = getUuidFromId(obj_id)

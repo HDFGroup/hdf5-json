@@ -1022,6 +1022,10 @@ class H5pyPlugin(StoragePlugin):
             creationProps["layout"] = {"class": "H5D_CHUNKED", "dims": dset.chunks}
         else:
             self.log.warning(f"Unknown layout value: {nLayout}")
+        if plist.get_external_count() > 0:
+            self.log.warning(f"dataset {dset.name} uses external raw data storage: its values are read from other files")
+        elif nLayout == h5py.h5d.VIRTUAL:
+            self.log.warning(f"dataset {dset.name} is a virtual dataset: its values are read from other files")
 
         num_filters = plist.get_nfilters()
         filter_props = []
@@ -1169,21 +1173,31 @@ class H5pyPlugin(StoragePlugin):
 
         return obj_json
 
-    def _readOpaqueDataset(self, dset):
-        """ Read the full opaque dataset via the low-level API using a
+    def _readOpaqueDataset(self, dset, sel=None):
+        """ Read an opaque dataset via the low-level API using a
         memory type tagged to match the file type.  Real HDF5 opaque data
         usually carries a "tag" (an arbitrary description string); h5py's
         high-level indexing requires the memory type's tag to match, and
         reading via a plain untagged buffer raises "no appropriate function
-        for conversion path". """
+        for conversion path".  If a hyperslab sel is given, only that region
+        is read. """
         file_tid = dset.id.get_type()
         itemsize = file_tid.get_size()
         mem_tid = h5t.create(h5t.OPAQUE, itemsize)
         tag = file_tid.get_tag()
         if tag:
             mem_tid.set_tag(tag)
-        buf = np.zeros(dset.shape, dtype=f"V{itemsize}")
         space = dset.id.get_space()
+        if sel is not None:
+            count = tuple(sel.count)
+            buf = np.zeros(count, dtype=f"V{itemsize}")
+            if 0 in count:
+                return buf
+            space.select_hyperslab(tuple(sel.start), count, stride=tuple(sel.step))
+            mspace = h5s.create_simple(count)
+            dset.id.read(mspace, space, buf, mtype=mem_tid)
+            return buf
+        buf = np.zeros(dset.shape, dtype=f"V{itemsize}")
         dset.id.read(space, space, buf, mtype=mem_tid)
         return buf
 
@@ -1205,15 +1219,19 @@ class H5pyPlugin(StoragePlugin):
             raise NotImplementedError("queryDataset not implemented for H5pyPlugin")
 
         if isOpaqueDtype(dset.dtype):
-            # read the whole (tag-matched) dataset, then apply the selection
+            # a hyperslab is read directly as a (tag-matched) region; for any
+            # other selection read the whole dataset, then apply the selection
             # with plain numpy indexing - which, unlike h5py's own dataspace
             # selection, has no trouble with a paired-coordinate (multiple
             # list dims) selection.
-            arr = self._readOpaqueDataset(dset)
-            if sel is not None and sel.select_type != selections.H5S_SEL_ALL:
-                if not isinstance(sel, selections.SimpleSelection):
-                    raise NotImplementedError("selection type not supported")
-                arr = arr[sel.slices]
+            if sel is None or sel.select_type == selections.H5S_SEL_ALL:
+                arr = self._readOpaqueDataset(dset)
+            elif not isinstance(sel, selections.SimpleSelection):
+                raise NotImplementedError("selection type not supported")
+            elif sel.select_type == selections.H5S_SEL_HYPERSLABS:
+                arr = self._readOpaqueDataset(dset, sel)
+            else:
+                arr = self._readOpaqueDataset(dset)[sel.slices]
         elif sel is None or sel.select_type == selections.H5S_SEL_ALL:
             arr = dset[...]
         elif isinstance(sel, selections.SimpleSelection):

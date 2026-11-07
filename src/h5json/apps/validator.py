@@ -93,6 +93,12 @@ def main() -> None:
                 print(f"{inst_name} ---> {err}", file=sys.stderr)
             if args.stop:
                 sys.exit("HDF5/JSON validation failed.")
+        except (OSError, ValueError, RecursionError) as e:
+            print("FAIL")
+            valid_errors = True
+            print(f"HDF5/JSON validation failed for {str(h5j)}: {type(e).__name__}: {e}", file=sys.stderr)
+            if args.stop:
+                sys.exit("HDF5/JSON validation failed.")
     if valid_errors:
         sys.exit("HDF5/JSON validation failed.")
 
