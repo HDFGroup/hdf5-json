@@ -9,6 +9,8 @@
 # distribution tree.  If you do not have access to this file, you may        #
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
+import itertools
+import random
 import unittest
 import logging
 import numpy as np
@@ -1269,6 +1271,60 @@ class TranslateTest(unittest.TestCase):
         self.assertEqual(result.slices[0], slice(0, 3, 1))
         self.assertEqual(result.slices[1], [1, 2, 3])
         self.assertEqual(result.nselect, 9)  # 3 rows x 3 cols
+
+    def testTranslateFancyStepped(self):
+        shape = (10, 10)
+        s1 = selections.select(shape, ([0], slice(0, 8, 2)))  # cols {0,2,4,6}
+        s2 = selections.select(shape, ([0], slice(4, 5)))
+        result = selections.translate(s1, s2)
+        self.assertEqual(result.slices, ([0], slice(2, 3, 1)))
+
+    def testTranslateFancySteppedRandom(self):
+        def dim_values(arg, n):
+            return [arg] if isinstance(arg, int) else list(np.arange(n)[arg])
+
+        def cells(args, dims):
+            return set(itertools.product(*(dim_values(a, n) for a, n in zip(args, dims))))
+
+        def rand_slice(n):
+            return slice(rng.randint(0, n - 1), rng.randint(0, n), rng.randint(1, 4))
+
+        rng = random.Random(1878)
+        for _ in range(2000):
+            dims = (rng.randint(1, 10), rng.randint(1, 10))
+            list_dim = rng.randrange(2)
+            s1_args = [None, None]
+            s2_args = [None, None]
+            for d, n in enumerate(dims):
+                if d == list_dim:
+                    s1_args[d] = sorted(rng.sample(range(n), rng.randint(1, n)))
+                    s2_args[d] = sorted(rng.sample(range(n), rng.randint(1, n)))
+                elif rng.random() < 0.2:
+                    s1_args[d] = rng.randrange(n)
+                    s2_args[d] = rng.randrange(n)
+                else:
+                    s1_args[d] = rand_slice(n)
+                    s2_args[d] = rand_slice(n)
+            if rng.random() < 0.5:
+                # hyperslab s2
+                s2_args = [rand_slice(n) for n in dims]
+            s1_args, s2_args = tuple(s1_args), tuple(s2_args)
+            msg = f"dims={dims} s1={s1_args} s2={s2_args}"
+
+            s1 = selections.select(dims, s1_args)
+            s2 = selections.select(dims, s2_args)
+            s1_vals = [dim_values(a, n) for a, n in zip(s1_args, dims)]
+            inter = cells(s1_args, dims) & cells(s2_args, dims)
+            expected = {tuple(s1_vals[d].index(c[d]) for d in range(2)) for c in inter}
+
+            if not expected:
+                with self.assertRaises(ValueError, msg=msg):
+                    selections.translate(s1, s2)
+                continue
+            result = selections.translate(s1, s2)
+            got = set(itertools.product(*(dim_values(s, n) for s, n in zip(result.slices, dims))))
+            self.assertEqual(got, expected, msg)
+            self.assertEqual(result.nselect, len(expected), msg)
 
 
 class FieldsTest(unittest.TestCase):
