@@ -475,8 +475,12 @@ class Hdf5db:
 
         obj_ids = set()
         obj_ids.add(self.root_id)
+        visited = set()
         while obj_ids:
             obj_id = obj_ids.pop()
+            if obj_id in visited:
+                continue
+            visited.add(obj_id)
             self.log.debug(f"readAll, get {obj_id}")
             obj_json = self.getObjectById(obj_id)  # will add obj_id to db if not already present
             if getCollectionForId(obj_id) == "groups":

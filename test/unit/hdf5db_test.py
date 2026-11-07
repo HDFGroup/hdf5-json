@@ -1926,6 +1926,30 @@ class Hdf5dbTest(unittest.TestCase):
         self.assertEqual(db.getAttributeValue(root_id, "a1"), 42)
         db.close()
 
+    def testReadAllCycle(self):
+        filepath = "test/unit/out/hdf5db_testReadAllCycle.json"
+
+        wdb = Hdf5db(app_logger=self.log)
+        wdb.plugin = H5JsonPlugin(filepath, app_logger=self.log)
+        root_id = wdb.open()
+        g_id = wdb.createGroup()
+        wdb.createHardLink(root_id, "g", g_id)
+        wdb.createHardLink(g_id, "up", root_id)  # root -> g -> root
+        wdb.close()
+
+        rdb = Hdf5db(app_logger=self.log)
+        rdb.plugin = H5JsonPlugin(filepath, read_only=True, app_logger=self.log)
+        rdb.open()
+        self.assertEqual(rdb.getCollection(), [])
+
+        rdb.readAll()  # used to loop forever on the cycle
+
+        obj_ids = rdb.getCollection()
+        self.assertEqual(len(obj_ids), 2)
+        self.assertIn(root_id, obj_ids)
+        self.assertIn(g_id, obj_ids)
+        rdb.close()
+
     def _writeCopySource(self, filepath, data):
         """ Write a json file with a chunked dataset and attributes for the copy tests """
         wdb = Hdf5db(app_logger=self.log)
