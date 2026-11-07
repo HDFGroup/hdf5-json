@@ -72,11 +72,17 @@ def _regionRefJsonToArray(data_shape, data_dtype, data_json):
         # shape of (1,) (the convention callers use for H5S_SCALAR attributes).
         if data is None or isinstance(data, dict):
             arr[index] = b'' if data is None else RegionReference.from_json(data).tobytes()
+        elif isinstance(data, (str, bytes)) or not hasattr(data, "__iter__"):
+            raise ValueError(f"Unexpected region reference value of type {type(data).__name__}")
         else:
             for i, item in enumerate(data):
                 fill(item, index + (i,))
 
-    fill(data_json, ())
+    try:
+        fill(data_json, ())
+    except IndexError as ie:
+        # e.g. more values than the shape holds
+        raise ValueError(str(ie)) from ie
     return arr
 
 

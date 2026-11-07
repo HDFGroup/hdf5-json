@@ -1692,7 +1692,7 @@ class RegionJsonTest(unittest.TestCase):
             selections.from_region_json({"select_type": "H5S_SEL_POINTS", "selection": []})
 
     def testFromRegionJsonUnsupportedTypeRaises(self):
-        with self.assertRaises(NotImplementedError):
+        with self.assertRaises(ValueError):
             selections.from_region_json({"select_type": "H5S_SEL_ALL", "selection": [[0]]})
 
 

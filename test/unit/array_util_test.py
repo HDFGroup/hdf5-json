@@ -190,6 +190,53 @@ class ArrayUtilTest(unittest.TestCase):
         as_list = bytesArrayToList(arr)
         self.assertEqual(as_list, [fancy_json])
 
+    def testJsonToArrayRegionReferenceInvalid(self):
+        root_id = createObjId("groups")
+        dset_id = createObjId("datasets", root_id=root_id)
+        uuid = getUuidFromId(dset_id)
+        dt = special_dtype(ref=RegionReference)
+
+        def points(selection):
+            return {"id": uuid, "select_type": "H5S_SEL_POINTS", "selection": selection}
+
+        bad_values = (
+            {"select_type": "H5S_SEL_POINTS", "selection": [[1]]},  # no id
+            {"id": 5},  # id not a string
+            points([[-5]]),  # negative point
+            points([[3], [-1]]),
+            points([[1, 2], [3]]),  # ragged points
+            points([[float("inf")]]),
+            points([[2 ** 64]]),
+            {"id": uuid, "select_type": "H5S_SEL_HYPERSLABS", "selection": [[[0, 0], [1, 1]], [[2], [3]]]},
+            {"id": uuid, "select_type": "H5S_SEL_ALL", "selection": [[1]]},  # unknown select_type
+            {"id": uuid, "selection_dict": {"select_type": 1}},  # no shape
+            {"id": uuid, "selection_dict": {"shape": ["a"], "select_type": selections.H5S_SEL_ALL}},
+            {"id": uuid, "selection_dict": {"shape": [4], "select_type": 0, "fields": [1]}},
+            {"id": uuid, "selection_dict": {"shape": [4, 4], "select_type": 4, "slices": [
+                {"type": "slice", "start": 0, "stop": 3, "step": 0},
+                {"type": "list", "values": [0, 1]}]}},  # zero step
+            5,  # not a dict
+            "abc",
+        )
+        for value in bad_values:
+            with self.assertRaises(ValueError):
+                jsonToArray((1,), dt, [value])
+
+        # more values than the shape holds
+        with self.assertRaises(ValueError):
+            jsonToArray((1,), dt, [points([[1]]), points([[2]])])
+
+        # truncated and bad-magic blobs fail to decode
+        blob = RegionReference("datasets/" + dset_id, selections.select((4,), slice(0, 2))).tobytes()
+        for bad_blob in (blob[:4], blob[:6], b"XXXX" + blob[4:]):
+            arr = np.empty((1,), dtype=dt)
+            arr[0] = bad_blob
+            with self.assertRaises(ValueError):
+                bytesArrayToList(arr)
+        sel_bytes = RegionReference.frombytes(blob).selection_bytes
+        with self.assertRaises(ValueError):
+            selections.Selection.frombytes(sel_bytes[:-2])
+
     def testJsonToArrayRangeErrors(self):
         # out of range integers and over-long vlen lists raise ValueError
         with self.assertRaises(ValueError):

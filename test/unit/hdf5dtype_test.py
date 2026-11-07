@@ -1341,7 +1341,7 @@ class RegionReferenceTest(unittest.TestCase):
         self.assertIsNone(ref.selection_bytes)
 
     def testFromJsonMissingIdRaises(self):
-        with self.assertRaises(KeyError):
+        with self.assertRaises(ValueError):
             RegionReference.from_json({"select_type": "H5S_SEL_POINTS", "selection": [[0]]})
 
     def testToJsonFancySelectionFallsBackToSelectionDict(self):
