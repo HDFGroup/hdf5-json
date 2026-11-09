@@ -2,16 +2,19 @@ name: Release
 
 # Single entry point for cutting a release. Everything downstream (GitHub
 # release, PyPI, conda-forge) is a separate job so the three can fail, be
-# re-run, and be permissioned independently - but they all key off one tag
-# push, so the artifacts can never drift out of sync with each other.
+# re-run, and be permissioned independently - but they all key off the one
+# version and tag resolved by the `version` job, so the artifacts can never
+# drift out of sync with each other.
 #
 # To cut a release:
 #   1. Bump the version in pyproject.toml (the SSOT - see the `version` job).
 #   2. Add the matching section to CHANGELOG.md.
-#   3. git tag -a v2.0.0 -m "v2.0.0" && git push origin v2.0.0
+#   3. Run this workflow from master with `dry_run` unchecked. It creates and
+#      pushes the `v<version>` tag itself.
 #
-# `workflow_dispatch` runs the same pipeline in dry-run mode (build and
-# validate, publish nothing) so the release can be rehearsed off a branch.
+# A dry run (the default) builds and validates without publishing anything,
+# so the release can be rehearsed from any branch. A real release runs only
+# from master.
 
 on:
   workflow_dispatch:
@@ -35,8 +38,8 @@ env:
 jobs:
   # ---------------------------------------------------------------------
   # Resolve and validate the version. Nothing is built or published until
-  # this passes, so a tag that disagrees with the source tree fails fast
-  # and cheaply rather than half-publishing.
+  # this passes, so a malformed version fails fast and cheaply rather than
+  # half-publishing.
   # ---------------------------------------------------------------------
   version:
     name: Resolve version
@@ -56,13 +59,23 @@ jobs:
 
       - name: Determine run mode
         id: mode
-        run: echo "dry_run=${{ inputs.dry_run }}" >> "$GITHUB_OUTPUT"
-
-      - name: Read version from SSOT and validate against tag
-        id: ssot
         env:
-          GITHUB_REF_NAME: ${{ github.ref_name }}
-          EVENT_NAME: ${{ github.event_name }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
+
+      # Every later job needs this one, so failing here stops the whole run.
+      - name: Require master for a real release
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$DRY_RUN" != "true" ] && [ "$REF" != "refs/heads/master" ]; then
+            echo "::error::releases run only from master (this run is on ${REF}); use a dry run to test a branch"
+            exit 1
+          fi
+
+      - name: Read and validate version from SSOT
+        id: ssot
         run: python .github/scripts/release_version.py
 
       - name: Extract release notes from CHANGELOG.md
@@ -80,17 +93,23 @@ jobs:
           if-no-files-found: error
 
       - name: Summary
+        env:
+          VERSION: ${{ steps.ssot.outputs.version }}
+          TAG: ${{ steps.ssot.outputs.tag }}
+          PRERELEASE: ${{ steps.ssot.outputs.prerelease }}
+          HAS_NOTES: ${{ steps.notes.outputs.has_notes }}
+          DRY_RUN: ${{ steps.mode.outputs.dry_run }}
         run: |
           {
-            echo "### Release ${{ steps.ssot.outputs.tag }}"
+            echo "### Release ${TAG}"
             echo ""
             echo "| | |"
             echo "|---|---|"
-            echo "| Version | \`${{ steps.ssot.outputs.version }}\` |"
-            echo "| Tag | \`${{ steps.ssot.outputs.tag }}\` |"
-            echo "| Pre-release | \`${{ steps.ssot.outputs.prerelease }}\` |"
-            echo "| Notes from CHANGELOG | \`${{ steps.notes.outputs.has_notes }}\` |"
-            echo "| Dry run | \`${{ steps.mode.outputs.dry_run }}\` |"
+            echo "| Version | \`${VERSION}\` |"
+            echo "| Tag | \`${TAG}\` |"
+            echo "| Pre-release | \`${PRERELEASE}\` |"
+            echo "| Notes from CHANGELOG | \`${HAS_NOTES}\` |"
+            echo "| Dry run | \`${DRY_RUN}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------
@@ -265,7 +284,7 @@ jobs:
           path: dist
 
       - name: Publish
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         # Trusted Publishing: configure at
         # https://pypi.org/manage/project/h5json/settings/publishing/
         #   owner: HDFGroup   repo: hdf5-json
@@ -286,6 +305,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: TODO
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           # TODO(conda-forge): h5json is not on conda-forge yet. Before this
           # job can do anything real:
@@ -305,4 +326,4 @@ jobs:
           # NOTE: h5pyd's conda-forge feedstock cannot add an h5json run
           # dependency until step 2 lands - its recipe runs `pip check`.
           echo "conda-forge publishing is not configured yet - see comments in this file."
-          echo "Version that would be published: ${{ needs.version.outputs.version }}"
+          echo "Version that would be published: ${VERSION}"
