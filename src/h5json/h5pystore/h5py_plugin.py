@@ -877,10 +877,13 @@ class H5pyPlugin(StoragePlugin):
                     data = self._readOpaqueAttribute(attrObj)
                 else:
                     data = obj.attrs[name]
+                    if not isinstance(data, np.ndarray):
+                        # h5py returns scalar attributes as Python or numpy scalars
+                        data = np.array(data, dtype=attrObj.dtype)
                 # convert from h5py to h5json
                 data = self._copy_array_in(data, fin=obj.file)
-            except TypeError:
-                self.log.warning("type error reading attribute")
+            except TypeError as e:
+                self.log.warning(f"type error reading attribute {name}: {e}")
 
         if include_data and data is not None:
             value = bytesArrayToList(data)

@@ -416,6 +416,23 @@ class H5pyTest(unittest.TestCase):
 
         db.close()
 
+    def testReadScalarAttributes(self):
+        # h5py returns scalar attributes as scalars, not arrays
+        filepath = "data/hdf5/ex_image3.h5"
+        db = Hdf5db(app_logger=self.log)
+        db.plugin = H5pyPlugin(filepath, read_only=True, app_logger=self.log)
+        with self.assertNoLogs(self.log, level="WARNING"):
+            db.open()
+            palette_id = db.getObjectIdByPath("/Rainbow pallete")
+            for name in ("All data", "Land data", "Sea data"):
+                obj_id = db.getObjectIdByPath("/" + name)
+                item = db.getAttribute(obj_id, "PALETTE")
+                self.assertEqual(item["shape"]["class"], "H5S_SCALAR")
+                self.assertEqual(item["value"], "datasets/" + palette_id)
+                item = db.getAttribute(obj_id, "CLASS")
+                self.assertEqual(item["value"], "IMAGE")
+        db.close()
+
     def testWriteReadRegionReferenceRoundTrip(self):
         filepath = "test/unit/out/h5py_test_testWriteReadRegionReferenceRoundTrip.h5"
         if os.path.isfile(filepath):
