@@ -844,20 +844,20 @@ def _fancy_dim_intersect(s1_dim, s2_dim):
     For list×slice, the result preserves s1's order (natural buffer order).
     """
     if isinstance(s1_dim, slice):
-        s1_start, s1_stop = s1_dim.start, s1_dim.stop
+        s1_start, s1_step, s1_count = _slice_to_ap(s1_dim)
         if isinstance(s2_dim, slice):
-            start = max(s1_start, s2_dim.start)
-            stop = min(s1_stop, s2_dim.stop)
-            return slice(start, stop, 1) if stop > start else None
+            inter = _intersect_stepped_range(s1_start, s1_step, s1_count, *_slice_to_ap(s2_dim))
+            return _ap_to_slice(*inter) if inter else None
         elif isinstance(s2_dim, list):
-            filtered = [x for x in s2_dim if s1_start <= x < s1_stop]
+            filtered = [x for x in s2_dim if _pt_in_hyperslab(x, s1_start, s1_count, s1_step)]
             return filtered if filtered else None
         else:  # int
-            return s2_dim if s1_start <= s2_dim < s1_stop else None
+            return s2_dim if _pt_in_hyperslab(s2_dim, s1_start, s1_count, s1_step) else None
     elif isinstance(s1_dim, list):
         s1_set = set(s1_dim)
         if isinstance(s2_dim, slice):
-            filtered = [x for x in s1_dim if s2_dim.start <= x < s2_dim.stop]
+            s2_start, s2_step, s2_count = _slice_to_ap(s2_dim)
+            filtered = [x for x in s1_dim if _pt_in_hyperslab(x, s2_start, s2_count, s2_step)]
             return filtered if filtered else None
         elif isinstance(s2_dim, list):
             filtered = [x for x in s2_dim if x in s1_set]
@@ -866,7 +866,8 @@ def _fancy_dim_intersect(s1_dim, s2_dim):
             return s2_dim if s2_dim in s1_set else None
     elif isinstance(s1_dim, int):
         if isinstance(s2_dim, slice):
-            return s1_dim if s2_dim.start <= s1_dim < s2_dim.stop else None
+            s2_start, s2_step, s2_count = _slice_to_ap(s2_dim)
+            return s1_dim if _pt_in_hyperslab(s1_dim, s2_start, s2_count, s2_step) else None
         elif isinstance(s2_dim, list):
             return s1_dim if s1_dim in s2_dim else None
         else:  # int
@@ -910,13 +911,15 @@ def translate(s1, s2):
             s1_dim = s1.slices[dim]
             inter_dim = inter_slices[dim]
             if isinstance(s1_dim, slice):
-                offset = s1_dim.start if s1_dim.start is not None else 0
+                # local index is the position within s1's progression
+                offset, s1_step = s1_dim.start, s1_dim.step
                 if isinstance(inter_dim, slice):
-                    new_slices.append(slice(inter_dim.start - offset, inter_dim.stop - offset, inter_dim.step))
+                    i_start, i_step, i_count = _slice_to_ap(inter_dim)
+                    new_slices.append(_ap_to_slice((i_start - offset) // s1_step, i_step // s1_step, i_count))
                 elif isinstance(inter_dim, list):
-                    new_slices.append([x - offset for x in inter_dim])
+                    new_slices.append([(x - offset) // s1_step for x in inter_dim])
                 else:
-                    new_slices.append(inter_dim - offset)
+                    new_slices.append((inter_dim - offset) // s1_step)
             elif isinstance(s1_dim, list):
                 index_map = {val: idx for idx, val in enumerate(s1_dim)}
                 if isinstance(inter_dim, list):
@@ -1179,7 +1182,7 @@ class Selection(object):
                     if s.start == s.stop:
                         return None, None
                     mins.append(s.start)
-                    maxs.append(s.stop)
+                    maxs.append(s.stop - s.step + 1)  # last selected index + 1
                 else:  # int
                     mins.append(s)
                     maxs.append(s + 1)
@@ -1432,11 +1435,8 @@ class SimpleSelection(Selection):
                 length = self._shape[idx]
                 arg = hyperslab[idx]
                 if isinstance(arg, slice):
-                    _, count, _ = _translate_slice(arg, length)
-                    start = 0 if arg.start is None else arg.start
-                    stop = length if arg.stop is None else arg.stop
-                    step = 1 if arg.step is None else arg.step
-                    slices.append(slice(start, stop, step))
+                    start, count, step = _translate_slice(arg, length)
+                    slices.append(slice(start, start + count * step, step))
                     mshape.append(count)
                     select_type = H5S_SEL_FANCY  # have both coordinates and slices
                 elif hasattr(arg, 'dtype') and arg.dtype == np.dtype('bool'):
@@ -1521,7 +1521,7 @@ class SimpleSelection(Selection):
         if self._select_type in (H5S_SEL_FANCY, H5S_SEL_POINTS):
             for dim, s in enumerate(self._slices):
                 if isinstance(s, slice):
-                    query.append(f"{s.start}:{s.stop}")
+                    query.append(f"{s.start}:{min(s.stop, self._shape[dim])}")
                     if s.step and s.step != 1:
                         query.append(f":{s.step}")
                 elif isinstance(s, list) or hasattr(s, 'dtype'):
@@ -1622,9 +1622,12 @@ class SimpleSelection(Selection):
         d = Selection.to_dict(self)
         if self._select_type != H5S_SEL_ALL:
             slices_out = []
-            for s in self.slices:
+            for dim, s in enumerate(self.slices):
                 if isinstance(s, slice):
-                    s = {"type": "slice", "start": int(s.start), "stop": int(s.stop), "step": int(s.step)}
+                    # clamp to the extent, as query_string does, so readers on older
+                    # versions (which check stop against the extent) accept it
+                    stop = min(int(s.stop), self._shape[dim])
+                    s = {"type": "slice", "start": int(s.start), "stop": stop, "step": int(s.step)}
                 elif isinstance(s, list):
                     s = {"type": "list", "values": [int(x) for x in s]}
                 else:
@@ -1667,9 +1670,10 @@ class SimpleSelection(Selection):
             return b""
         width, fmt, np_dtype = _SEL_WIDTH_INFO[width_code]
         buf = bytearray()
-        for s in self.slices:
+        for dim, s in enumerate(self.slices):
             if isinstance(s, slice):
-                buf += struct.pack(f"<B{fmt}{fmt}{fmt}", _SEL_DIM_SLICE, s.start, s.stop, s.step)
+                stop = min(s.stop, self._shape[dim])  # clamped as in to_dict
+                buf += struct.pack(f"<B{fmt}{fmt}{fmt}", _SEL_DIM_SLICE, s.start, stop, s.step)
             elif isinstance(s, list):
                 arr = np.asarray(s, dtype=np_dtype)
                 buf += struct.pack("<BI", _SEL_DIM_LIST, arr.size)

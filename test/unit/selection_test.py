@@ -9,6 +9,8 @@
 # distribution tree.  If you do not have access to this file, you may        #
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
+import itertools
+import random
 import unittest
 import logging
 import numpy as np
@@ -440,6 +442,104 @@ class FancySelectionTest(unittest.TestCase):
         self.assertEqual(sel.nselect, 10)  # 5 rows x 2 columns
         self.assertEqual(sel.mshape, (5, 2))
         self.assertIn("SimpleSelection", repr(sel))
+
+    def testFancyStopSerializedWithinExtent(self):
+        """serialized fancy slices keep their stop within the extent"""
+        sel = selections.select((10, 10), ([1, 2], slice(0, 9, 4)))
+        d = sel.to_dict()
+        self.assertEqual(d["slices"][1], {"type": "slice", "start": 0, "stop": 10, "step": 4})
+        for copy in (selections.from_dict(d), selections.Selection.frombytes(sel.tobytes())):
+            self.assertEqual(copy.slices, sel.slices)
+            self.assertEqual(copy.nselect, sel.nselect)
+
+        # a stop one past a 16-bit extent used to overflow the packed width
+        sel = selections.select((65535, 2), (slice(None, None, 2), [0]))
+        copy = selections.Selection.frombytes(sel.tobytes())
+        self.assertEqual(copy.slices, sel.slices)
+        self.assertEqual(copy.nselect, 32768)
+
+    def testFancyStopNormalized(self):
+        shape = (10, 10)
+        arr = np.arange(100).reshape(shape)
+        sel = selections.select(shape, ([1, 2], slice(0, 9, 4)))
+        self.assertEqual(sel.slices, ([1, 2], slice(0, 12, 4)))
+        self.assertEqual(sel.query_string, "[[1,2],0:10:4]")
+        self.assertEqual(sel.bbox, ((1, 0), (3, 9)))
+        self.assertEqual(sel.nselect, 6)
+        self.assertEqual(sel.mshape, (2, 3))
+        np.testing.assert_array_equal(arr[sel.slices], arr[[1, 2], 0:9:4])
+
+        sel = selections.select(shape, ([1, 2], slice(None, None, 3)))
+        self.assertEqual(sel.slices[1], slice(0, 12, 3))
+        self.assertEqual(sel.query_string, "[[1,2],0:10:3]")
+
+        sel = selections.select(shape, ([1, 2], slice(-3, None)))
+        self.assertEqual(sel.slices[1], slice(7, 10, 1))
+        self.assertEqual(sel.query_string, "[[1,2],7:10]")
+
+    def testFancySlicesRandom(self):
+        rng = random.Random(2021)
+        for _ in range(500):
+            rank = rng.randint(2, 3)
+            dims = tuple(rng.randint(1, 12) for _ in range(rank))
+            list_dims = rng.sample(range(rank), rng.choice([1, 1, 2]))
+            npts = None
+            args = []
+            for d, n in enumerate(dims):
+                if d in list_dims:
+                    if npts is None:
+                        vals = sorted(rng.sample(range(n), rng.randint(1, n)))
+                        npts = len(vals)
+                    else:
+                        vals = sorted(rng.randrange(n) for _ in range(npts))
+                    args.append(vals)
+                elif rng.random() < 0.2:
+                    args.append(rng.randrange(n))
+                else:
+                    start = rng.choice([None, rng.randint(-n, n)])
+                    stop = rng.choice([None, rng.randint(-n, n + 5)])
+                    step = rng.choice([None, 1, rng.randint(2, 5)])
+                    args.append(slice(start, stop, step))
+            args = tuple(args)
+            arr = np.arange(int(np.prod(dims))).reshape(dims)
+            expected = arr[args]
+            msg = f"dims={dims} args={args}"
+
+            sel = selections.select(dims, args)
+            np.testing.assert_array_equal(arr[sel.slices], expected, err_msg=msg)
+            self.assertEqual(sel.nselect, expected.size, msg)
+            self.assertEqual(int(np.prod(sel.mshape)), expected.size, msg)
+            for d, s in enumerate(sel.slices):
+                if isinstance(s, slice):
+                    r = range(*args[d].indices(dims[d]))
+                    self.assertEqual(s.stop, s.start + len(r) * s.step, msg)
+                    self.assertEqual(s, slice(r.start, r.start + len(r) * r.step, r.step), msg)
+
+            query = sel.query_string
+            for d, part in enumerate(_split_query(query)):
+                if ":" in part:
+                    self.assertLessEqual(int(part.split(":")[1]), dims[d], f"{msg} query={query}")
+            if expected.size == 0:
+                continue  # the query syntax has no empty slice
+            # parsing turns int dims into length-1 slices, so compare cells
+            sel2 = selections.select(dims, query)
+            self.assertEqual(sel2.nselect, sel.nselect, f"{msg} query={query}")
+            np.testing.assert_array_equal(np.sort(arr[sel2.slices], axis=None),
+                                          np.sort(expected, axis=None), err_msg=f"{msg} query={query}")
+
+
+def _split_query(query):
+    """Split a select query string into its per-dimension parts."""
+    parts, depth, cur = [], 0, ""
+    for ch in query[1:-1]:
+        if ch == "," and depth == 0:
+            parts.append(cur)
+            cur = ""
+            continue
+        depth += {"[": 1, "]": -1}.get(ch, 0)
+        cur += ch
+    parts.append(cur)
+    return parts
 
 
 class SelectRegionReferenceTest(unittest.TestCase):
@@ -952,7 +1052,7 @@ class IntersectFancyHyperslabTest(unittest.TestCase):
         fancy = selections.select(shape, (slice(0, 10, 2), [1, 3, 7, 9]))
         hyp = selections.select(shape, (slice(2, 8), slice(2, 8)))
         result = selections.intersect(fancy, hyp)
-        self.assertEqual(result.slices[0], slice(2, 7, 2))
+        self.assertEqual(result.slices[0], slice(2, 8, 2))
         self.assertEqual(result.slices[1], [3, 7])
         self.assertEqual(result.nselect, 6)  # 3 rows x 2 columns
 
@@ -1269,6 +1369,60 @@ class TranslateTest(unittest.TestCase):
         self.assertEqual(result.slices[0], slice(0, 3, 1))
         self.assertEqual(result.slices[1], [1, 2, 3])
         self.assertEqual(result.nselect, 9)  # 3 rows x 3 cols
+
+    def testTranslateFancyStepped(self):
+        shape = (10, 10)
+        s1 = selections.select(shape, ([0], slice(0, 8, 2)))  # cols {0,2,4,6}
+        s2 = selections.select(shape, ([0], slice(4, 5)))
+        result = selections.translate(s1, s2)
+        self.assertEqual(result.slices, ([0], slice(2, 3, 1)))
+
+    def testTranslateFancySteppedRandom(self):
+        def dim_values(arg, n):
+            return [arg] if isinstance(arg, int) else list(np.arange(n)[arg])
+
+        def cells(args, dims):
+            return set(itertools.product(*(dim_values(a, n) for a, n in zip(args, dims))))
+
+        def rand_slice(n):
+            return slice(rng.randint(0, n - 1), rng.randint(0, n), rng.randint(1, 4))
+
+        rng = random.Random(1878)
+        for _ in range(2000):
+            dims = (rng.randint(1, 10), rng.randint(1, 10))
+            list_dim = rng.randrange(2)
+            s1_args = [None, None]
+            s2_args = [None, None]
+            for d, n in enumerate(dims):
+                if d == list_dim:
+                    s1_args[d] = sorted(rng.sample(range(n), rng.randint(1, n)))
+                    s2_args[d] = sorted(rng.sample(range(n), rng.randint(1, n)))
+                elif rng.random() < 0.2:
+                    s1_args[d] = rng.randrange(n)
+                    s2_args[d] = rng.randrange(n)
+                else:
+                    s1_args[d] = rand_slice(n)
+                    s2_args[d] = rand_slice(n)
+            if rng.random() < 0.5:
+                # hyperslab s2
+                s2_args = [rand_slice(n) for n in dims]
+            s1_args, s2_args = tuple(s1_args), tuple(s2_args)
+            msg = f"dims={dims} s1={s1_args} s2={s2_args}"
+
+            s1 = selections.select(dims, s1_args)
+            s2 = selections.select(dims, s2_args)
+            s1_vals = [dim_values(a, n) for a, n in zip(s1_args, dims)]
+            inter = cells(s1_args, dims) & cells(s2_args, dims)
+            expected = {tuple(s1_vals[d].index(c[d]) for d in range(2)) for c in inter}
+
+            if not expected:
+                with self.assertRaises(ValueError, msg=msg):
+                    selections.translate(s1, s2)
+                continue
+            result = selections.translate(s1, s2)
+            got = set(itertools.product(*(dim_values(s, n) for s, n in zip(result.slices, dims))))
+            self.assertEqual(got, expected, msg)
+            self.assertEqual(result.nselect, len(expected), msg)
 
 
 class FieldsTest(unittest.TestCase):
