@@ -431,6 +431,12 @@ class QueryUtilTest(unittest.TestCase):
             item = tuple(result[i])
             self.assertEqual(item, expected_indexes[i])
 
+    def testArrayQueryNonStringQuery(self):
+        data_arr = np.arange(10, dtype=np.int32)
+        for query in ([1], {"a": 1}, b"_>1", 5):
+            with self.assertRaises(TypeError):
+                arrayQuery(query, data_arr)
+
 
 if __name__ == "__main__":
 

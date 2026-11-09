@@ -190,6 +190,123 @@ class ArrayUtilTest(unittest.TestCase):
         as_list = bytesArrayToList(arr)
         self.assertEqual(as_list, [fancy_json])
 
+    def testJsonToArrayRegionReferenceInvalid(self):
+        root_id = createObjId("groups")
+        dset_id = createObjId("datasets", root_id=root_id)
+        uuid = getUuidFromId(dset_id)
+        dt = special_dtype(ref=RegionReference)
+
+        def points(selection):
+            return {"id": uuid, "select_type": "H5S_SEL_POINTS", "selection": selection}
+
+        bad_values = (
+            {"select_type": "H5S_SEL_POINTS", "selection": [[1]]},  # no id
+            {"id": 5},  # id not a string
+            points([[-5]]),  # negative point
+            points([[3], [-1]]),
+            points([[1, 2], [3]]),  # ragged points
+            points([[float("inf")]]),
+            points([[2 ** 64]]),
+            {"id": uuid, "select_type": "H5S_SEL_HYPERSLABS", "selection": [[[0, 0], [1, 1]], [[2], [3]]]},
+            {"id": uuid, "select_type": "H5S_SEL_ALL", "selection": [[1]]},  # unknown select_type
+            {"id": uuid, "selection_dict": {"select_type": 1}},  # no shape
+            {"id": uuid, "selection_dict": {"shape": ["a"], "select_type": selections.H5S_SEL_ALL}},
+            {"id": uuid, "selection_dict": {"shape": [4], "select_type": 0, "fields": [1]}},
+            {"id": uuid, "selection_dict": {"shape": [4, 4], "select_type": 4, "slices": [
+                {"type": "slice", "start": 0, "stop": 3, "step": 0},
+                {"type": "list", "values": [0, 1]}]}},  # zero step
+            5,  # not a dict
+            "abc",
+        )
+        for value in bad_values:
+            with self.assertRaises(ValueError):
+                jsonToArray((1,), dt, [value])
+
+        # more values than the shape holds
+        with self.assertRaises(ValueError):
+            jsonToArray((1,), dt, [points([[1]]), points([[2]])])
+
+        # truncated and bad-magic blobs fail to decode
+        blob = RegionReference("datasets/" + dset_id, selections.select((4,), slice(0, 2))).tobytes()
+        for bad_blob in (blob[:4], blob[:6], b"XXXX" + blob[4:]):
+            arr = np.empty((1,), dtype=dt)
+            arr[0] = bad_blob
+            with self.assertRaises(ValueError):
+                bytesArrayToList(arr)
+        sel_bytes = RegionReference.frombytes(blob).selection_bytes
+        with self.assertRaises(ValueError):
+            selections.Selection.frombytes(sel_bytes[:-2])
+
+    def testJsonToArrayRangeErrors(self):
+        # out of range integers and over-long vlen lists raise ValueError
+        with self.assertRaises(ValueError):
+            jsonToArray([1], np.dtype("u1"), [1000])
+        with self.assertRaises(ValueError):
+            jsonToArray([1], np.dtype("u1"), [-1])
+        with self.assertRaises(ValueError):
+            jsonToArray([], np.dtype("i8"), 2 ** 64)
+        with self.assertRaises(ValueError):
+            jsonToArray([1], special_dtype(vlen=str), ["x", "y"])
+        with self.assertRaises(ValueError):
+            jsonToArray([1], np.dtype(np.uint64), [-1])
+
+        # in-range values are unchanged
+        arr = jsonToArray([2], np.dtype("u1"), [0, 255])
+        self.assertEqual(list(arr), [0, 255])
+
+    def testSingleFieldCompoundVlenRoundTrip(self):
+        dt_str = special_dtype(vlen=str)
+        dt = np.dtype([("s", dt_str)])
+        arr = np.zeros((2,), dtype=dt)
+        arr[0] = ("hello",)
+        arr[1] = ("",)
+        buffer = arrayToBytes(arr)
+        arr_copy = bytesToArray(buffer, dt, (2,))
+        self.assertEqual(arr_copy[0]["s"], "hello")
+        self.assertEqual(arr_copy[1]["s"], "")
+
+        arr = jsonToArray((2,), dt, [["abc"], ["de"]])
+        arr_copy = bytesToArray(arrayToBytes(arr), dt, (2,))
+        self.assertEqual(bytesArrayToList(arr_copy), [["abc"], ["de"]])
+
+        # a fixed single-field compound serializes as before
+        dt = np.dtype([("a", "<i4")])
+        arr = np.array([(1,), (2,)], dtype=dt)
+        buffer = arrayToBytes(arr)
+        self.assertEqual(buffer, arr.tobytes())
+        self.assertTrue(np.array_equal(bytesToArray(buffer, dt, (2,)), arr))
+
+        # and so does a vlen of fixed single-field compounds
+        dt_vlen = special_dtype(vlen=dt)
+        arr = np.zeros((1,), dtype=dt_vlen)
+        arr[0] = np.array([(1,), (2,), (3,)], dtype=dt)
+        buffer = arrayToBytes(arr)
+        self.assertEqual(buffer, b"\x0c\x00\x00\x00" + arr[0].tobytes())
+        arr_copy = bytesToArray(buffer, dt_vlen, (1,))
+        self.assertTrue(np.array_equal(arr_copy[0], arr[0]))
+
+    def testBytesToArrayVlenTruncated(self):
+        dt_str = special_dtype(vlen=str)
+        # truncated count bytes
+        with self.assertRaises(ValueError):
+            bytesToArray(b"\x05\x00", dt_str, (1,))
+        # no bytes at all, or fewer elements than the shape
+        with self.assertRaises(ValueError):
+            bytesToArray(b"", dt_str, (1,))
+        with self.assertRaises(ValueError):
+            bytesToArray(b"\x01\x00\x00\x00a", dt_str, (2,))
+
+        # a fixed field cut short in a compound with a vlen field
+        dt_cmp = np.dtype([("a", "<i4"), ("s", dt_str)])
+        with self.assertRaises(ValueError):
+            bytesToArray(b"", dt_cmp, (1,))
+        with self.assertRaises(ValueError):
+            bytesToArray(b"\x01\x00", dt_cmp, (1,))
+
+        # a well-formed buffer still decodes
+        arr = bytesToArray(b"\x02\x00\x00\x00ab", dt_str, (1,))
+        self.assertEqual(arr[0], "ab")
+
     def testByteArrayToListOpaque(self):
         # matches the format used in data/json/opaque_dset.json /
         # opaque_attr.json: base64-encoded strings, with an all-zero

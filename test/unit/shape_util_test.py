@@ -12,6 +12,8 @@
 import unittest
 import logging
 
+import numpy as np
+
 from h5json.shape_util import getShapeClass, getShapeDims, getNumElements, getRank, getShapeJson
 from h5json.shape_util import isNullSpace, isScalar, getDataSize, isExtensible, getMaxDims
 
@@ -220,6 +222,13 @@ class ShapeUtilTest(unittest.TestCase):
         self.assertEqual(isExtensible(vstr_simple_shape_obj), False)
         self.assertEqual(isExtensible(resizable_shape_obj), True)
         self.assertEqual(isExtensible(unlimited_shape_obj), True)
+
+    def testGetNumElementsLargeDims(self):
+        # products past 2**63 don't wrap
+        self.assertEqual(getDataSize([2 ** 32, 2 ** 32]), 2 ** 64)
+        self.assertEqual(getDataSize([2 ** 62, 4], 2), 2 ** 65)
+        self.assertEqual(getNumElements([np.int64(2 ** 32)] * 2), 2 ** 64)
+        self.assertEqual(getNumElements({"class": "H5S_SIMPLE", "dims": [3, np.int32(4)]}), 12)
 
 
 if __name__ == "__main__":

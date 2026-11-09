@@ -64,6 +64,10 @@ COMPRESSION_FILTER_IDS = (
     "H5Z_FILTER_ZSTD",
 )
 
+# names of filters that don't compress; a reader that picks the codec by name
+# can't use one of these as a compression filter's name
+_NON_COMPRESSOR_NAMES = tuple(d[2] for d in FILTER_DEFS if d[2] and d[0] not in COMPRESSION_FILTER_IDS)
+
 COMPRESSION_FILTER_NAMES = (
     "gzip",
     "szip",
@@ -222,7 +226,7 @@ def getFilterItem(name, options={}):
                 if val <= 0:
                     raise TypeError(f"filter {filter_class} parameters option should be a positive int")
                 vals.append(val)
-            filter_json["parameters"] = val
+            filter_json["parameters"] = vals
     else:
         msg = f"filter class {filter_class} is not supported"
         raise KeyError(msg)
@@ -251,6 +255,12 @@ def validateFilter(filter_json):
             if filter_id != filter_def[1]:
                 msg = f"Incorrect filter_id: {filter_id} for filter: {filter_class}"
                 raise ValueError(msg)
+            if filter_class in COMPRESSION_FILTER_IDS and filter_class != "H5Z_FILTER_DEFLATE":
+                # a reader may pick the codec by name, so it must fit the class
+                filter_name = filter_json["name"]
+                if filter_name in _NON_COMPRESSOR_NAMES:
+                    msg = f"Incorrect filter name: {filter_name} for filter: {filter_class}"
+                    raise ValueError(msg)
             # collect any filter options to check later
             options = {}
             for key in filter_json:

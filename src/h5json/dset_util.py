@@ -10,7 +10,11 @@
 # request a copy from help@hdfgroup.org.                                     #
 ##############################################################################
 
+import binascii
 import math
+
+import numpy as np
+
 from .hdf5dtype import getItemSize, createDataType
 from .shape_util import getDataSize, getShapeClass, getNumElements, getShapeDims
 from .shape_util import isExtensible, getMaxDims, getRank
@@ -252,18 +256,21 @@ def validateLayout(shape_json, type_json, layout):
     if "dims" in layout:
         chunk_dims = layout["dims"]
 
-    if chunk_dims:
+    if "dims" in layout:
         # validate that the chunk_dims are valid and correlates with the
         # dataset shape
         if isinstance(chunk_dims, int):
             chunk_dims = [chunk_dims, ]  # promote to array
+        if not isinstance(chunk_dims, (list, tuple)):
+            msg = "Layout dims must be integer or integer array"
+            raise ValueError(msg)
         if len(chunk_dims) != rank:
             msg = "Layout rank does not match shape rank"
             raise ValueError(msg)
         for i in range(rank):
             dim_extent = space_dims[i]
             chunk_extent = chunk_dims[i]
-            if not isinstance(chunk_extent, int):
+            if not isinstance(chunk_extent, int) or isinstance(chunk_extent, bool):
                 msg = "Layout dims must be integer or integer array"
                 raise ValueError(msg)
             if chunk_extent <= 0:
@@ -415,14 +422,20 @@ def validateDatasetCreationProps(creation_props, type_json=None, shape=None):
                     msg = f"unexpected fill value: {fill_value} "
                     msg += f"for encoding: {fill_value_encoding}"
                     raise ValueError(msg)
+            if fill_value_encoding == "None":
+                fill_value_encoding = None
         else:
             fill_value_encoding = None
 
-            try:
-                getNumpyValue(fill_value, dt=dt, encoding=fill_value_encoding)
-            except ValueError:
-                msg = f"invalid fill value: {fill_value}"
-                raise ValueError(msg)
+        try:
+            fill_arr = getNumpyValue(fill_value, dt=dt, encoding=fill_value_encoding)
+        except (ValueError, TypeError, OverflowError, binascii.Error):
+            msg = f"invalid fill value: {fill_value}"
+            raise ValueError(msg)
+        # a single value can be broadcast, anything else must match the type's shape
+        if np.shape(fill_arr) != dt.shape and np.size(fill_arr) != 1:
+            msg = f"fill value: {fill_value} does not match the type's shape"
+            raise ValueError(msg)
 
     layout_class = None
     if "layout" in creation_props:

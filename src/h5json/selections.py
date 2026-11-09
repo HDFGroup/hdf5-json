@@ -1031,28 +1031,37 @@ def _handle_dict_selection(shape, arg):
 
 def from_dict(d):
     """ Reconstruct a Selection instance from a dict produced by Selection.to_dict(). """
-    shape = tuple(d["shape"])
-    fields = d.get("fields")
-    cls_name = d.get("class", "SimpleSelection")
+    if not isinstance(d, dict) or "shape" not in d:
+        raise ValueError("Expected a dict with a 'shape' key for selection")
+    try:
+        shape = tuple(d["shape"])
+        if not all(isinstance(n, (int, np.integer)) and n >= 0 for n in shape):
+            raise ValueError("Selection shape must be non-negative integers")
+        fields = d.get("fields")
+        if fields is not None and not all(isinstance(f, str) for f in fields):
+            raise ValueError("Selection fields must be strings")
+        cls_name = d.get("class", "SimpleSelection")
 
-    if cls_name != "SimpleSelection":
-        raise ValueError(f"Unsupported selection class: {cls_name}")
+        if cls_name != "SimpleSelection":
+            raise ValueError(f"Unsupported selection class: {cls_name}")
 
-    if d.get("select_type") == H5S_SEL_ALL:
-        return SimpleSelection(shape, None, fields=fields)
+        if d.get("select_type") == H5S_SEL_ALL:
+            return SimpleSelection(shape, None, fields=fields)
 
-    args = []
-    for item in d["slices"]:
-        item_type = item["type"]
-        if item_type == "slice":
-            args.append(slice(item["start"], item["stop"], item["step"]))
-        elif item_type == "list":
-            args.append(list(item["values"]))
-        elif item_type == "int":
-            args.append(item["value"])
-        else:
-            raise ValueError(f"Unsupported slice element type: {item_type}")
-    return SimpleSelection(shape, tuple(args), fields=fields)
+        args = []
+        for item in d["slices"]:
+            item_type = item["type"]
+            if item_type == "slice":
+                args.append(slice(item["start"], item["stop"], item["step"]))
+            elif item_type == "list":
+                args.append(list(item["values"]))
+            elif item_type == "int":
+                args.append(item["value"])
+            else:
+                raise ValueError(f"Unsupported slice element type: {item_type}")
+        return SimpleSelection(shape, tuple(args), fields=fields)
+    except (TypeError, KeyError, IndexError, OverflowError, AttributeError) as e:
+        raise ValueError(f"Invalid selection: {e}") from e
 
 
 def from_region_json(d):
@@ -1073,36 +1082,41 @@ def from_region_json(d):
     point selection covering the exact same cells; this can be memory
     intensive for selections with very large blocks.
     """
+    if not isinstance(d, dict):
+        raise ValueError("Expected a dict for region reference selection")
     select_type = d.get("select_type")
     selection = d.get("selection")
     if not selection:
         raise ValueError("Empty region reference selection")
 
-    if select_type == "H5S_SEL_POINTS":
-        rank = len(selection[0])
-        shape = tuple(max(int(pt[dim]) for pt in selection) + 1 for dim in range(rank))
-        coords = tuple([int(pt[dim]) for pt in selection] for dim in range(rank))
-        return select(shape, coords)
+    try:
+        if select_type == "H5S_SEL_POINTS":
+            rank = len(selection[0])
+            shape = tuple(max(int(pt[dim]) for pt in selection) + 1 for dim in range(rank))
+            coords = tuple([int(pt[dim]) for pt in selection] for dim in range(rank))
+            return select(shape, coords)
 
-    if select_type == "H5S_SEL_HYPERSLABS":
-        rank = len(selection[0][0])
-        if len(selection) == 1:
-            start, end = selection[0]
-            shape = tuple(int(e) + 1 for e in end)
-            args = tuple(slice(int(s), int(e) + 1, 1) for s, e in zip(start, end))
-            return select(shape, args)
+        if select_type == "H5S_SEL_HYPERSLABS":
+            rank = len(selection[0][0])
+            if len(selection) == 1:
+                start, end = selection[0]
+                shape = tuple(int(e) + 1 for e in end)
+                args = tuple(slice(int(s), int(e) + 1, 1) for s, e in zip(start, end))
+                return select(shape, args)
 
-        # multiple disjoint blocks - no single-hyperslab equivalent in this
-        # model, so expand to the exact set of covered points instead
-        points = []
-        for start, end in selection:
-            ranges = [range(int(s), int(e) + 1) for s, e in zip(start, end)]
-            points.extend(itertools.product(*ranges))
-        shape = tuple(max(pt[dim] for pt in points) + 1 for dim in range(rank))
-        coords = tuple([pt[dim] for pt in points] for dim in range(rank))
-        return select(shape, coords)
+            # multiple disjoint blocks - no single-hyperslab equivalent in this
+            # model, so expand to the exact set of covered points instead
+            points = []
+            for start, end in selection:
+                ranges = [range(int(s), int(e) + 1) for s, e in zip(start, end)]
+                points.extend(itertools.product(*ranges))
+            shape = tuple(max(pt[dim] for pt in points) + 1 for dim in range(rank))
+            coords = tuple([pt[dim] for pt in points] for dim in range(rank))
+            return select(shape, coords)
+    except (TypeError, KeyError, IndexError, OverflowError, AttributeError) as e:
+        raise ValueError(f"Invalid region reference selection: {e}") from e
 
-    raise NotImplementedError(f"Region reference JSON import not supported for select_type {select_type}")
+    raise ValueError(f"Region reference JSON import not supported for select_type {select_type}")
 
 
 class Selection(object):
@@ -1274,20 +1288,24 @@ class Selection(object):
         _, fmt, _ = _SEL_WIDTH_INFO[width_code]
         buf = bytearray()
         buf += _SEL_MAGIC
-        buf += struct.pack("<BBBBH", _SEL_VERSION, _SEL_CLASS_CODES[type(self).__name__],
-                           self._select_type, width_code, len(self._shape))
-        if self._shape:
-            buf += struct.pack(f"<{len(self._shape)}{fmt}", *self._shape)
-        if self._fields is None:
-            buf += struct.pack("<B", 0)
-        else:
-            fields_sorted = sorted(self._fields)
-            buf += struct.pack("<BH", 1, len(fields_sorted))
-            for f in fields_sorted:
-                fb = f.encode("utf-8")
-                buf += struct.pack("<H", len(fb))
-                buf += fb
-        buf += self._pack_body(width_code)
+        try:
+            buf += struct.pack("<BBBBH", _SEL_VERSION, _SEL_CLASS_CODES[type(self).__name__],
+                               self._select_type, width_code, len(self._shape))
+            if self._shape:
+                buf += struct.pack(f"<{len(self._shape)}{fmt}", *self._shape)
+            if self._fields is None:
+                buf += struct.pack("<B", 0)
+            else:
+                fields_sorted = sorted(self._fields)
+                buf += struct.pack("<BH", 1, len(fields_sorted))
+                for f in fields_sorted:
+                    fb = f.encode("utf-8")
+                    buf += struct.pack("<H", len(fb))
+                    buf += fb
+            buf += self._pack_body(width_code)
+        except (struct.error, IndexError) as e:
+            # e.g. a negative or too large extent or index
+            raise ValueError(f"Unable to serialize selection: {e}") from e
         return buf
 
     @classmethod
@@ -1296,38 +1314,42 @@ class Selection(object):
         data = bytes(data)
         if data[:4] != _SEL_MAGIC:
             raise ValueError("Invalid selection byte stream")
-        version, class_code, select_type, width_code, rank = struct.unpack_from("<BBBBH", data, 4)
-        offset = 4 + struct.calcsize("<BBBBH")
-        if version != _SEL_VERSION:
-            raise ValueError(f"Unsupported selection serialization version: {version}")
-        if width_code not in _SEL_WIDTH_INFO:
-            raise ValueError(f"Unsupported selection integer width code: {width_code}")
-        _, fmt, _ = _SEL_WIDTH_INFO[width_code]
+        try:
+            version, class_code, select_type, width_code, rank = struct.unpack_from("<BBBBH", data, 4)
+            offset = 4 + struct.calcsize("<BBBBH")
+            if version != _SEL_VERSION:
+                raise ValueError(f"Unsupported selection serialization version: {version}")
+            if width_code not in _SEL_WIDTH_INFO:
+                raise ValueError(f"Unsupported selection integer width code: {width_code}")
+            _, fmt, _ = _SEL_WIDTH_INFO[width_code]
 
-        if rank:
-            shape = struct.unpack_from(f"<{rank}{fmt}", data, offset)
-            offset += _SEL_WIDTH_INFO[width_code][0] * rank
-        else:
-            shape = ()
+            if rank:
+                shape = struct.unpack_from(f"<{rank}{fmt}", data, offset)
+                offset += _SEL_WIDTH_INFO[width_code][0] * rank
+            else:
+                shape = ()
 
-        fields_flag = data[offset]
-        offset += 1
-        fields = None
-        if fields_flag:
-            count = struct.unpack_from("<H", data, offset)[0]
-            offset += 2
-            fields = []
-            for _ in range(count):
-                flen = struct.unpack_from("<H", data, offset)[0]
+            fields_flag = data[offset]
+            offset += 1
+            fields = None
+            if fields_flag:
+                count = struct.unpack_from("<H", data, offset)[0]
                 offset += 2
-                fields.append(data[offset:offset + flen].decode("utf-8"))
-                offset += flen
+                fields = []
+                for _ in range(count):
+                    flen = struct.unpack_from("<H", data, offset)[0]
+                    offset += 2
+                    fields.append(data[offset:offset + flen].decode("utf-8"))
+                    offset += flen
 
-        class_name = {v: k for k, v in _SEL_CLASS_CODES.items()}.get(class_code)
-        if class_name is None:
-            raise ValueError(f"Unsupported selection class code: {class_code}")
-        target_cls = globals()[class_name]
-        return target_cls._unpack_body(shape, select_type, fields, width_code, data, offset)
+            class_name = {v: k for k, v in _SEL_CLASS_CODES.items()}.get(class_code)
+            if class_name is None:
+                raise ValueError(f"Unsupported selection class code: {class_code}")
+            target_cls = globals()[class_name]
+            return target_cls._unpack_body(shape, select_type, fields, width_code, data, offset)
+        except (struct.error, IndexError) as e:
+            # e.g. a truncated byte stream
+            raise ValueError(f"Invalid selection byte stream: {e}") from e
 
 
 class SimpleSelection(Selection):

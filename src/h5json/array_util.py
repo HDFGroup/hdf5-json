@@ -72,11 +72,17 @@ def _regionRefJsonToArray(data_shape, data_dtype, data_json):
         # shape of (1,) (the convention callers use for H5S_SCALAR attributes).
         if data is None or isinstance(data, dict):
             arr[index] = b'' if data is None else RegionReference.from_json(data).tobytes()
+        elif isinstance(data, (str, bytes)) or not hasattr(data, "__iter__"):
+            raise ValueError(f"Unexpected region reference value of type {type(data).__name__}")
         else:
             for i, item in enumerate(data):
                 fill(item, index + (i,))
 
-    fill(data_json, ())
+    try:
+        fill(data_json, ())
+    except IndexError as ie:
+        # e.g. more values than the shape holds
+        raise ValueError(str(ie)) from ie
     return arr
 
 
@@ -293,13 +299,17 @@ def jsonToArray(data_shape, data_dtype, data_json):
     def get_array(data, rank, dtype):
         # helper function to create an array with encoding if needed
         try:
-            arr = np.array(data, dtype=dtype)
-        except UnicodeEncodeError:
-            # numpy couldn't infer a fixed-width dtype straight from the str
-            # elements (e.g. mixed-length/non-ascii text) - pre-encode each
-            # element to utf-8 bytes ourselves so np.array() can size it
-            data = toTuple(rank, data, encoding="utf8")
-            arr = np.array(data, dtype=dtype)
+            try:
+                arr = np.array(data, dtype=dtype)
+            except UnicodeEncodeError:
+                # numpy couldn't infer a fixed-width dtype straight from the str
+                # elements (e.g. mixed-length/non-ascii text) - pre-encode each
+                # element to utf-8 bytes ourselves so np.array() can size it
+                data = toTuple(rank, data, encoding="utf8")
+                arr = np.array(data, dtype=dtype)
+        except OverflowError as oe:
+            # e.g. an integer out of range for the target dtype
+            raise ValueError(str(oe)) from oe
         return arr
 
     def fillVlenArray(rank, data, arr, index):
@@ -377,7 +387,11 @@ def jsonToArray(data_shape, data_dtype, data_json):
             data_json = [data_json]
         # for vlen data we need to initialize a zero numpy array to ensure the right shape
         arr = np.zeros((npoints,), dtype=data_dtype)
-        fillVlenArray(np_shape_rank, data_json, arr, 0)
+        try:
+            fillVlenArray(np_shape_rank, data_json, arr, 0)
+        except IndexError as ie:
+            # e.g. more vlen elements than the shape holds
+            raise ValueError(str(ie)) from ie
     elif all(e is None for e in data_json):
         # just create a zero array
         arr = np.zeros(data_shape, dtype=data_dtype)
@@ -428,7 +442,7 @@ def getElementSize(e, dt):
     Get number of byte needed to given element as a bytestream
     """
     # print(f"getElementSize - e: {e}  dt: {dt} metadata: {dt.metadata}")
-    if len(dt) > 1:
+    if len(dt) > 0:
         count = 0
         for name in dt.names:
             field_dt = dt[name]
@@ -515,7 +529,7 @@ def copyElement(e, dt, buffer, offset):
     """
 
     # print(f"copyElement - dt: {dt}  offset: {offset}")
-    if len(dt) > 1:
+    if len(dt) > 0:
         for name in dt.names:
             field_dt = dt[name]
             field_val = e[name]
@@ -603,6 +617,8 @@ def getElementCount(buffer, offset=0):
     n = offset
     m = offset + 4
     count_bytes = bytes(buffer[n:m])
+    if len(count_bytes) < 4:
+        raise ValueError("Buffer too short for varlen element count")
 
     try:
         count = int(np.frombuffer(count_bytes, dtype="<i4")[0])
@@ -637,7 +653,7 @@ def readElement(buffer, offset, arr, index, dt):
         int: The updated offset value after reading the element.
     """
     # print("readElement, offset:", offset)
-    if len(dt) > 1:
+    if len(dt) > 0:
         e = arr[index]
         for name in dt.names:
             field_dt = dt[name]
@@ -646,6 +662,8 @@ def readElement(buffer, offset, arr, index, dt):
         count = dt.itemsize
         n = offset
         m = offset + count
+        if m > len(buffer):
+            raise ValueError("Buffer too short for element")
         e_buffer = buffer[n:m]
         offset += count
         try:

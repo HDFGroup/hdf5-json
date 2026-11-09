@@ -526,6 +526,9 @@ def arrayQuery(
         "~(symbol.isin('AAPL', 'EBAY')) & (date > 20170102)"
 
     """
+    if not isinstance(query, str):
+        raise TypeError("query must be a string")
+
     if not isinstance(data_arr, np.ndarray):
         raise TypeError("unexpected array type")
 

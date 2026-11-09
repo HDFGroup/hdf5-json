@@ -194,19 +194,23 @@ class RegionReference:
         data = bytes(data)
         if data[:4] != _RREF_MAGIC:
             raise ValueError("Invalid region reference byte stream")
-        version = struct.unpack_from("<B", data, 4)[0]
-        if version != _RREF_VERSION:
-            raise ValueError(f"Unsupported region reference serialization version: {version}")
+        try:
+            version = struct.unpack_from("<B", data, 4)[0]
+            if version != _RREF_VERSION:
+                raise ValueError(f"Unsupported region reference serialization version: {version}")
 
-        offset = 5
-        id_len = struct.unpack_from("<H", data, offset)[0]
-        offset += 2
-        id_str = data[offset:offset + id_len].decode("ascii")
-        offset += id_len
+            offset = 5
+            id_len = struct.unpack_from("<H", data, offset)[0]
+            offset += 2
+            id_str = data[offset:offset + id_len].decode("ascii")
+            offset += id_len
 
-        sel_len = struct.unpack_from("<I", data, offset)[0]
-        offset += 4
-        sel_bytes = data[offset:offset + sel_len]
+            sel_len = struct.unpack_from("<I", data, offset)[0]
+            offset += 4
+            sel_bytes = data[offset:offset + sel_len]
+        except (struct.error, IndexError) as e:
+            # e.g. a truncated byte stream
+            raise ValueError(f"Invalid region reference byte stream: {e}") from e
 
         ref = cls()
         ref._id = id_str if id_str else None
@@ -251,8 +255,10 @@ class RegionReference:
         """
         if d is None:
             return cls()
-        if "id" not in d:
-            raise KeyError("expected 'id' key in region reference JSON")
+        if not isinstance(d, dict):
+            raise ValueError("expected a dict for region reference JSON")
+        if not isinstance(d.get("id"), str):
+            raise ValueError("expected a string 'id' key in region reference JSON")
         if "selection_dict" in d:
             sel = from_dict(d["selection_dict"])
         elif "select_type" in d:
