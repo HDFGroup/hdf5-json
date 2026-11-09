@@ -201,6 +201,9 @@ class ChunkIterator:
 
         self._chunk_index = []
         if not self._empty:
+            for d in self._layout:
+                if isinstance(d, bool) or not isinstance(d, (int, np.integer)) or d <= 0:
+                    raise ValueError(f"Invalid chunk layout: {self._layout}")
             for dim in range(rank):
                 s = self._sel[dim]
                 if s.start < 0 or s.stop > self._shape[dim] or s.stop <= s.start:
@@ -472,8 +475,12 @@ class Hdf5db:
 
         obj_ids = set()
         obj_ids.add(self.root_id)
+        visited = set()
         while obj_ids:
             obj_id = obj_ids.pop()
+            if obj_id in visited:
+                continue
+            visited.add(obj_id)
             self.log.debug(f"readAll, get {obj_id}")
             obj_json = self.getObjectById(obj_id)  # will add obj_id to db if not already present
             if getCollectionForId(obj_id) == "groups":
@@ -677,35 +684,43 @@ class Hdf5db:
                 else:
                     other_db.createCustomLink(dst_grp_id, name, dict(link_json))
 
-        # pass 1: discover and create every object reachable from root (without
-        # attributes/values/links yet), so any reference to it can already be
-        # translated, and so a hard link's target is always already known -
-        # this also correctly handles circular group references
-        visited = set()
-        obj_ids = [self.root_id]
-        create_shell(self.root_id)
-        while obj_ids:
-            src_grp_id = obj_ids.pop()
-            if src_grp_id in visited:
-                continue
-            visited.add(src_grp_id)
-            for name in self.getLinks(src_grp_id):
-                link_json = self.getLink(src_grp_id, name)
-                if link_json["class"] != "H5L_TYPE_HARD":
+        # an auto-flush before pass 3 would write objects that aren't linked yet,
+        # so hold off flushing until the copy is complete
+        saved_flush_settings = (other_db._auto_flush_memory, other_db._auto_flush_interval)
+        other_db._auto_flush_memory = None
+        other_db._auto_flush_interval = None
+        try:
+            # pass 1: discover and create every object reachable from root (without
+            # attributes/values/links yet), so any reference to it can already be
+            # translated, and so a hard link's target is always already known -
+            # this also correctly handles circular group references
+            visited = set()
+            obj_ids = [self.root_id]
+            create_shell(self.root_id)
+            while obj_ids:
+                src_grp_id = obj_ids.pop()
+                if src_grp_id in visited:
                     continue
-                tgt_id = link_json["id"]
-                create_shell(tgt_id)
-                if getCollectionForId(tgt_id) == "groups":
-                    obj_ids.append(tgt_id)
+                visited.add(src_grp_id)
+                for name in self.getLinks(src_grp_id):
+                    link_json = self.getLink(src_grp_id, name)
+                    if link_json["class"] != "H5L_TYPE_HARD":
+                        continue
+                    tgt_id = link_json["id"]
+                    create_shell(tgt_id)
+                    if getCollectionForId(tgt_id) == "groups":
+                        obj_ids.append(tgt_id)
 
-        # pass 2: copy attributes and dataset values now that every object
-        # (and therefore every possible reference target) has a destination id
-        for src_id in list(id_map):
-            copy_content(src_id)
+            # pass 2: copy attributes and dataset values now that every object
+            # (and therefore every possible reference target) has a destination id
+            for src_id in list(id_map):
+                copy_content(src_id)
 
-        # pass 3: wire up all links now that every target object exists
-        for src_grp_id in visited:
-            create_links(src_grp_id)
+            # pass 3: wire up all links now that every target object exists
+            for src_grp_id in visited:
+                create_links(src_grp_id)
+        finally:
+            other_db._auto_flush_memory, other_db._auto_flush_interval = saved_flush_settings
 
     def open(self):
         """ open the storage plugin, installing a NullPlugin if none is set """
@@ -1090,7 +1105,7 @@ class Hdf5db:
             shape_json["dims"] = list(shape)
 
         obj_json = self.getObjectById(obj_id)
-        attrs_json = obj_json["attributes"]
+        attrs_json = obj_json.setdefault("attributes", {})
         type_json = getTypeItem(original_dtype)
         # finally put it all together...
         attr_json = {"shape": shape_json, "type": type_json}

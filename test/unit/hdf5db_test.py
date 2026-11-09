@@ -14,6 +14,10 @@ import time
 import logging
 import math
 import os
+import io
+import json
+import contextlib
+import h5py
 import numpy as np
 from h5json import Hdf5db
 from h5json import selections
@@ -22,6 +26,7 @@ from h5json.objid import isRootObjId, isValidUuid, isSchema2Id
 from h5json.hdf5dtype import special_dtype, Reference, RegionReference
 from h5json.storage_plugin import NullPlugin
 from h5json.jsonstore.h5json_plugin import H5JsonPlugin
+from h5json.h5pystore.h5py_plugin import H5pyPlugin
 
 # fixture/output paths below are relative to the repo root - normalize cwd so
 # this file runs correctly whether invoked from the repo root or from within
@@ -1397,6 +1402,26 @@ class Hdf5dbTest(unittest.TestCase):
 
         db.close()
 
+    def testChunkIteratorInvalidLayout(self):
+        shape = (10,)
+        dtype = np.int32
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": (3,)}}
+
+        db = Hdf5db(app_logger=self.log)
+        db.open()
+        dset_id = db.createDataset(shape, dtype=dtype, cpl=cpl)
+        db.setDatasetValues(dset_id, selections.select(shape, ...), np.arange(10, dtype=dtype))
+        dset_json = db.getObjectById(dset_id)
+
+        # chunk dims come straight from the source file when converting, so
+        # check that each kind of bad value is rejected up front
+        for bad_dim in (0, -1, 1.5, True):
+            dset_json["creationProperties"]["layout"] = {"class": "H5D_CHUNKED", "dims": [bad_dim]}
+            with self.assertRaises(ValueError):
+                db.getChunkIterator(dset_id)
+
+        db.close()
+
     def testGetDatasetValuesByQuery1D(self):
         data_arr = self._make_tabular_arr()
         shape = data_arr.shape
@@ -1888,6 +1913,107 @@ class Hdf5dbTest(unittest.TestCase):
         result = rdb.getDatasetValues(read_dset_id, selections.select(shape, ...))
         self.assertTrue(np.array_equal(result, arr))
         rdb.close()
+
+    def testCreateAttributeNoAttributesKey(self):
+        # empty.json's root group has no "attributes" key at all
+        db = Hdf5db(app_logger=self.log)
+        db.plugin = H5JsonPlugin("data/json/empty.json", read_only=True, app_logger=self.log)
+        root_id = db.open()
+        self.assertNotIn("attributes", db.getObjectById(root_id))
+
+        db.createAttribute(root_id, "a1", 42)
+        self.assertEqual(db.getAttributes(root_id), ["a1"])
+        self.assertEqual(db.getAttributeValue(root_id, "a1"), 42)
+        db.close()
+
+    def testReadAllCycle(self):
+        filepath = "test/unit/out/hdf5db_testReadAllCycle.json"
+
+        wdb = Hdf5db(app_logger=self.log)
+        wdb.plugin = H5JsonPlugin(filepath, app_logger=self.log)
+        root_id = wdb.open()
+        g_id = wdb.createGroup()
+        wdb.createHardLink(root_id, "g", g_id)
+        wdb.createHardLink(g_id, "up", root_id)  # root -> g -> root
+        wdb.close()
+
+        rdb = Hdf5db(app_logger=self.log)
+        rdb.plugin = H5JsonPlugin(filepath, read_only=True, app_logger=self.log)
+        rdb.open()
+        self.assertEqual(rdb.getCollection(), [])
+
+        rdb.readAll()  # used to loop forever on the cycle
+
+        obj_ids = rdb.getCollection()
+        self.assertEqual(len(obj_ids), 2)
+        self.assertIn(root_id, obj_ids)
+        self.assertIn(g_id, obj_ids)
+        rdb.close()
+
+    def _writeCopySource(self, filepath, data):
+        """ Write a json file with a chunked dataset and attributes for the copy tests """
+        wdb = Hdf5db(app_logger=self.log)
+        wdb.plugin = H5JsonPlugin(filepath, app_logger=self.log)
+        root_id = wdb.open()
+        wdb.createAttribute(root_id, "root_attr", "hello")
+        g1_id = wdb.createGroup()
+        wdb.createHardLink(root_id, "g1", g1_id)
+        wdb.createAttribute(g1_id, "g1_attr", 7)
+        cpl = {"layout": {"class": "H5D_CHUNKED", "dims": [10]}}
+        dset_id = wdb.createDataset(data.shape, dtype=data.dtype, cpl=cpl)
+        wdb.createHardLink(g1_id, "dset", dset_id)
+        wdb.setDatasetValues(dset_id, selections.select(data.shape, ...), data)
+        wdb.createAttribute(dset_id, "dset_attr", [1, 2, 3])
+        wdb.close()
+
+    def testCopyNoAutoFlushMidCopy(self):
+        src_path = "test/unit/out/hdf5db_testCopyNoAutoFlushMidCopy.json"
+        dst_path = "test/unit/out/hdf5db_testCopyNoAutoFlushMidCopy.h5"
+        if os.path.isfile(dst_path):
+            os.remove(dst_path)  # cleanup any previous run
+        data = np.arange(100, dtype=np.int32)
+        self._writeCopySource(src_path, data)
+
+        src_db = Hdf5db(app_logger=self.log)
+        src_db.plugin = H5JsonPlugin(src_path, read_only=True, app_logger=self.log)
+        src_db.open()
+
+        # interval 0 means every change would trigger an auto-flush
+        dst_db = Hdf5db(app_logger=self.log, auto_flush_memory=1, auto_flush_interval=0)
+        dst_db.plugin = H5pyPlugin(dst_path, no_data=False, app_logger=self.log)
+        dst_db.open()
+
+        src_db.copy(dst_db)
+        self.assertEqual(dst_db.auto_flush_memory, 1)
+        self.assertEqual(dst_db.auto_flush_interval, 0)
+        dst_db.close()
+        src_db.close()
+
+        with h5py.File(dst_path, "r") as f:
+            self.assertEqual(f.attrs["root_attr"], b"hello")
+            self.assertEqual(f["g1"].attrs["g1_attr"], 7)
+            dset = f["g1/dset"]
+            np.testing.assert_array_equal(dset[...], data)
+            np.testing.assert_array_equal(dset.attrs["dset_attr"], [1, 2, 3])
+
+        # writing to stdout, an auto-flush mid-copy would print an extra document
+        src_db = Hdf5db(app_logger=self.log)
+        src_db.plugin = H5JsonPlugin(src_path, read_only=True, app_logger=self.log)
+        src_db.open()
+        dst_db = Hdf5db(app_logger=self.log, auto_flush_interval=0)
+        dst_db.plugin = H5JsonPlugin(None, app_logger=self.log)
+        dst_db.open()
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            src_db.copy(dst_db)
+            dst_db.close()
+        src_db.close()
+
+        doc = json.loads(out.getvalue())  # raises on a second document
+        self.assertEqual(len(doc["datasets"]), 1)
+        dset_json = next(iter(doc["datasets"].values()))
+        self.assertEqual(dset_json["value"], data.tolist())
 
     def testReadAll(self):
         filepath = "test/unit/out/hdf5db_testReadAll.json"

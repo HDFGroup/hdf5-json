@@ -52,6 +52,9 @@ class H5JsonPlugin(StoragePlugin):
         # matching H5pyPlugin: objects loaded from an existing file keep their loaded entry
         # until something actually makes them dirty.
         self._init = False if (append or read_only) else True
+        # the most recently parsed dataset value as ((obj_id, dtype), array), only used while
+        # read_only; one entry is enough for chunk-by-chunk reads and keeps memory bounded
+        self._values_cache = None
 
     # ------------------------------------------------------------------
     # lifecycle
@@ -63,6 +66,7 @@ class H5JsonPlugin(StoragePlugin):
         if self._root_id:
             return self._root_id  # already open
 
+        self._values_cache = None
         if (self._append or self._read_only) and self._filepath and os.path.isfile(self._filepath):
             with open(self._filepath) as f:
                 text = f.read()
@@ -91,6 +95,7 @@ class H5JsonPlugin(StoragePlugin):
         stdout-destined store, would print the dump a second time). """
         self._root_id = None
         self.json = {}
+        self._values_cache = None
 
     def isClosed(self):
         """ return closed status """
@@ -250,7 +255,17 @@ class H5JsonPlugin(StoragePlugin):
             # json store doesn't support query
             raise NotImplementedError("getDatasetValues with query not implemented for H5JsonPlugin")
 
-        arr = jsonToArray(dims, dtype, json_value)
+        if self._read_only:
+            # self.json doesn't change while read_only, so parse each dataset once
+            # rather than once per call (e.g. once per chunk during Hdf5db.copy())
+            cache_key = (obj_id, dtype)
+            if self._values_cache is not None and self._values_cache[0] == cache_key:
+                arr = self._values_cache[1]
+            else:
+                arr = jsonToArray(dims, dtype, json_value)
+                self._values_cache = (cache_key, arr)
+        else:
+            arr = jsonToArray(dims, dtype, json_value)
 
         if sel is None or sel.select_type == selections.H5S_SEL_ALL:
             pass  # just return the entire array
@@ -258,6 +273,9 @@ class H5JsonPlugin(StoragePlugin):
             arr = arr[sel.slices]
         else:
             raise NotImplementedError("selection type not supported")
+
+        if self._read_only:
+            arr = arr.copy()  # callers mustn't be able to modify the cached array
 
         return arr
 

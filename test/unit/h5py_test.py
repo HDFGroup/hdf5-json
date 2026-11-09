@@ -416,6 +416,23 @@ class H5pyTest(unittest.TestCase):
 
         db.close()
 
+    def testReadScalarAttributes(self):
+        # h5py returns scalar attributes as scalars, not arrays
+        filepath = "data/hdf5/ex_image3.h5"
+        db = Hdf5db(app_logger=self.log)
+        db.plugin = H5pyPlugin(filepath, read_only=True, app_logger=self.log)
+        with self.assertNoLogs(self.log, level="WARNING"):
+            db.open()
+            palette_id = db.getObjectIdByPath("/Rainbow pallete")
+            for name in ("All data", "Land data", "Sea data"):
+                obj_id = db.getObjectIdByPath("/" + name)
+                item = db.getAttribute(obj_id, "PALETTE")
+                self.assertEqual(item["shape"]["class"], "H5S_SCALAR")
+                self.assertEqual(item["value"], "datasets/" + palette_id)
+                item = db.getAttribute(obj_id, "CLASS")
+                self.assertEqual(item["value"], "IMAGE")
+        db.close()
+
     def testWriteReadRegionReferenceRoundTrip(self):
         filepath = "test/unit/out/h5py_test_testWriteReadRegionReferenceRoundTrip.h5"
         if os.path.isfile(filepath):
@@ -1323,6 +1340,78 @@ class H5pyTest(unittest.TestCase):
             self.assertEqual(sub_dt, np.dtype("S15"))
             sub_dt = t1.dtype["field_4"]
             self.assertEqual(sub_dt, h5py.special_dtype(vlen=str))
+
+    def testCommittedTypeRootAttribute(self):
+        # the root attribute and dataset are read before /types/t1 has been
+        # reached, so their committed type has no id yet
+        filepath = "test/unit/out/h5py_test_testCommittedTypeRootAttribute.h5"
+        json_path = "test/unit/out/h5py_test_testCommittedTypeRootAttribute.json"
+        for path in (filepath, json_path):
+            if os.path.isfile(path):
+                os.remove(path)  # cleanup any previous run
+        with h5py.File(filepath, "w") as f:
+            f["types/t1"] = np.dtype("<i4")
+            t1 = f["types/t1"]
+            f.attrs.create("a1", data=[1, 2, 3], dtype=t1)
+            f.create_dataset("dset", data=[4, 5], dtype=t1)
+
+        src_db = Hdf5db(app_logger=self.log)
+        src_db.plugin = H5pyPlugin(filepath, read_only=True, app_logger=self.log)
+        src_db.open()
+        dst_db = Hdf5db(app_logger=self.log)
+        dst_db.plugin = H5JsonPlugin(json_path, app_logger=self.log)
+        dst_db.open()
+        src_db.copy(dst_db)
+        dst_db.close()
+        src_db.close()
+
+        with open(json_path) as f:
+            data = json.load(f)
+        root_json = data["groups"][data["root"]]
+        attrs = {a["name"]: a for a in root_json["attributes"]}
+        self.assertEqual(attrs["a1"]["value"], [1, 2, 3])
+        self.assertEqual(attrs["a1"]["type"], {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"})
+        self.assertEqual(len(data["datasets"]), 1)
+        dset_json = next(iter(data["datasets"].values()))
+        self.assertEqual(dset_json["value"], [4, 5])
+        self.assertEqual(dset_json["type"], {"class": "H5T_INTEGER", "base": "H5T_STD_I32LE"})
+
+    def testReplaceLinkAppendMode(self):
+        filepath = "test/unit/out/h5py_test_testReplaceLinkAppendMode.h5"
+        if os.path.isfile(filepath):
+            os.remove(filepath)  # cleanup any previous run
+        with h5py.File(filepath, "w") as f:
+            f.create_group("g1")
+            f.create_group("g2")
+            f["x"] = f["g1"]
+            f["y"] = f["g1"]
+            f["s"] = h5py.SoftLink("/g1")
+
+        db = Hdf5db(app_logger=self.log)
+        db.plugin = H5pyPlugin(filepath, append=True, no_data=False, app_logger=self.log)
+        root_id = db.open()
+        g2_id = db.getObjectIdByPath("/g2")
+        # hard link to an existing object
+        db.deleteLink(root_id, "x")
+        db.createHardLink(root_id, "x", g2_id)
+        # hard link to a new object, replaced without deleting first
+        g3_id = db.createGroup()
+        db.createHardLink(root_id, "y", g3_id)
+        # soft link
+        db.deleteLink(root_id, "s")
+        db.createSoftLink(root_id, "s", "/g2")
+        db.close()
+
+        def addr(obj):
+            return h5py.h5o.get_info(obj.id).addr
+
+        with h5py.File(filepath, "r") as f:
+            self.assertEqual(addr(f["x"]), addr(f["g2"]))
+            self.assertNotEqual(addr(f["y"]), addr(f["g1"]))
+            self.assertNotEqual(addr(f["y"]), addr(f["g2"]))
+            self.assertIsInstance(f["y"], h5py.Group)
+            self.assertEqual(f.get("s", getlink=True).path, "/g2")
+            self.assertIn("g1", f)  # still linked from /g1
 
     def testReaderWithUpdate(self):
 
