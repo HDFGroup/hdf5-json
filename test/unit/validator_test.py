@@ -17,6 +17,8 @@ import tempfile
 import time
 import unittest
 
+import jsonschema
+
 from h5json import Hdf5db
 from h5json.apps.validator import prepare_validator
 from h5json.h5pystore.h5py_plugin import H5pyPlugin
@@ -66,10 +68,11 @@ class ValidatorTest(unittest.TestCase):
         for h5path in ("", "/", "//", "a/", "/a/", "a//b", "//a"):
             self.assertFalse(self.validator.is_valid(self.soft_link_doc(h5path)), h5path)
 
-    def testH5tojsonOutputValidates(self):
+    def h5tojson(self, filename):
+        """Return the HDF5/JSON document for data/hdf5/<filename>."""
         with tempfile.TemporaryDirectory() as tmp:
-            json_path = os.path.join(tmp, "tall.json")
-            src_db = Hdf5db(plugin=H5pyPlugin("data/hdf5/tall.h5", read_only=True, app_logger=self.log),
+            json_path = os.path.join(tmp, "out.json")
+            src_db = Hdf5db(plugin=H5pyPlugin(f"data/hdf5/{filename}", read_only=True, app_logger=self.log),
                             app_logger=self.log)
             src_db.open()
             dst_db = Hdf5db(plugin=H5JsonPlugin(json_path, app_logger=self.log), app_logger=self.log)
@@ -78,8 +81,10 @@ class ValidatorTest(unittest.TestCase):
             dst_db.close()
             src_db.close()
             with open(json_path) as f:
-                doc = json.load(f)
+                return json.load(f)
 
+    def testH5tojsonOutputValidates(self):
+        doc = self.h5tojson("tall.h5")
         self.assertTrue(isSchema2Id("g-" + doc["root"]))
         self.assertTrue(doc["datasets"])
         errors = [str(e) for e in self.validator.iter_errors(doc)]
@@ -88,6 +93,26 @@ class ValidatorTest(unittest.TestCase):
         # with 2.0 ids, groups are checked too, not skipped
         doc["groups"][doc["root"]]["links"] = 5
         self.assertFalse(self.validator.is_valid(doc))
+
+    def testH5tojsonOutputValidatesWithFormats(self):
+        validator = self.validator.evolve(format_checker=jsonschema.FormatChecker())
+        for filename in ("tall.h5", "committed_type.h5", "compound_committed.h5"):
+            doc = self.h5tojson(filename)
+            errors = [str(e) for e in validator.iter_errors(doc)]
+            self.assertEqual(errors, [], filename)
+
+        # a dataset whose type refers to a committed type by its 2.0 id
+        doc = self.h5tojson("committed_type.h5")
+        ctype_id = next(iter(doc["datatypes"]))
+        dset = next(iter(doc["datasets"].values()))
+        dset["type"] = "datatypes/" + ctype_id
+        errors = [str(e) for e in validator.iter_errors(doc)]
+        self.assertEqual(errors, [])
+
+        # format checking still rejects an id that is neither form
+        doc = self.h5tojson("tall.h5")
+        doc["groups"][doc["root"]]["links"][0]["id"] = "not-an-id"
+        self.assertFalse(validator.is_valid(doc))
 
     def testSampleCorpus(self):
         failed = []

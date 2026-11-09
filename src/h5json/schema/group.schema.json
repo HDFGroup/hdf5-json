@@ -138,7 +138,14 @@
                 },
                 "id": {
                     "type": "string",
-                    "format": "uuid"
+                    "anyOf": [
+                        {
+                            "format": "uuid"
+                        },
+                        {
+                            "pattern": "^[a-f0-9]{8}-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{6}-[a-f0-9]{6}$"
+                        }
+                    ]
                 },
                 "creationProperties": {
                     "$ref": "#/$defs/link_creation_props"
