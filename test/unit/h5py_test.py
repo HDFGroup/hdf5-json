@@ -14,6 +14,7 @@ import time
 import logging
 import os
 import json
+import tempfile
 
 import h5py
 import numpy as np
@@ -2002,6 +2003,76 @@ class H5pyTest(unittest.TestCase):
 
         with h5py.File(filepath, "r") as f:
             self.assertTrue(np.array_equal(f["dset"][...], expected))
+
+    def testReadOpaqueDatasetSelection(self):
+        # a hyperslab read of a tagged opaque dataset reads just that region,
+        # and must match the same slice of a whole-dataset read
+        with tempfile.TemporaryDirectory() as tmp:
+            filepath = os.path.join(tmp, "opaque2d.h5")
+            tid = h5py.h5t.create(h5py.h5t.OPAQUE, 3)
+            tid.set_tag(b"test tag")
+            data = np.frombuffer(b"".join(f"{i}{j}x".encode() for i in range(6) for j in range(5)), dtype="V3")
+            data = data.reshape((6, 5))
+            with h5py.File(filepath, "w") as f:
+                dsid = h5py.h5d.create(f.id, b"op", tid, h5py.h5s.create_simple((6, 5)))
+                dsid.write(h5py.h5s.ALL, h5py.h5s.ALL, data, mtype=tid)
+
+            db = Hdf5db(app_logger=self.log)
+            db.plugin = H5pyPlugin(filepath, read_only=True, app_logger=self.log)
+            db.open()
+            dset_id = db.getObjectIdByPath("/op")
+            whole = db.plugin.getDatasetValues(dset_id, selections.select((6, 5), ...))
+            self.assertEqual(whole.tobytes(), data.tobytes())
+            for args in (
+                (slice(1, 5, 2), slice(0, 5)),
+                (slice(2, 3), slice(1, 4)),
+                (slice(None), slice(None, None, 3)),
+                (3, slice(1, 4)),
+                (slice(5, 6), 4),
+                ([0, 2, 5], slice(1, 3)),
+            ):
+                sel = selections.select((6, 5), args)
+                arr = db.plugin.getDatasetValues(dset_id, sel)
+                expected = whole[sel.slices]
+                self.assertEqual(arr.shape, expected.shape, args)
+                self.assertEqual(arr.tobytes(), expected.tobytes(), args)
+            db.close()
+
+    def testExternalStorageWarning(self):
+        # values stored outside the file (external raw storage, VDS) are still
+        # read as before, but a warning names the dataset
+        log = logging.getLogger("h5py_test_external")
+        with tempfile.TemporaryDirectory() as tmp:
+            canary = os.path.join(tmp, "canary.txt")
+            with open(canary, "wb") as f:
+                f.write(b"CANARY-BYTES")
+            ext_path = os.path.join(tmp, "ext.h5")
+            with h5py.File(ext_path, "w") as f:
+                f.create_dataset("d", shape=(16,), dtype="u1", external=[(canary, 0, h5py.h5f.UNLIMITED)])
+
+            src_path = os.path.join(tmp, "src.h5")
+            with h5py.File(src_path, "w") as f:
+                f["secret"] = np.frombuffer(b"CANARY-VDS-DATA!", dtype="u1")
+            layout = h5py.VirtualLayout(shape=(16,), dtype="u1")
+            layout[:] = h5py.VirtualSource(src_path, "secret", shape=(16,))
+            vds_path = os.path.join(tmp, "vds.h5")
+            with h5py.File(vds_path, "w") as f:
+                f.create_virtual_dataset("v", layout)
+
+            cases = (
+                (ext_path, "/d", "external", b"CANARY-BYTES" + bytes(4)),
+                (vds_path, "/v", "virtual", b"CANARY-VDS-DATA!"),
+            )
+            for filepath, h5path, kind, expected in cases:
+                db = Hdf5db(app_logger=log)
+                db.plugin = H5pyPlugin(filepath, read_only=True, app_logger=log)
+                with self.assertLogs(log, level="WARNING") as cm:
+                    db.open()
+                    dset_id = db.getObjectIdByPath(h5path)
+                    arr = db.getDatasetValues(dset_id, selections.select((16,), ...))
+                db.close()
+                self.assertEqual(arr.tobytes(), expected)
+                self.assertTrue(any(h5path in msg and kind in msg for msg in cm.output), cm.output)
 
 
 if __name__ == "__main__":

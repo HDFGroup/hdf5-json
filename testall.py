@@ -32,11 +32,12 @@ unit_tests = [
     "h5json_writer_test",
     "h5py_test",
     "selection_test",
+    "validator_test",
 ]
 
 unit_tests = tuple(unit_tests)
 
-integ_tests = ("h5tojson_test", "jsontoh5_test")
+integ_tests = ("h5tojson_test", "jsontoh5_test", "cli_test")
 
 # verify the hdf5 lib version is recent
 if h5py.version.hdf5_version_tuple < (1, 10, 4):

@@ -11,39 +11,42 @@
 ##############################################################################
 import sys
 import os.path as op
-import logging
+import argparse
 
 from h5json import Hdf5db
 from h5json.jsonstore.h5json_plugin import H5JsonPlugin
 from h5json.h5pystore.h5py_plugin import H5pyPlugin
+from h5json.apps.applog import setup_logging
+
+
+def _non_negative_int(text):
+    """Parse a non-negative integer argument."""
+    try:
+        value = int(text)
+    except ValueError:
+        value = -1
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"invalid non-negative integer: {text!r}")
+    return value
 
 
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
-        print(f"usage: {sys.argv[0]} [-h] [--nodata] [--data-limit n] <hdf5_file>")
+    parser = argparse.ArgumentParser(description="Print the HDF5/JSON representation of an HDF5 file to stdout.")
+    parser.add_argument("--nodata", dest="data_limit", action="store_const", const=0,
+                        help="omit dataset values (same as --data-limit 0)")
+    parser.add_argument("--data-limit", dest="data_limit", type=_non_negative_int, metavar="N",
+                        help="omit the values of datasets larger than about N bytes")
+    parser.add_argument("--log", metavar="FILE", help="append DEBUG output to FILE")
+    parser.add_argument("hdf5_file", help="HDF5 file to convert")
+    if len(sys.argv) < 2:
+        parser.print_help()
         sys.exit(0)
-
-    data_limit = None
-    filename = None
-    for i in range(1, len(sys.argv)):
-        if sys.argv[i] == "--nodata":
-            data_limit = 0
-        elif sys.argv[i] == "--data-limit":
-            i += 1
-            if i >= len(sys.argv):
-                sys.exit("Error: --data-limit requires a numeric argument")
-            try:
-                data_limit = int(sys.argv[i])
-            except ValueError:
-                sys.exit("Error: --data-limit requires a numeric argument")
-        else:
-            filename = sys.argv[i]
+    args = parser.parse_args()
+    data_limit = args.data_limit
+    filename = args.hdf5_file
 
     # create logger
-    logfname = "h5tojson.log"
-    loglevel = logging.DEBUG
-    logging.basicConfig(filename=logfname, format='%(levelname)s %(asctime)s %(message)s', level=loglevel)
-    log = logging.getLogger()
+    log = setup_logging(args.log)
 
     # check that the input file exists
     if not op.isfile(filename):

@@ -509,6 +509,8 @@ class Hdf5db:
             raise IOError("other_db is not open")
 
         id_map = {self.root_id: other_db.root_id}
+        # a no_data destination discards dataset values, so don't read them
+        drop_values = other_db.plugin is not None and other_db.plugin.no_data
 
         def translate_id(old_id):
             # normalize first: a reference element's embedded id may be a
@@ -664,7 +666,7 @@ class Hdf5db:
             EVERY object has a destination id, so this must run after ALL shells exist. """
             dst_id = id_map[src_id]
             copy_attributes(src_id, dst_id)
-            if getCollectionForId(src_id) == "datasets":
+            if getCollectionForId(src_id) == "datasets" and not drop_values:
                 src_json = self.getObjectById(src_id)
                 dtype = self.getDtype(src_json)
                 copy_dataset_values(src_id, dst_id, dtype, src_json["shape"])
@@ -912,9 +914,9 @@ class Hdf5db:
                     kwargs["path_prefix"] = path_prefix + "/" + link_name
                     paths.extend(self.getPathsForObjectId(obj_id, **kwargs))
                 elif link_class == 'H5L_TYPE_SOFT':
-                    self.log.warning("getPathsForObjectId can't follow soft links")
+                    self.log.debug("getPathsForObjectId can't follow soft links")
                 elif link_class == 'H5L_TYPE_EXTERNAL':
-                    self.log.warning("getPathsForObjectId can't follow external links")
+                    self.log.debug("getPathsForObjectId can't follow external links")
                 else:
                     self.log.error(f"link type: {link_class} not supported")
 

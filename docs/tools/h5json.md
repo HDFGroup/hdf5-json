@@ -52,6 +52,9 @@ file `sample.h5`.
 
 The h5json distribution provides three command-line tools described below.
 
+By default, `jsontoh5` and `h5tojson` print warnings and errors to `stderr` and
+do not write a log file.
+
 ### jsontoh5
 
 Generate an HDF5 file with the content, storage features, and data described in
@@ -60,7 +63,7 @@ an HDF5/JSON file.
 Usage:
 
 ```
-jsontoh5.py [-h] <json_file> <h5_file>
+jsontoh5 [-h] [--nodata] [--log FILE] <json_file> <h5_file>
 ```
 
 where:
@@ -71,13 +74,22 @@ where:
 
 `<h5_file>`
 
-: Output HDF5 file that will be created.
+: Output HDF5 file that will be created. It can't be the same file as
+`<json_file>`.
 
 Options:
 
 `-h`
 
 : Print help message.
+
+`--nodata`
+
+: Don't write dataset values. Datasets are created with their fill values.
+
+`--log FILE`
+
+: Append DEBUG output to `FILE`.
 
 ### h5tojson
 
@@ -87,7 +99,7 @@ to `stdout`.
 Usage:
 
 ```
-h5tojson [-h] [-D] [-d] <hdf5_file>
+h5tojson [-h] [--nodata] [--data-limit N] [--log FILE] <hdf5_file>
 ```
 
 where:
@@ -101,18 +113,25 @@ Options:
 `-h`
 : Print help message.
 
-`-D`
-: Suppress all data output. Output HDF5/JSON will not contain any dataset or
-attribute values.
+`--nodata`
+: Omit dataset values. Attribute values are still included. Same as
+`--data-limit 0`.
 
-`-d`
-: Suppress data output for datasets only.
+`--data-limit N`
+: Omit the values of datasets larger than about `N` bytes.
+
+`--log FILE`
+: Append DEBUG output to `FILE`.
 
 ### h5jvalidate
 
 Validate generated HDF5/JSON files against the schema. Validation errors are
 printed to `stderr`. Command's exit status indicates the overall success (`0`)
 or failure (`1`).
+
+Validation is structural only: it checks that a file has the layout the schema
+describes. It is not a safety check, and passing it does not mean a file from an
+untrusted source is safe to convert with `jsontoh5`.
 
 Usage:
 

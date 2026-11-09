@@ -17,6 +17,8 @@ import os
 import io
 import json
 import contextlib
+import tempfile
+from unittest import mock
 import h5py
 import numpy as np
 from h5json import Hdf5db
@@ -2058,6 +2060,43 @@ class Hdf5dbTest(unittest.TestCase):
         rdb.close()
         with self.assertRaises(IOError):
             rdb.readAll()
+
+    def testCopyNoDataSkipsValues(self):
+        # copy() doesn't read dataset values that a no_data destination drops
+
+        def copy_counting_reads(dst_plugin):
+            src_db = Hdf5db(app_logger=self.log)
+            src_db.plugin = H5JsonPlugin("data/json/tall.json", read_only=True, app_logger=self.log)
+            src_db.open()
+            dst_db = Hdf5db(app_logger=self.log)
+            dst_db.plugin = dst_plugin
+            dst_db.open()
+            with mock.patch.object(src_db, "getDatasetValues", wraps=src_db.getDatasetValues) as reads:
+                src_db.copy(dst_db)
+            dst_db.close()
+            src_db.close()
+            return reads.call_count
+
+        with tempfile.TemporaryDirectory() as tmp:
+            nodata_json = os.path.join(tmp, "nodata.json")
+            self.assertEqual(copy_counting_reads(H5JsonPlugin(nodata_json, data_limit=0, app_logger=self.log)), 0)
+            with open(nodata_json) as f:
+                out = json.load(f)
+            self.assertEqual(len(out["datasets"]), 4)
+            self.assertFalse(any("value" in dset for dset in out["datasets"].values()))
+            self.assertEqual(len(out["groups"][out["root"]]["attributes"]), 2)
+
+            nodata_h5 = os.path.join(tmp, "nodata.h5")
+            self.assertEqual(copy_counting_reads(H5pyPlugin(nodata_h5, no_data=True, app_logger=self.log)), 0)
+            with h5py.File(nodata_h5, "r") as f:
+                self.assertEqual(f["/g1/g1.1/dset1.1.1"].shape, (10, 10))
+                self.assertEqual(int(f["/g1/g1.1/dset1.1.1"][...].sum()), 0)
+
+            data_json = os.path.join(tmp, "data.json")
+            self.assertGreater(copy_counting_reads(H5JsonPlugin(data_json, app_logger=self.log)), 0)
+            with open(data_json) as f:
+                out = json.load(f)
+            self.assertTrue(all("value" in dset for dset in out["datasets"].values()))
 
 
 if __name__ == "__main__":
