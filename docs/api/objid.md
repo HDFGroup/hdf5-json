@@ -76,7 +76,8 @@ Returns the S3 storage key for `id`. Domain ids (containing `/`) map to a `<path
 `db/<root_prefix>/<collection_char>/<suffix>` plus a type-specific filename suffix (`.group.json`,
 `.dataset.json`, `.datatype.json`), with chunk ids using collection `"d"` and appending an optional
 partition segment and the chunk coordinate. Schema 1 ids map to `<md5hash>-<id>`. Raises `ValueError` for
-unrecognized prefixes.
+unrecognized prefixes, and for a collection-prefixed object id (`groups/<id>`, `datasets/<id>`,
+`datatypes/<id>`), which has no storage key of its own.
 
 ## getObjId(s3key)
 
@@ -98,11 +99,19 @@ Validates that `id` is a well-formed object id, raising `ValueError` on any prob
 normalized (stripping any Schema 1 hash tag, expanding a `"collection/uuid"` form, and re-checking the
 one-character prefix). If `obj_class` (`"groups"`/`"datasets"`/`"datatypes"`) is given, checks that the
 id's prefix matches. Chunk ids have their coordinate suffix stripped before the final length/character
-checks. Every remaining character must be alphanumeric or `-`.
+checks. Every remaining character must be an ASCII hex digit (either case) or `-`.
 
 ## isValidUuid(id, obj_class=None)
 
 Returns `True` if `validateUuid(id, obj_class)` succeeds, `False` if it raises `ValueError`.
+
+## isCanonicalObjId(id, obj_class=None)
+
+Returns `True` if `id` is exactly a lowercase Schema 2 id as `createObjId` produces it:
+`<g|d|t>-` followed by `8-8-4-6-6` lowercase hex groups, or the same with a `c-` prefix and a
+`_<int>(_<int>)*` chunk index. Collection-prefixed (`groups/...`), hash-tagged, Schema 1, uppercase and
+partitioned chunk forms all return `False`, although `isValidUuid` accepts them. If `obj_class` is given,
+the prefix must match it. Use it to check ids supplied by a client before using them for a new object.
 
 ## isValidChunkId(id)
 

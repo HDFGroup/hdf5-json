@@ -365,7 +365,7 @@ def validateLayout(shape_json, type_json, layout):
             msg += "H5D_CHUNKED_REF_INDIRECT layout"
             raise ValueError(msg)
         chunk_table_id = layout["chunk_table"]
-        if not isValidUuid(chunk_table_id, "Dataset"):
+        if not isValidUuid(chunk_table_id, "Dataset") or "/" in chunk_table_id:
             msg = f"Invalid chunk table id: {chunk_table_id}"
             raise ValueError(msg)
 
